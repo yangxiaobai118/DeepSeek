@@ -21,6 +21,8 @@ window.__ModuleLoader__.load({
       bindingTitle: 'Binding',
       bindingHint: 'Create a fine-grained or classic token with repository contents read and write. Leave the token blank to keep the current one, or to use GITHUB_TOKEN from the environment.',
       tokenLabel: 'Personal access token',
+      showToken: 'Show token',
+      hideToken: 'Hide token',
       tokenPlaceholder: 'github_pat_… or ghp_…',
       keepTokenPlaceholder: 'Leave blank to keep the current token',
       ownerLabel: 'Owner',
@@ -116,6 +118,8 @@ window.__ModuleLoader__.load({
       bindingTitle: '仓库绑定',
       bindingHint: '请创建一个具有仓库内容读写权限的细粒度或经典令牌。令牌留空表示沿用当前令牌，或使用环境变量 GITHUB_TOKEN。',
       tokenLabel: '个人访问令牌',
+      showToken: '显示令牌',
+      hideToken: '隐藏令牌',
       tokenPlaceholder: 'github_pat_… 或 ghp_…',
       keepTokenPlaceholder: '留空以沿用当前令牌',
       ownerLabel: '所有者',
@@ -217,6 +221,13 @@ window.__ModuleLoader__.load({
 .ghp-input:disabled, .ghp-select:disabled { opacity: 0.6; }
 .ghp-input:focus-visible, .ghp-select:focus-visible, .ghp-btn:focus-visible, .ghp-tab:focus-visible, .ghp-crumb:focus-visible, .ghp-result:focus-visible { outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
 .ghp-row:focus-visible { outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: -2px; }
+.ghp-secret { position: relative; display: flex; min-width: 0; }
+.ghp-secretInput { width: 100%; padding-right: 38px; font-family: var(--dsw-font-mono); }
+.ghp-secretInput.ghp-secretHidden { color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--dsw-alias-label-primary); }
+.ghp-secretMask { position: absolute; top: 0; left: 11px; right: 38px; height: 32px; line-height: 32px; overflow: hidden; white-space: nowrap; font-family: var(--dsw-font-mono); font-size: 13px; color: var(--dsw-alias-label-primary); pointer-events: none; user-select: none; }
+.ghp-secretToggle { position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--dsw-radius-xs); background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; }
+.ghp-secretToggle:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.ghp-secretToggle:focus-visible { outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
 .ghp-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
 .ghp-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ghp-btn { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 12px; border: 0.5px solid transparent; border-radius: var(--dsw-radius-sm); font: inherit; font-size: 13px; line-height: 1; cursor: pointer; }
@@ -292,6 +303,30 @@ window.__ModuleLoader__.load({
       if (value < 1024) return `${value} B`
       if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
       return `${(value / (1024 * 1024)).toFixed(1)} MB`
+    }
+
+    /**
+     * Eye glyph for the token visibility toggle.
+     * @param {boolean} visible - whether the token text is visible.
+     * @returns {import('react').ReactElement} inline SVG icon.
+     */
+    function eyeIcon(visible) {
+      return h('svg', {
+        width: 16,
+        height: 16,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        stroke: 'currentColor',
+        strokeWidth: 1.8,
+        strokeLinecap: 'round',
+        strokeLinejoin: 'round',
+        'aria-hidden': true,
+        style: { display: 'block' },
+      }, [
+        h('path', { key: 'eye', d: 'M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z' }),
+        h('circle', { key: 'pupil', cx: 12, cy: 12, r: 2.5 }),
+        visible ? null : h('path', { key: 'slash', d: 'M4 4 20 20' }),
+      ])
     }
 
     /**
@@ -383,6 +418,7 @@ window.__ModuleLoader__.load({
           const [message, setMessage] = React.useState(null)
           const [tab, setTab] = React.useState('files')
           const [form, setForm] = React.useState({ token: '', owner: '', repo: '', branch: '' })
+          const [tokenVisible, setTokenVisible] = React.useState(false)
           const [files, setFiles] = React.useState(null)
           const [path, setPath] = React.useState('')
           const [refInput, setRefInput] = React.useState('')
@@ -454,6 +490,7 @@ window.__ModuleLoader__.load({
           function applyStatus(view) {
             setStatus(view)
             setStatusState('ready')
+            setTokenVisible(false)
             setForm((current) => ({
               token: '',
               owner: view.owner ?? current.owner,
@@ -722,16 +759,34 @@ window.__ModuleLoader__.load({
             h('p', { className: 'ghp-hint' }, t('bindingHint')),
             h('div', { className: 'ghp-grid' },
               h('div', { className: 'ghp-full' },
-                field(t('tokenLabel'), h('input', {
-                  className: 'ghp-input',
-                  type: 'password',
-                  autoComplete: 'new-password',
-                  spellCheck: false,
-                  placeholder: status?.tokenConfigured === true ? t('keepTokenPlaceholder') : t('tokenPlaceholder'),
-                  value: form.token,
-                  disabled: busy,
-                  onChange: (event) => { setForm((current) => ({ ...current, token: event.target.value })) },
-                }), 'token'),
+                h('div', { className: 'ghp-field' },
+                  h('label', { className: 'ghp-label', htmlFor: 'ghp-token' }, t('tokenLabel')),
+                  h('div', { className: 'ghp-secret' },
+                    h('input', {
+                      id: 'ghp-token',
+                      className: 'ghp-input ghp-secretInput' + (tokenVisible || form.token === '' ? '' : ' ghp-secretHidden'),
+                      type: 'text',
+                      autoComplete: 'new-password',
+                      spellCheck: false,
+                      placeholder: status?.tokenConfigured === true ? t('keepTokenPlaceholder') : t('tokenPlaceholder'),
+                      value: form.token,
+                      disabled: busy,
+                      onChange: (event) => { setForm((current) => ({ ...current, token: event.target.value })) },
+                    }),
+                    !tokenVisible && form.token !== ''
+                      ? h('span', { className: 'ghp-secretMask', 'aria-hidden': true }, '*'.repeat(form.token.length))
+                      : null,
+                    h('button', {
+                      type: 'button',
+                      className: 'ghp-secretToggle',
+                      disabled: busy,
+                      'aria-label': tokenVisible ? t('hideToken') : t('showToken'),
+                      'aria-pressed': tokenVisible,
+                      title: tokenVisible ? t('hideToken') : t('showToken'),
+                      onClick: () => { setTokenVisible((visible) => !visible) },
+                    }, eyeIcon(tokenVisible)),
+                  ),
+                ),
               ),
               field(t('ownerLabel'), h('input', {
                 className: 'ghp-input',

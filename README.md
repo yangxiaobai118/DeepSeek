@@ -15,6 +15,24 @@ downloads, uploads, and searches from **Settings > GitHub** and from the
 `github` agent tool. The token is kept in the local credential store, never in
 `cordis.patch.yml`, and every operation uses the bound account's permissions.
 
+### Install on another DSH client
+
+The bundle is a dependency-free npm package. Build the tarball with
+`npm run pack:release`, or download the `.tgz` from the repository's latest
+GitHub Release. Install it into the target profile:
+
+```sh
+dsh plugin --profile <profile> add "/absolute/path/to/<tarball>.tgz"
+```
+
+In the Web GUI, open **Plugins > Add plugin** and enter the same tarball path;
+if that surface accepts only a directory, extract the tarball and select the
+`package/` directory. A copied source directory can be added the same way.
+
+Restart or reload that client, then bind the token and repository again in
+**Settings > GitHub**. The credential record and the per-session branch memory
+live in that client's profile and are not shared with this machine.
+
 ### Bind
 
 1. Create a personal access token (classic `repo` scope, or a fine-grained
@@ -108,6 +126,33 @@ The plugin's Host-side actions load when DSH starts; after replacing the package
 - The token is stored locally in the profile's credential store. Turning the
   plugin off does not delete it; use **Disconnect** to remove it.
 
+### Release
+
+`npm run pack:release` builds `dist/local-github-integration-<version>.tgz` and
+`dist/SHA256SUMS` after verifying the runtime files. The workflow at
+`.github/workflows/release.yml` runs on a `v*` tag or manual dispatch, checks
+that the package version matches the tag, packs the tarball, and creates or
+updates the GitHub Release with both files.
+
+Bump the version, commit the plugin branch, tag it, and push the tag:
+
+```sh
+npm version patch --no-git-tag-version
+git add package.json
+git commit -m "Release v1.3.1"
+git tag v1.3.1
+git push origin HEAD --tags
+```
+
+The repository package is named `@local/github-integration` and marked
+`private`; it installs from a tarball or directory but cannot be published to
+the public npm registry under that name. To publish to a registry, choose a
+scope you own (for example `@your-name/dsh-github-integration`), remove
+`private`, and change the name in `package.json`, `cordis.patch.yml`, and the
+`window.__ModuleLoader__.load({ id })` value in `client.js`; then add an
+`NPM_TOKEN` publish step. The included workflow intentionally produces an
+installable tarball rather than publishing to npm.
+
 ---
 
 ## 中文
@@ -115,6 +160,21 @@ The plugin's Host-side actions load when DSH starts; after replacing the package
 将 GitHub 账号与仓库绑定到 DeepSeek Harness，随后可在 **设置 > GitHub** 与
 `github` 智能体工具中浏览、下载、上传和搜索。令牌保存在本地凭据库中，绝不写入
 `cordis.patch.yml`；所有操作都使用绑定账号自身的权限。
+
+### 在另一个 DSH 客户端安装
+
+插件是零依赖的 npm 包。运行 `npm run pack:release` 生成 tarball，或从本仓库最新的
+GitHub Release 下载 `.tgz`，然后安装到目标 profile：
+
+```sh
+dsh plugin --profile <profile> add "/绝对路径/<tarball>.tgz"
+```
+
+也可以在 Web GUI 中打开 **插件 > 添加插件**，填写同一个 tarball 路径；如果该入口只
+接受目录，解压 tarball 后选择 `package/` 目录。直接复制源码目录也可以同样添加。
+
+重启或刷新该客户端，然后在 **设置 > GitHub** 重新绑定令牌和仓库。凭据记录和会话
+分支记忆保存在该客户端的 profile 中，不会与本机共享。
 
 ### 绑定
 
@@ -199,4 +259,29 @@ The plugin's Host-side actions load when DSH starts; after replacing the package
 - 浏览器路由仅在挂载 Web 载体与 Connection 信任栅栏时提供；无头（headless）profile
   仍可使用智能体工具。
 - 令牌保存在本 profile 的本地凭据库中。关闭插件不会删除它；请使用 **断开连接** 移除。
+
+### 发布
+
+`npm run pack:release` 会先校验运行时文件，再生成
+`dist/local-github-integration-<version>.tgz` 和 `dist/SHA256SUMS`。
+`.github/workflows/release.yml` 在推送 `v*` 标签或手动触发时运行：校验
+`package.json` 版本与标签一致，打包 tarball，并创建或更新 GitHub Release，附带
+tarball 与校验和。
+
+发布新版本的常规流程：
+
+```sh
+npm version patch --no-git-tag-version
+git add package.json
+git commit -m "Release v1.3.1"
+git tag v1.3.1
+git push origin HEAD --tags
+```
+
+仓库里的包名是 `@local/github-integration` 且标记为 `private`，可以从 tarball 或
+目录安装，但不能用这个名字发布到公共 npm registry。若要发布到 registry，请选择一个
+你拥有的 scope（例如 `@your-name/dsh-github-integration`），移除 `private`，并同步
+修改 `package.json`、`cordis.patch.yml` 以及 `client.js` 中
+`window.__ModuleLoader__.load({ id })` 的包名；然后添加 `NPM_TOKEN` 发布步骤。
+当前工作流有意只产出可安装的 tarball，不直接发布 npm。
 

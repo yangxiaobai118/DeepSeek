@@ -1,0 +1,63 @@
+name: Release GitHub integration bundle
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v1.3.1
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Resolve tag and verify package version
+        id: meta
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          TAG="${INPUT_TAG:-$REF_NAME}"
+          if [ -z "$TAG" ]; then
+            echo "A release tag is required." >&2
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          VERSION="$VERSION" node -e "const p=require('./package.json'); if (p.version !== process.env.VERSION) { console.error('package.json version '+p.version+' does not match tag '+process.env.VERSION); process.exit(1) }"
+
+      - name: Pack the npm tarball
+        run: npm run pack:release
+
+      - name: Show release artifacts
+        run: ls -lh dist
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.tgz dist/SHA256SUMS --clobber
+          elif [ "$REF_TYPE" = "tag" ]; then
+            gh release create "$TAG" dist/*.tgz dist/SHA256SUMS --title "$TAG" --generate-notes
+          else
+            gh release create "$TAG" dist/*.tgz dist/SHA256SUMS --title "$TAG" --generate-notes --target "$GITHUB_SHA"
+          fi

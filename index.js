@@ -1261,7 +1261,7 @@ export function apply(ctx, rawConfig) {
     ctx.effect(() => systemPrompt.section({
       name: 'github-integration',
       order: 1900,
-      text: 'GitHub operations: the user has bound a GitHub account and repository in Settings > GitHub. For GitHub status, repository/branch/file reads, download, upload, search, branch creation, multi-file commits, clone, and push, use the `github` tool before `bash`, `git`, or `gh`. Never ask the user for a token in chat. Use a direct git command only when the user explicitly asks for a git workflow or when the tool reports that it cannot perform the operation.',
+      text: 'GitHub operations use the account and repository bound in Settings > GitHub. When the `github` tool is available, use it for GitHub status, repository/branch/file reads, download, upload, search, branch creation, multi-file commits, clone, and push before `bash`, `git`, or `gh`. Never ask the user for a token in chat. Use a direct git command only when the user explicitly asks for a git workflow or when the tool reports that it cannot perform the operation.',
     }), 'github-integration: routing section')
   }
 

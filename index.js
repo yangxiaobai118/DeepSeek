@@ -7,9 +7,10 @@
  * talks to. Every browser request passes the composition's Connection trust
  * fence before it reaches this service, matching the shipped route pattern.
  *
- * The token never enters configuration or a response: `status` reports only
- * whether one is configured and from which layer, and the record holds the
- * value in the local credential store.
+ * The token never enters configuration, the agent tool, or a status response:
+ * `status` reports only whether one is configured, its layer, and its length.
+ * The authenticated Settings page can request the stored value explicitly with
+ * its eye button; the record holds the value in the local credential store.
  */
 
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
@@ -790,6 +791,7 @@ export function apply(ctx, rawConfig) {
       defaultBranch: binding?.defaultBranch ?? null,
       tokenConfigured: token !== undefined,
       tokenSource: token?.source ?? null,
+      tokenLength: token !== undefined && token.source === 'stored' ? token.value.length : 0,
       tokenRef,
       apiBase,
       maxFileBytes,
@@ -808,6 +810,19 @@ export function apply(ctx, rawConfig) {
       }
     }
     return result
+  }
+
+  /**
+   * Return the stored token to the authenticated Settings page on explicit
+   * request (the eye button). Environment tokens are never revealed.
+   * @returns {Promise<{ token: string, length: number }>} stored token.
+   */
+  async function revealToken() {
+    const binding = await readBinding()
+    if (typeof binding?.token !== 'string' || binding.token === '') {
+      throw new GithubError('not-stored', 'No stored token is available to reveal.')
+    }
+    return { token: binding.token, length: binding.token.length }
   }
 
   /**
@@ -1617,7 +1632,7 @@ export function apply(ctx, rawConfig) {
     }
   }
 
-  /** One operation table shared by the route and the Tool. */
+  /** Browser-route operations; the Tool exposes its own action subset. */
   const operations = {
     status,
     bind,
@@ -1628,6 +1643,7 @@ export function apply(ctx, rawConfig) {
     download,
     upload,
     search,
+    reveal_token: revealToken,
   }
 
   ctx.inject(['webServer', 'connection'], (routeCtx) => {

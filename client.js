@@ -228,6 +228,16 @@ window.__ModuleLoader__.load({
 .ghp-secretToggle { position: absolute; top: 4px; right: 4px; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--dsw-radius-xs); background: transparent; color: var(--dsw-alias-label-tertiary); cursor: pointer; }
 .ghp-secretToggle:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
 .ghp-secretToggle:focus-visible { outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
+.ghp-combo { position: relative; display: flex; align-items: center; gap: 6px; min-width: 0; }
+.ghp-combo > .ghp-input { flex: 1 1 auto; }
+.ghp-comboToggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 32px; padding: 0; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-sm); background: transparent; color: var(--dsw-alias-label-secondary); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; }
+.ghp-comboToggle:not(:disabled):hover { background: var(--dsw-alias-interactive-bg-hover); }
+.ghp-comboToggle:disabled { opacity: 0.5; cursor: default; }
+.ghp-comboToggle:focus-visible { outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 2px; }
+.ghp-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 40; min-width: 180px; max-height: 220px; margin: 0; padding: 4px; overflow: auto; list-style: none; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-1); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); }
+.ghp-menuItem { display: block; width: 100%; padding: 6px 10px; border: 0; border-radius: var(--dsw-radius-xs); background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; line-height: 1.5; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.ghp-menuItem:hover, .ghp-menuItem:focus-visible { background: var(--dsw-alias-interactive-bg-hover); }
+.ghp-menuItem[data-selected='true'] { color: var(--dsw-alias-link); font-weight: 500; }
 .ghp-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
 .ghp-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ghp-btn { display: inline-flex; align-items: center; justify-content: center; height: 30px; padding: 0 12px; border: 0.5px solid transparent; border-radius: var(--dsw-radius-sm); font: inherit; font-size: 13px; line-height: 1; cursor: pointer; }
@@ -424,6 +434,7 @@ window.__ModuleLoader__.load({
           const [refInput, setRefInput] = React.useState('')
           const [uploadRef, setUploadRef] = React.useState('')
           const [branchNames, setBranchNames] = React.useState([])
+          const [openBranchMenu, setOpenBranchMenu] = React.useState('')
           const [preview, setPreview] = React.useState(null)
           const [uploadFile, setUploadFile] = React.useState(null)
           const [uploadPath, setUploadPath] = React.useState('')
@@ -776,6 +787,37 @@ window.__ModuleLoader__.load({
 
           const field = (label, input, key) => h('label', { className: 'ghp-field', key }, h('span', { className: 'ghp-label' }, label), input)
 
+          /**
+           * Wrap a branch text input with a menu that lists every repository branch.
+           * @param {string} kind - which input owns the open menu.
+           * @param {any} input - the text input element.
+           * @param {string} current - current branch value.
+           * @param {(name: string) => void} apply - setter for the value.
+           * @returns {any} the wrapped input.
+           */
+          const branchPicker = (kind, input, current, apply) => h('div', { className: 'ghp-combo' },
+            input,
+            h('button', {
+              type: 'button',
+              className: 'ghp-comboToggle',
+              disabled: busy || branchNames.length === 0,
+              'aria-haspopup': 'listbox',
+              'aria-expanded': openBranchMenu === kind,
+              title: t('branchLabel'),
+              onClick: () => { setOpenBranchMenu((open) => (open === kind ? '' : kind)) },
+            }, '▾'),
+            openBranchMenu === kind && branchNames.length > 0
+              ? h('ul', { className: 'ghp-menu', role: 'listbox' },
+                  branchNames.map((name) => h('li', { key: name, role: 'option', 'aria-selected': current === name },
+                    h('button', {
+                      type: 'button',
+                      className: 'ghp-menuItem',
+                      'data-selected': current === name ? 'true' : undefined,
+                      onClick: () => { apply(name); setOpenBranchMenu('') },
+                    }, name))))
+              : null,
+          )
+
           const namespaceHint = status !== null && typeof status.maxFileBytes === 'number'
             ? t('sizeHint', { size: formatSize(status.maxFileBytes) })
             : ''
@@ -861,7 +903,7 @@ window.__ModuleLoader__.load({
                 onChange: (event) => { setForm((current) => ({ ...current, repo: event.target.value })) },
               }), 'repo'),
               h('div', { className: 'ghp-full' },
-                field(t('branchLabel'), h('input', {
+                field(t('branchLabel'), branchPicker('bind', h('input', {
                   className: 'ghp-input',
                   type: 'text',
                   autoComplete: 'off',
@@ -869,9 +911,8 @@ window.__ModuleLoader__.load({
                   placeholder: t('branchPlaceholder'),
                   value: form.branch,
                   disabled: busy,
-                  list: 'ghp-branch-names',
                   onChange: (event) => { setForm((current) => ({ ...current, branch: event.target.value })) },
-                }), 'branch'),
+                }), form.branch, (name) => setForm((current) => ({ ...current, branch: name }))), 'branch'),
               ),
             ),
             h('p', { className: 'ghp-hint' }, t('branchOptional')),
@@ -991,7 +1032,7 @@ window.__ModuleLoader__.load({
               h('span', { className: 'ghp-hint' }, t('filesTitle')),
               h('label', { className: 'ghp-field', style: { flexDirection: 'row', alignItems: 'center', gap: '6px' } },
                 h('span', { className: 'ghp-label' }, t('branchLabel')),
-                h('input', {
+                branchPicker('files', h('input', {
                   className: 'ghp-input',
                   style: { width: '160px' },
                   type: 'text',
@@ -999,14 +1040,13 @@ window.__ModuleLoader__.load({
                   value: refInput,
                   disabled: busy,
                   placeholder: t('branchPlaceholder'),
-                  list: 'ghp-branch-names',
                   onChange: (event) => { setRefInput(event.target.value) },
                   onKeyDown: (event) => {
                     if (event.key !== 'Enter') return
                     event.preventDefault()
                     void run(async () => { await loadFiles(path, refInput) }, 'files')
                   },
-                }),
+                }), refInput, setRefInput),
               ),
               h('button', {
                 type: 'button',
@@ -1054,16 +1094,15 @@ window.__ModuleLoader__.load({
                     onChange: (event) => { setUploadPath(event.target.value) },
                   }), 'upload-path'),
                 ),
-                field(t('branchLabel'), h('input', {
+                field(t('branchLabel'), branchPicker('upload', h('input', {
                   className: 'ghp-input',
                   type: 'text',
                   spellCheck: false,
                   placeholder: t('branchPlaceholder'),
                   value: uploadRef,
                   disabled: busy,
-                  list: 'ghp-branch-names',
                   onChange: (event) => { setUploadRef(event.target.value) },
-                }), 'upload-branch'),
+                }), uploadRef, setUploadRef), 'upload-branch'),
                 field(t('commitMessage'), h('input', {
                   className: 'ghp-input',
                   type: 'text',
@@ -1148,15 +1187,8 @@ window.__ModuleLoader__.load({
             results,
           )
 
-          const branchDatalist = branchNames.length === 0
-            ? null
-            : h('datalist', { key: 'branch-names', id: 'ghp-branch-names' },
-                branchNames.map((name) => h('option', { key: name, value: name })),
-              )
-
           return h('div', { className: 'ghp-root' },
             h('style', { key: 'styles' }, CSS),
-            branchDatalist,
             h('h2', { className: 'ghp-heading' }, t('title')),
             h('p', { className: 'ghp-intro' }, t('intro')),
             statusCard,

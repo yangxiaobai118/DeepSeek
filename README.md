@@ -54,6 +54,15 @@ The `github` tool accepts one `action`:
 | `list_files` | List one repository directory. |
 | `download` | Read one repository file as UTF-8 text or base64. |
 | `upload` | Upload a workspace-local file to a repository path. |
+| `create_branch` | Create a branch from a base branch. |
+| `commit_files` | Commit a local folder to a branch as one commit; creates the branch when missing. |
+| `clone` | Clone the bound repository into the workspace with git. |
+| `push` | Commit and push the whole workspace directory with git. |
+
+The plugin also registers a profile-wide routing rule that tells the agent to use
+this tool before `bash`, `git`, or `gh` for GitHub operations. `clone` and
+`push` run the host's git with the bound token; `create_branch` and
+`commit_files` use the GitHub API.
 
 The tool never binds an account or accepts a token: binding is a user action in
 **Settings > GitHub**, so a model cannot grant itself repository authority.
@@ -124,6 +133,14 @@ The bundle row accepts these optional fields:
 | `list_files` | 列出一个仓库目录。 |
 | `download` | 读取一个仓库文件（UTF-8 文本或 base64）。 |
 | `upload` | 把工作区本地文件上传到仓库路径。 |
+| `create_branch` | 从基础分支新建一个分支。 |
+| `commit_files` | 把一个本地文件夹作为一次提交写入分支；分支不存在时自动创建。 |
+| `clone` | 用 git 把绑定仓库克隆到工作区。 |
+| `push` | 用 git 提交并推送整个工作区目录。 |
+
+插件还会注册一条 profile 级路由规则，要求智能体处理 GitHub 操作时优先使用本工具，
+而不是 `bash`、`git` 或 `gh`。`clone`/`push` 使用宿主机 git 和绑定的令牌；
+`create_branch`/`commit_files` 使用 GitHub API。
 
 该工具不会绑定账号，也不接受令牌：绑定是 **设置 > GitHub** 中的用户操作，因此模型
 无法给自己授予仓库权限。

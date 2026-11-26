@@ -40,6 +40,18 @@ jobs:
       - name: Build per-platform bundles
         run: node scripts/package.mjs --out dist
 
+      - name: Verify the Linux bundle on a real filesystem
+        run: |
+          tar -xzf dist/uniproxy-linux-amd64.tar.gz -C "$RUNNER_TEMP"
+          test -x "$RUNNER_TEMP/uniproxy/uniproxy"
+          test -f "$RUNNER_TEMP/uniproxy/src/index.js"
+          head -n 1 "$RUNNER_TEMP/uniproxy/uniproxy" | grep -qx '#!/bin/sh'
+          if grep -q $'\r' "$RUNNER_TEMP/uniproxy/uniproxy"; then
+            echo "launcher has CRLF line endings" >&2
+            exit 1
+          fi
+          unzip -l dist/uniproxy-windows-amd64.zip | grep -q 'uniproxy/uniproxy.cmd'
+
       - name: Build npm tarball and aggregate checksums
         run: |
           npm pack --pack-destination dist

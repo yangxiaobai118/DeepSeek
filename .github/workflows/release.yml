@@ -1,0 +1,59 @@
+name: Release GitHub integration bundle (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v1.3.0
+        required: true
+        type: string
+      ref:
+        description: Branch or commit containing the plugin
+        required: true
+        default: plugin/github-integration
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the plugin ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Remember the checked-out commit
+        id: head
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Verify package version
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          VERSION="${TAG#v}"
+          VERSION="$VERSION" node -e "const p=require('./package.json'); if (p.version !== process.env.VERSION) { console.error('package.json version '+p.version+' does not match tag '+process.env.VERSION); process.exit(1) }"
+
+      - name: Pack the npm tarball
+        run: npm run pack:release
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          TARGET: ${{ steps.head.outputs.sha }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.tgz dist/SHA256SUMS --clobber
+          elif gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" dist/*.tgz dist/SHA256SUMS --title "$TAG" --generate-notes
+          else
+            gh release create "$TAG" dist/*.tgz dist/SHA256SUMS --title "$TAG" --generate-notes --target "$TARGET"
+          fi

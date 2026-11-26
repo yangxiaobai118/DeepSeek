@@ -30,6 +30,11 @@ downloads, uploads, and searches from **Settings > GitHub** and from the
 A token already exported as `GITHUB_TOKEN` or `GH_TOKEN` can be used without
 pasting it: leave the token field blank and press **Bind repository**.
 
+The token field masks every typed character with `*` and has an eye toggle to
+show or hide it. A stored token is never sent back to the browser, so after
+binding or reloading the page the field is empty; leaving it blank keeps the
+current token.
+
 ### Files, upload, and search
 
 - **Files** lists a directory at the current branch, navigates folders, and
@@ -124,6 +129,9 @@ The plugin's Host-side actions load when DSH starts; after replacing the package
 
 如果令牌已通过 `GITHUB_TOKEN` 或 `GH_TOKEN` 导出，也可以不粘贴：令牌留空，直接点击
 **绑定仓库**。
+
+令牌输入框会把每个输入字符显示为 `*`，右侧眼睛按钮可切换显示/隐藏。已保存的令牌
+不会回传到浏览器，因此绑定完成或刷新页面后输入框为空；留空即沿用当前令牌。
 
 ### 文件、上传与搜索
 

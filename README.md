@@ -78,6 +78,8 @@ The bundle row accepts these optional fields:
 | `maxFileBytes` | `8388608` | Upload and download size limit. |
 | `timeoutMs` | `25000` | Per-request deadline. |
 
+The plugin's Host-side actions load when DSH starts; after replacing the package, restart DSH before expecting new actions in a session.
+
 ### Limitations
 
 - The upload body is bounded (12 MiB of JSON on the local route), so a single
@@ -155,6 +157,8 @@ The bundle row accepts these optional fields:
 | `tokenRef` | `GITHUB_TOKEN` | 备用凭据引用：存储令牌不可用时尝试。 |
 | `maxFileBytes` | `8388608` | 上传与下载大小上限。 |
 | `timeoutMs` | `25000` | 单次请求超时。 |
+
+插件的 Host 动作在 DSH 启动时加载；替换安装包后需重启 DSH，新的工具动作才会生效。
 
 ### 限制
 

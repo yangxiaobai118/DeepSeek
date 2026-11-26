@@ -41,6 +41,18 @@ pasting it: leave the token field blank and press **Bind repository**.
 - **Search** covers repositories, code inside the bound repository, and issues
   or pull requests, and links each result to GitHub.
 
+### Session branch and safety scan
+
+The first `push`, `upload`, or `commit_files` in a session asks the user to pick
+an existing branch or type a new branch name, then stores that choice for the
+session and repository. Later writes in the same session reuse it. Before
+writing, the tool scans the files that would be committed for private keys,
+tokens, environment files, credential files, and temporary or large files; when
+it finds any, it asks the user to confirm before continuing. The session map
+lives in the profile's `github-integration/session-branches.json` and holds no
+secrets. The Settings page's single-file upload is a direct write and does not
+run these interactions.
+
 ### Agent tool
 
 The `github` tool accepts one `action`:
@@ -121,6 +133,15 @@ The plugin's Host-side actions load when DSH starts; after replacing the package
   先确认再替换（GitHub 内容 API 会把新提交写到所选分支）。
 - **搜索**：覆盖仓库、已绑定仓库内的代码，以及议题或合并请求；每条结果都会链接到
   GitHub。
+
+### 会话分支与安全检查
+
+一个会话中第一次执行 `push`、`upload` 或 `commit_files` 时，工具会询问用户选择已有
+分支或输入新分支名，并把该选择按“会话 + 仓库”记住；之后同一会话的写入直接复用，
+不再询问。写入前，工具会扫描将要提交的文件，检查私钥、令牌、环境文件、凭据文件以及
+临时/超大文件；发现可疑内容时先询问用户确认，确认后才继续。会话映射保存在 profile 的
+`github-integration/session-branches.json` 中，不包含任何密钥。设置页的单文件上传是
+直接写入，不经过上述会话分支与扫描流程。
 
 ### 智能体工具
 

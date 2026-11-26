@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "GitHub",
+    "description": "Binds a GitHub personal access token, then uploads, downloads, browses, and searches repositories from Settings > GitHub and from the github agent tool. The token is stored in the local credential store, never in configuration; operations run with the bound account's own permissions."
+  }
+}

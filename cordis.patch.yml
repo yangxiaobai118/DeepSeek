@@ -1,0 +1,8 @@
+- insert:
+    - id: github-integration
+      name: '@local/github-integration'
+      config:
+        apiBase: https://api.github.com
+        tokenRef: GITHUB_TOKEN
+        maxFileBytes: 8388608
+        timeoutMs: 25000

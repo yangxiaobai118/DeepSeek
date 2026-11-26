@@ -37,27 +37,35 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=uniproxy-v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Build per-platform bundles
+      - name: Build the portable packages
         run: node scripts/package.mjs --out dist
 
-      - name: Verify the Linux bundle on a real filesystem
+      - name: Verify the bundle on a Linux filesystem
         run: |
-          tar -xzf dist/uniproxy-linux-amd64.tar.gz -C "$RUNNER_TEMP"
+          tar -xzf dist/uniproxy-*.tar.gz -C "$RUNNER_TEMP"
           test -x "$RUNNER_TEMP/uniproxy/uniproxy"
-          test -f "$RUNNER_TEMP/uniproxy/src/index.js"
           head -n 1 "$RUNNER_TEMP/uniproxy/uniproxy" | grep -qx '#!/bin/sh'
           if grep -q $'\r' "$RUNNER_TEMP/uniproxy/uniproxy"; then
             echo "launcher has CRLF line endings" >&2
             exit 1
           fi
-          unzip -l dist/uniproxy-windows-amd64.zip | grep -q 'uniproxy/uniproxy.cmd'
+          node "$RUNNER_TEMP/uniproxy/src/index.js" --help >/dev/null
+          work=$(mktemp -d)
+          node "$RUNNER_TEMP/uniproxy/src/index.js" init -c "$work/config.json" >/dev/null
+          node "$RUNNER_TEMP/uniproxy/src/index.js" validate -c "$work/config.json"
+          unzip -l dist/uniproxy-*.zip | grep -q 'uniproxy/uniproxy.cmd'
 
-      - name: Build npm tarball and aggregate checksums
+      - name: Build the npm tarball and checksums
         run: |
           npm pack --pack-destination dist
-          (cd dist && sha256sum uniproxy-*.tgz >> SHA256SUMS.txt && ls -1 | sort)
+          cd dist
+          for file in uniproxy-*.tgz; do
+            sha256sum "$file" > "$file.sha256"
+            sha256sum "$file" >> SHA256SUMS.txt
+          done
+          ls -1 | sort
 
-      - name: Extract release notes from CHANGELOG
+      - name: Extract release notes
         run: |
           awk 'BEGIN { n = 0 } /^## / { n++ } n <= 1 { print }' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
 
@@ -69,9 +77,26 @@ jobs:
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --title "uniproxy $VERSION" --notes-file "$RUNNER_TEMP/notes.md"
           else
             gh release create "$TAG" dist/* \
               --title "uniproxy $VERSION" \
               --notes-file "$RUNNER_TEMP/notes.md" \
               --target "$GITHUB_SHA"
           fi
+
+      - name: Remove stale release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          RELEASE_ID=$(gh release view "$TAG" --json databaseId --jq '.databaseId')
+          keep=$(ls dist | tr '\n' ' ')
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --paginate \
+            --jq '.[] | [.id, .name] | @tsv' |
+          while IFS=$'\t' read -r id name; do
+            case " $keep " in
+              *" $name "*) echo "keep $name" ;;
+              *) echo "delete $name"; gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$id" >/dev/null ;;
+            esac
+          done

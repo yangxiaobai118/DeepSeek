@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Build the per-platform release bundles.
+ * Build the portable release packages.
  *
- * uniproxy is pure JavaScript, so every archive carries the same code; the
- * platform label selects the launcher (sh vs cmd/ps1) and documents the target.
- * This mirrors the asset matrix of Go panels like 3x-ui, where each OS/arch
- * gets its own archive plus a .sha256 file.
+ * uniproxy is pure JavaScript: one archive runs on every OS and architecture
+ * that has Node.js >= 18, and the bundle ships launchers for sh, cmd and
+ * PowerShell. Asset names therefore describe the real requirement instead of
+ * imitating the per-CPU matrix of compiled-binary projects.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -16,25 +16,10 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const version = pkg.version;
-
-const MATRIX = [
-  ['linux', '386', 'tar.gz'],
-  ['linux', 'amd64', 'tar.gz'],
-  ['linux', 'arm64', 'tar.gz'],
-  ['linux', 'armv5', 'tar.gz'],
-  ['linux', 'armv6', 'tar.gz'],
-  ['linux', 'armv7', 'tar.gz'],
-  ['linux', 's390x', 'tar.gz'],
-  ['windows', 'amd64', 'zip'],
-  ['windows', '386', 'zip'],
-  ['windows', 'arm64', 'zip'],
-  ['darwin', 'amd64', 'tar.gz'],
-  ['darwin', 'arm64', 'tar.gz'],
-];
+const FOLDER = 'uniproxy';
 
 const FILES = ['package.json', 'README.md', 'CHANGELOG.md', 'LICENSE', 'DISCLAIMER.md', 'config.example.json'];
-const DIRS = ['src'];
-const FOLDER = 'uniproxy';
+const DIRS = ['src', 'test'];
 
 function parseArgs(argv) {
   const args = { out: 'dist' };
@@ -47,7 +32,7 @@ function parseArgs(argv) {
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { stdio: 'inherit', ...options });
   if (result.error) throw new Error(command + ': ' + result.error.message);
-  if (result.status !== 0) throw new Error(command + ' exited with ' + result.status);
+  if (result.status !== 0) throw new Error(command + ' exited with ' + String(result.status));
 }
 
 function sha256(file) {
@@ -56,7 +41,37 @@ function sha256(file) {
   return hash.digest('hex');
 }
 
-function stage(os, arch, stageRoot) {
+function writeRequirements(dir) {
+  fs.writeFileSync(
+    path.join(dir, 'REQUIREMENTS.txt'),
+    [
+      'uniproxy ' + version,
+      '',
+      'runtime:      Node.js >= 18 (built and tested on Node.js 24)',
+      'architectures: every architecture with an official Node.js build',
+      '              (no native modules, no CPU-specific code)',
+      '',
+      'linux:        standard glibc distribution; official Node.js builds need',
+      '              glibc >= 2.28 (RHEL 8 / Debian 10 / Ubuntu 20.04 or newer).',
+      '              No special kernel features: no kernel modules, eBPF or',
+      '              io_uring requirements.',
+      'macos:        every macOS release supported by your Node.js >= 18 build',
+      'windows:      Windows 10 / Server 2016 or newer with Node.js >= 18',
+      '',
+      'optional, only for "uniproxy apply" on Linux:',
+      '              systemd, xray, sing-box and nginx on PATH, running as root',
+      '',
+      'run:',
+      '  ./uniproxy --help            (sh launcher, chmod +x if the unzip tool dropped the bit)',
+      '  uniproxy.cmd --help          (Windows cmd)',
+      '  pwsh ./uniproxy.ps1 --help   (PowerShell)',
+      '  node src/index.js --help     (any platform)',
+      '',
+    ].join('\n'),
+  );
+}
+
+function stage(stageRoot) {
   fs.rmSync(stageRoot, { recursive: true, force: true });
   const dir = path.join(stageRoot, FOLDER);
   fs.mkdirSync(dir, { recursive: true });
@@ -81,19 +96,7 @@ function stage(os, arch, stageRoot) {
     path.join(dir, 'uniproxy.ps1'),
     ['#!/usr/bin/env pwsh', '$here = Split-Path -Parent $MyInvocation.MyCommand.Path', 'node (Join-Path $here "src/index.js") @args', ''].join('\n'),
   );
-  fs.writeFileSync(
-    path.join(dir, 'PLATFORM.txt'),
-    [
-      'uniproxy ' + version,
-      'target: ' + os + '/' + arch,
-      'runtime: Node.js >= 18',
-      '',
-      'uniproxy is pure JavaScript: this archive is identical to every other',
-      'platform archive. The launcher (uniproxy, uniproxy.cmd or uniproxy.ps1)',
-      'runs src/index.js with the local Node.js runtime.',
-      '',
-    ].join('\n'),
-  );
+  writeRequirements(dir);
   return dir;
 }
 
@@ -119,30 +122,30 @@ function main() {
   fs.mkdirSync(outDir, { recursive: true });
   const stageRoot = path.join(outDir, '.stage');
 
+  stage(stageRoot);
+
   const assets = [];
-  for (const [os, arch, format] of MATRIX) {
-    stage(os, arch, stageRoot);
-    const name = 'uniproxy-' + os + '-' + arch + '.' + format;
-    const file = path.join(outDir, name);
-    if (format === 'zip') zip(file, stageRoot);
-    else tarGz(file, stageRoot);
+  const tarball = path.join(outDir, 'uniproxy-' + version + '.tar.gz');
+  const zipFile = path.join(outDir, 'uniproxy-' + version + '.zip');
+  tarGz(tarball, stageRoot);
+  zip(zipFile, stageRoot);
+  for (const file of [tarball, zipFile]) {
     const digest = sha256(file);
-    fs.writeFileSync(file + '.sha256', digest + '  ' + name + '\n');
-    assets.push({ name, size: fs.statSync(file).size, sha256: digest });
+    fs.writeFileSync(file + '.sha256', digest + '  ' + path.basename(file) + '\n');
+    assets.push({ name: path.basename(file), size: fs.statSync(file).size, sha256: digest });
   }
 
   fs.rmSync(stageRoot, { recursive: true, force: true });
 
-  const header = ['# uniproxy ' + version + ' release assets', '# sha256  file', ''];
-  const lines = assets.map((asset) => asset.sha256 + '  ' + asset.name);
-  fs.writeFileSync(path.join(outDir, 'SHA256SUMS.txt'), header.concat(lines).join('\n') + '\n');
+  const lines = ['# uniproxy ' + version + ' portable packages', '# sha256  file', ''];
+  for (const asset of assets) lines.push(asset.sha256 + '  ' + asset.name);
+  fs.writeFileSync(path.join(outDir, 'SHA256SUMS.txt'), lines.join('\n') + '\n');
 
-  const width = Math.max(...assets.map((a) => a.name.length));
   for (const asset of assets) {
-    console.log(asset.name.padEnd(width) + '  ' + String(asset.size).padStart(9) + ' B  ' + asset.sha256.slice(0, 16) + '...');
+    console.log(asset.name.padEnd(28) + String(asset.size).padStart(9) + ' B  ' + asset.sha256.slice(0, 16) + '...');
   }
   console.log('');
-  console.log('built ' + assets.length + ' platform bundles into ' + outDir);
+  console.log('built ' + assets.length + ' portable packages into ' + outDir);
 }
 
 main();

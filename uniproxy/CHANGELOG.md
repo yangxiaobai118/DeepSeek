@@ -4,20 +4,24 @@
 
 ### Added
 
-- Per-platform release bundles, mirroring the asset matrix of Go-based panels:
-  `linux-{386,amd64,arm64,armv5,armv6,armv7,s390x}` and
-  `darwin-{amd64,arm64}` as `.tar.gz`, `windows-{amd64,386,arm64}` as
-  `.zip`, each with a companion `.sha256` file and an aggregate
-  `SHA256SUMS.txt`.
-- `scripts/package.mjs` builds the matrix with sh / cmd / ps1 launchers and a
-  `PLATFORM.txt` describing the target.
-- Release workflow now builds the matrix on every push to `feature/uniproxy`
-  (or manual dispatch) and updates the `uniproxy-v<version>` release.
+- Portable release packages: `uniproxy-<version>.tar.gz`, `.zip` and `.tgz`,
+  each with a `.sha256` companion and an aggregate `SHA256SUMS.txt`.
+- `REQUIREMENTS.txt` inside every bundle records the real constraints: Node.js
+  >= 18, any architecture with an official Node.js build, glibc >= 2.28 for the
+  official Linux builds, no special kernel features; `uniproxy apply` also
+  needs systemd, xray, sing-box, nginx and root.
+- `scripts/package.mjs` builds the portable bundle with sh / cmd / ps1
+  launchers.
+- The release workflow rebuilds the packages on every push to
+  `feature/uniproxy` (or manual dispatch), runs the test suite, verifies the
+  bundle on Linux (`--help`, `init`, `validate`, executable launcher, LF) and
+  refreshes the `uniproxy-v<version>` release.
 
-### Notes
+### Changed
 
-- uniproxy is pure JavaScript: every platform bundle carries the same code and
-  runs on Node.js >= 18; the platform label selects the launcher.
+- Asset names describe the actual runtime requirement instead of copying the
+  per-CPU matrix of compiled-binary projects; the fabricated `-linux-386`,
+  `-armv5`, `-s390x` … archives are gone.
 
 ## 0.3.0
 

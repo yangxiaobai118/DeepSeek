@@ -293,19 +293,21 @@ cp out/nginx/nginx.conf    /etc/uniproxy/nginx.conf
 
 ### Release assets
 
-Each `uniproxy-v<version>` release ships one archive per OS/architecture plus
-checksums, mirroring the asset matrix of Go-based panels such as 3x-ui:
+uniproxy is pure JavaScript, so there is no per-CPU binary to build: one
+portable bundle runs anywhere Node.js >= 18 runs. Releases therefore ship
+packages named after the real requirement instead of a copied OS/arch matrix:
 
-| OS | Architectures | Archive |
-|----|---------------|---------|
-| Linux | `386`, `amd64`, `arm64`, `armv5`, `armv6`, `armv7`, `s390x` | `.tar.gz` |
-| Windows | `amd64`, `386`, `arm64` | `.zip` |
-| macOS | `amd64`, `arm64` | `.tar.gz` |
-| any | — | `uniproxy-<version>.tgz` (npm) |
+| Asset | Contents | Requirement |
+|-------|----------|-------------|
+| `uniproxy-<version>.tar.gz` | portable bundle with the `uniproxy` (sh) launcher | Node.js >= 18 |
+| `uniproxy-<version>.zip` | same bundle with `uniproxy.cmd` / `uniproxy.ps1` | Node.js >= 18 |
+| `uniproxy-<version>.tgz` | npm package (`npm i -g`) | Node.js >= 18 |
 
-Every archive carries the same pure-JavaScript code plus a launcher
-(`uniproxy`, `uniproxy.cmd`, `uniproxy.ps1`) and `PLATFORM.txt`; Node.js >= 18
-is the only runtime requirement. Each asset has a `.sha256` companion and the
+`REQUIREMENTS.txt` inside the bundle records the actual constraints: any
+architecture with an official Node.js build (no native modules), glibc >= 2.28
+for the official Linux builds, and no special kernel features. Running
+`uniproxy apply` on Linux additionally needs `systemd`, `xray`, `sing-box` and
+`nginx` on `PATH`, plus root. Every asset has a `.sha256` companion and the
 release also carries an aggregate `SHA256SUMS.txt`.
 
 ### Security notes
@@ -467,16 +469,15 @@ node src/index.js apply -c config.json --yes    # 校验 + 下发 + reload
 
 ### 发布包
 
-每个 `uniproxy-v<版本>` Release 都会附带按系统/架构拆分的压缩包与校验文件（参考 3x-ui 的资产矩阵）：
+uniproxy 是纯 JavaScript，没有按 CPU 编译的二进制：同一个包在任意装有 Node.js >= 18 的环境都能跑。因此发布包按**真实运行要求**命名，而不是照搬 3x-ui 的系统/架构矩阵：
 
-| 系统 | 架构 | 格式 |
+| 资产 | 内容 | 要求 |
 |------|------|------|
-| Linux | `386`、`amd64`、`arm64`、`armv5`、`armv6`、`armv7`、`s390x` | `.tar.gz` |
-| Windows | `amd64`、`386`、`arm64` | `.zip` |
-| macOS | `amd64`、`arm64` | `.tar.gz` |
-| 通用 | — | `uniproxy-<版本>.tgz`（npm） |
+| `uniproxy-<版本>.tar.gz` | 便携包，含 `uniproxy`（sh）启动器 | Node.js >= 18 |
+| `uniproxy-<版本>.zip` | 同一份内容，含 `uniproxy.cmd` / `uniproxy.ps1` | Node.js >= 18 |
+| `uniproxy-<版本>.tgz` | npm 包（`npm i -g`） | Node.js >= 18 |
 
-所有压缩包内容一致（纯 JavaScript），启动器分别为 `uniproxy` / `uniproxy.cmd` / `uniproxy.ps1`，只要求 Node.js >= 18；每个资产带 `.sha256`，另有汇总 `SHA256SUMS.txt`。
+包内 `REQUIREMENTS.txt` 写明实际约束：任意有官方 Node.js 构建的架构（无原生模块）、官方 Linux 构建要求 glibc >= 2.28、无特殊内核特性要求；在 Linux 上执行 `uniproxy apply` 还需要 `systemd`、`xray`、`sing-box`、`nginx` 在 `PATH` 中并以 root 运行。每个资产带 `.sha256`，另有汇总 `SHA256SUMS.txt`。
 
 ### 安全提醒
 

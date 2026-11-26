@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Bind a GitHub account, then upload, download, browse, search, branch, commit, clone, and push from DSH.",
+  "scripts": {
+    "pack:release": "node scripts/release.mjs"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -16,7 +19,8 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "scripts/release.mjs"
   ],
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },

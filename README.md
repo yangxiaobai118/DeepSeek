@@ -132,7 +132,10 @@ The plugin's Host-side actions load when DSH starts; after replacing the package
 `dist/SHA256SUMS` after verifying the runtime files. The workflow at
 `.github/workflows/release.yml` runs on a `v*` tag or manual dispatch, checks
 that the package version matches the tag, packs the tarball, and creates or
-updates the GitHub Release with both files.
+updates the GitHub Release with both files. The manual workflow on the default
+branch checks out `plugin/github-integration` and tags its HEAD, so you can also
+release from **Actions > Release GitHub integration bundle (manual)** without
+creating a tag first.
 
 Bump the version, commit the plugin branch, tag it, and push the tag:
 
@@ -266,7 +269,9 @@ dsh plugin --profile <profile> add "/绝对路径/<tarball>.tgz"
 `dist/local-github-integration-<version>.tgz` 和 `dist/SHA256SUMS`。
 `.github/workflows/release.yml` 在推送 `v*` 标签或手动触发时运行：校验
 `package.json` 版本与标签一致，打包 tarball，并创建或更新 GitHub Release，附带
-tarball 与校验和。
+tarball 与校验和。默认分支上的手动工作流会检出 `plugin/github-integration` 并以它的
+HEAD 建标签，因此也可以直接在 **Actions > Release GitHub integration bundle
+(manual)** 中发布，不必先手动建标签。
 
 发布新版本的常规流程：
 

@@ -4,24 +4,28 @@
 
 ### Added
 
-- Portable release packages: `uniproxy-<version>.tar.gz`, `.zip` and `.tgz`,
-  each with a `.sha256` companion and an aggregate `SHA256SUMS.txt`.
-- `REQUIREMENTS.txt` inside every bundle records the real constraints: Node.js
-  >= 18, any architecture with an official Node.js build, glibc >= 2.28 for the
-  official Linux builds, no special kernel features; `uniproxy apply` also
-  needs systemd, xray, sing-box, nginx and root.
-- `scripts/package.mjs` builds the portable bundle with sh / cmd / ps1
-  launchers.
-- The release workflow rebuilds the packages on every push to
-  `feature/uniproxy` (or manual dispatch), runs the test suite, verifies the
-  bundle on Linux (`--help`, `init`, `validate`, executable launcher, LF) and
-  refreshes the `uniproxy-v<version>` release.
+- Platform-labelled release bundles: Linux (`x86_64`, `i386`, `arm64`,
+  `armv7l`, `armv6l`, `s390x`, `ppc64le`), Windows (`x86_64`, `i386`,
+  `arm64`) and macOS (`x86_64`, `arm64`), plus the platform-neutral npm
+  tarball.
+- `ENVIRONMENT.txt` inside every bundle: target OS/architecture, bitness,
+  matching Node.js build, launcher and install commands.
+- `PLATFORMS.md` release asset and README matrix mapping each archive to its
+  environment.
+- `scripts/package.mjs` builds the matrix with sh / cmd / ps1 launchers and
+  writes per-asset `.sha256` files plus `SHA256SUMS.txt`.
+- The release workflow rebuilds everything on every push to
+  `feature/uniproxy` (or manual dispatch), verifies the Linux bundle on a
+  real filesystem (`--help`, `init`, `validate`, executable launcher, LF),
+  refreshes the release and prunes stale assets.
 
-### Changed
+### Notes
 
-- Asset names describe the actual runtime requirement instead of copying the
-  per-CPU matrix of compiled-binary projects; the fabricated `-linux-386`,
-  `-armv5`, `-s390x` … archives are gone.
+- uniproxy is pure JavaScript: every bundle carries the same code and no
+  compiled binaries. The OS/architecture suffix identifies the target
+  environment and the Node.js >= 18 runtime to install; Linux official Node
+  builds need glibc >= 2.28 and no special kernel features are used.
+- `uniproxy apply` additionally needs systemd, xray, sing-box, nginx and root.
 
 ## 0.3.0
 

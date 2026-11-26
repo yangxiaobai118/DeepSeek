@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Build the portable release packages.
+ * Build platform-labelled release bundles.
  *
- * uniproxy is pure JavaScript: one archive runs on every OS and architecture
- * that has Node.js >= 18, and the bundle ships launchers for sh, cmd and
- * PowerShell. Asset names therefore describe the real requirement instead of
- * imitating the per-CPU matrix of compiled-binary projects.
+ * uniproxy is pure JavaScript: every bundle carries the same code, so the
+ * OS/architecture suffix documents the target environment and the matching
+ * Node.js runtime, not a compiled binary. Each archive carries an
+ * ENVIRONMENT.txt describing exactly what it fits, and the release ships a
+ * PLATFORMS.md matrix for the download page.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -20,6 +21,21 @@ const FOLDER = 'uniproxy';
 
 const FILES = ['package.json', 'README.md', 'CHANGELOG.md', 'LICENSE', 'DISCLAIMER.md', 'config.example.json'];
 const DIRS = ['src', 'test'];
+
+const MATRIX = [
+  { os: 'linux', arch: 'x86_64', bits: 64, label: 'Linux x86_64 (64-bit x86)', node: 'linux-x64', launcher: 'sh', format: 'tar.gz', glibc: 'glibc >= 2.28' },
+  { os: 'linux', arch: 'i386', bits: 32, label: 'Linux i386 (32-bit x86)', node: 'linux-ia32 (community/distro build)', launcher: 'sh', format: 'tar.gz', glibc: 'glibc >= 2.28 on the Node build you install' },
+  { os: 'linux', arch: 'arm64', bits: 64, label: 'Linux arm64 (64-bit ARM)', node: 'linux-arm64', launcher: 'sh', format: 'tar.gz', glibc: 'glibc >= 2.28' },
+  { os: 'linux', arch: 'armv7l', bits: 32, label: 'Linux armv7l (32-bit ARM)', node: 'linux-armv7l', launcher: 'sh', format: 'tar.gz', glibc: 'glibc >= 2.28' },
+  { os: 'linux', arch: 'armv6l', bits: 32, label: 'Linux armv6l (32-bit ARM)', node: 'linux-armv6l (unofficial build)', launcher: 'sh', format: 'tar.gz', glibc: 'glibc >= 2.28' },
+  { os: 'linux', arch: 's390x', bits: 64, label: 'Linux s390x (64-bit big-endian)', node: 'linux-s390x', launcher: 'sh', format: 'tar.gz', glibc: 'glibc >= 2.28' },
+  { os: 'linux', arch: 'ppc64le', bits: 64, label: 'Linux ppc64le (64-bit little-endian Power)', node: 'linux-ppc64le', launcher: 'sh', format: 'tar.gz', glibc: 'glibc >= 2.28' },
+  { os: 'windows', arch: 'x86_64', bits: 64, label: 'Windows x86_64 (64-bit x86)', node: 'win-x64', launcher: 'cmd', format: 'zip' },
+  { os: 'windows', arch: 'i386', bits: 32, label: 'Windows i386 (32-bit x86)', node: 'win-x86', launcher: 'cmd', format: 'zip' },
+  { os: 'windows', arch: 'arm64', bits: 64, label: 'Windows arm64 (64-bit ARM)', node: 'win-arm64', launcher: 'cmd', format: 'zip' },
+  { os: 'macos', arch: 'x86_64', bits: 64, label: 'macOS x86_64 (Intel)', node: 'darwin-x64', launcher: 'sh', format: 'tar.gz' },
+  { os: 'macos', arch: 'arm64', bits: 64, label: 'macOS arm64 (Apple silicon)', node: 'darwin-arm64', launcher: 'sh', format: 'tar.gz' },
+];
 
 function parseArgs(argv) {
   const args = { out: 'dist' };
@@ -41,37 +57,7 @@ function sha256(file) {
   return hash.digest('hex');
 }
 
-function writeRequirements(dir) {
-  fs.writeFileSync(
-    path.join(dir, 'REQUIREMENTS.txt'),
-    [
-      'uniproxy ' + version,
-      '',
-      'runtime:      Node.js >= 18 (built and tested on Node.js 24)',
-      'architectures: every architecture with an official Node.js build',
-      '              (no native modules, no CPU-specific code)',
-      '',
-      'linux:        standard glibc distribution; official Node.js builds need',
-      '              glibc >= 2.28 (RHEL 8 / Debian 10 / Ubuntu 20.04 or newer).',
-      '              No special kernel features: no kernel modules, eBPF or',
-      '              io_uring requirements.',
-      'macos:        every macOS release supported by your Node.js >= 18 build',
-      'windows:      Windows 10 / Server 2016 or newer with Node.js >= 18',
-      '',
-      'optional, only for "uniproxy apply" on Linux:',
-      '              systemd, xray, sing-box and nginx on PATH, running as root',
-      '',
-      'run:',
-      '  ./uniproxy --help            (sh launcher, chmod +x if the unzip tool dropped the bit)',
-      '  uniproxy.cmd --help          (Windows cmd)',
-      '  pwsh ./uniproxy.ps1 --help   (PowerShell)',
-      '  node src/index.js --help     (any platform)',
-      '',
-    ].join('\n'),
-  );
-}
-
-function stage(stageRoot) {
+function stage(entry, stageRoot) {
   fs.rmSync(stageRoot, { recursive: true, force: true });
   const dir = path.join(stageRoot, FOLDER);
   fs.mkdirSync(dir, { recursive: true });
@@ -96,8 +82,33 @@ function stage(stageRoot) {
     path.join(dir, 'uniproxy.ps1'),
     ['#!/usr/bin/env pwsh', '$here = Split-Path -Parent $MyInvocation.MyCommand.Path', 'node (Join-Path $here "src/index.js") @args', ''].join('\n'),
   );
-  writeRequirements(dir);
-  return dir;
+
+  const asset = 'uniproxy-' + version + '-' + entry.os + '-' + entry.arch + '.' + entry.format;
+  const lines = [
+    'uniproxy ' + version,
+    '',
+    'environment:  ' + entry.label,
+    'architecture: ' + entry.arch + ' (' + entry.bits + '-bit)',
+    'node runtime: ' + (entry.os === 'windows' || entry.os === 'macos' ? 'Node.js >= 18, official build for ' + entry.node : 'Node.js >= 18, ' + entry.node),
+  ];
+  if (entry.glibc) lines.push('linux libc:   ' + entry.glibc);
+  lines.push(
+    'launcher:     ' + (entry.launcher === 'sh' ? './uniproxy' : 'uniproxy.cmd (or pwsh ./uniproxy.ps1)'),
+    '',
+    'install:',
+    entry.format === 'zip'
+      ? '  Expand-Archive ' + asset + ' .\\uniproxy'
+      : '  tar -xzf ' + asset + ' && cd uniproxy',
+    entry.launcher === 'sh' ? '  ./uniproxy init -c config.json' : '  uniproxy.cmd init -c config.json',
+    '',
+    'note: uniproxy is pure JavaScript and contains no compiled binaries.',
+    '      Every platform bundle ships the same code; the OS/architecture label',
+    '      tells you which environment it is meant for and which Node.js build',
+    '      to install. No native modules are used.',
+    '',
+  );
+  fs.writeFileSync(path.join(dir, 'ENVIRONMENT.txt'), lines.join('\n'));
+  return asset;
 }
 
 function tarGz(file, stageRoot) {
@@ -115,6 +126,37 @@ function zip(file, stageRoot) {
   throw new Error('zip is not available; install zip or run on a platform that provides it');
 }
 
+function platformsDoc() {
+  const rows = MATRIX.map((entry) => {
+    const asset = 'uniproxy-' + version + '-' + entry.os + '-' + entry.arch + '.' + entry.format;
+    return '| `' + asset + '` | ' + entry.label + ' | ' + entry.bits + '-bit | ' + entry.node + ' | ' + (entry.launcher === 'sh' ? '`./uniproxy`' : '`uniproxy.cmd`') + ' |';
+  });
+  return [
+    '# uniproxy ' + version + ' platform matrix',
+    '',
+    '| Asset | Environment | Bits | Node.js build | Launcher |',
+    '|-------|-------------|------|---------------|----------|',
+    ...rows,
+    '',
+    '## What the labels mean',
+    '',
+    'uniproxy is pure JavaScript. Every archive ships the same code, so the',
+    'OS/architecture suffix tells you which environment the bundle is meant for',
+    'and which Node.js runtime to install - it is not a compiled binary.',
+    'Pick the row that matches your server/desktop, install Node.js >= 18 for',
+    'that platform, and run the launcher. The npm tarball',
+    '`uniproxy-' + version + '.tgz` is platform-neutral and works the same way.',
+    '',
+    'Linux notes: official Node.js builds need glibc >= 2.28 (RHEL 8, Debian 10,',
+    'Ubuntu 20.04 or newer); Alpine/musl needs the node package from Alpine.',
+    'No special kernel features (no kernel modules, eBPF or io_uring) are used.',
+    '',
+    'Only `uniproxy apply` needs extra software: systemd, xray, sing-box and',
+    'nginx on PATH, plus root privileges.',
+    '',
+  ].join('\n');
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const outDir = path.resolve(root, args.out);
@@ -122,30 +164,30 @@ function main() {
   fs.mkdirSync(outDir, { recursive: true });
   const stageRoot = path.join(outDir, '.stage');
 
-  stage(stageRoot);
-
   const assets = [];
-  const tarball = path.join(outDir, 'uniproxy-' + version + '.tar.gz');
-  const zipFile = path.join(outDir, 'uniproxy-' + version + '.zip');
-  tarGz(tarball, stageRoot);
-  zip(zipFile, stageRoot);
-  for (const file of [tarball, zipFile]) {
+  for (const entry of MATRIX) {
+    const asset = stage(entry, stageRoot);
+    const file = path.join(outDir, asset);
+    if (entry.format === 'zip') zip(file, stageRoot);
+    else tarGz(file, stageRoot);
     const digest = sha256(file);
-    fs.writeFileSync(file + '.sha256', digest + '  ' + path.basename(file) + '\n');
-    assets.push({ name: path.basename(file), size: fs.statSync(file).size, sha256: digest });
+    fs.writeFileSync(file + '.sha256', digest + '  ' + asset + '\n');
+    assets.push({ name: asset, size: fs.statSync(file).size, sha256: digest });
   }
-
   fs.rmSync(stageRoot, { recursive: true, force: true });
 
-  const lines = ['# uniproxy ' + version + ' portable packages', '# sha256  file', ''];
+  const doc = platformsDoc();
+  fs.writeFileSync(path.join(outDir, 'PLATFORMS.md'), doc);
+
+  const lines = ['# uniproxy ' + version + ' release assets', '# sha256  file', ''];
   for (const asset of assets) lines.push(asset.sha256 + '  ' + asset.name);
   fs.writeFileSync(path.join(outDir, 'SHA256SUMS.txt'), lines.join('\n') + '\n');
 
   for (const asset of assets) {
-    console.log(asset.name.padEnd(28) + String(asset.size).padStart(9) + ' B  ' + asset.sha256.slice(0, 16) + '...');
+    console.log(asset.name.padEnd(46) + String(asset.size).padStart(9) + ' B');
   }
   console.log('');
-  console.log('built ' + assets.length + ' portable packages into ' + outDir);
+  console.log('built ' + assets.length + ' platform bundles + PLATFORMS.md into ' + outDir);
 }
 
 main();

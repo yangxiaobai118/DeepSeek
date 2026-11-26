@@ -37,13 +37,15 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=uniproxy-v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Build the portable packages
+      - name: Build the platform bundles
         run: node scripts/package.mjs --out dist
 
-      - name: Verify the bundle on a Linux filesystem
+      - name: Verify the bundles on a Linux filesystem
         run: |
-          tar -xzf dist/uniproxy-*.tar.gz -C "$RUNNER_TEMP"
+          tar -xzf dist/uniproxy-*-linux-x86_64.tar.gz -C "$RUNNER_TEMP"
           test -x "$RUNNER_TEMP/uniproxy/uniproxy"
+          test -f "$RUNNER_TEMP/uniproxy/ENVIRONMENT.txt"
+          grep -q 'linux-x86_64' "$RUNNER_TEMP/uniproxy/ENVIRONMENT.txt"
           head -n 1 "$RUNNER_TEMP/uniproxy/uniproxy" | grep -qx '#!/bin/sh'
           if grep -q $'\r' "$RUNNER_TEMP/uniproxy/uniproxy"; then
             echo "launcher has CRLF line endings" >&2
@@ -53,7 +55,8 @@ jobs:
           work=$(mktemp -d)
           node "$RUNNER_TEMP/uniproxy/src/index.js" init -c "$work/config.json" >/dev/null
           node "$RUNNER_TEMP/uniproxy/src/index.js" validate -c "$work/config.json"
-          unzip -l dist/uniproxy-*.zip | grep -q 'uniproxy/uniproxy.cmd'
+          grep -q 'linux-x86_64' dist/PLATFORMS.md
+          unzip -l dist/uniproxy-*-windows-x86_64.zip | grep -q 'uniproxy/uniproxy.cmd'
 
       - name: Build the npm tarball and checksums
         run: |

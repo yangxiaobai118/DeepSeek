@@ -293,22 +293,34 @@ cp out/nginx/nginx.conf    /etc/uniproxy/nginx.conf
 
 ### Release assets
 
-uniproxy is pure JavaScript, so there is no per-CPU binary to build: one
-portable bundle runs anywhere Node.js >= 18 runs. Releases therefore ship
-packages named after the real requirement instead of a copied OS/arch matrix:
+Releases are labelled by environment so you can pick the archive that matches
+the machine you deploy on:
 
-| Asset | Contents | Requirement |
-|-------|----------|-------------|
-| `uniproxy-<version>.tar.gz` | portable bundle with the `uniproxy` (sh) launcher | Node.js >= 18 |
-| `uniproxy-<version>.zip` | same bundle with `uniproxy.cmd` / `uniproxy.ps1` | Node.js >= 18 |
-| `uniproxy-<version>.tgz` | npm package (`npm i -g`) | Node.js >= 18 |
+| Asset | Environment | Bits | Node.js build | Launcher |
+|-------|-------------|------|---------------|----------|
+| `uniproxy-<version>-linux-x86_64.tar.gz` | Linux x86_64 | 64-bit | `linux-x64` | `./uniproxy` |
+| `uniproxy-<version>-linux-i386.tar.gz` | Linux i386 | 32-bit | `linux-ia32` (distro build) | `./uniproxy` |
+| `uniproxy-<version>-linux-arm64.tar.gz` | Linux arm64 | 64-bit | `linux-arm64` | `./uniproxy` |
+| `uniproxy-<version>-linux-armv7l.tar.gz` | Linux armv7l | 32-bit | `linux-armv7l` | `./uniproxy` |
+| `uniproxy-<version>-linux-armv6l.tar.gz` | Linux armv6l | 32-bit | `linux-armv6l` (unofficial) | `./uniproxy` |
+| `uniproxy-<version>-linux-s390x.tar.gz` | Linux s390x | 64-bit | `linux-s390x` | `./uniproxy` |
+| `uniproxy-<version>-linux-ppc64le.tar.gz` | Linux ppc64le | 64-bit | `linux-ppc64le` | `./uniproxy` |
+| `uniproxy-<version>-windows-x86_64.zip` | Windows x64 | 64-bit | `win-x64` | `uniproxy.cmd` |
+| `uniproxy-<version>-windows-i386.zip` | Windows x86 | 32-bit | `win-x86` | `uniproxy.cmd` |
+| `uniproxy-<version>-windows-arm64.zip` | Windows ARM64 | 64-bit | `win-arm64` | `uniproxy.cmd` |
+| `uniproxy-<version>-macos-x86_64.tar.gz` | macOS Intel | 64-bit | `darwin-x64` | `./uniproxy` |
+| `uniproxy-<version>-macos-arm64.tar.gz` | macOS Apple silicon | 64-bit | `darwin-arm64` | `./uniproxy` |
 
-`REQUIREMENTS.txt` inside the bundle records the actual constraints: any
-architecture with an official Node.js build (no native modules), glibc >= 2.28
-for the official Linux builds, and no special kernel features. Running
-`uniproxy apply` on Linux additionally needs `systemd`, `xray`, `sing-box` and
-`nginx` on `PATH`, plus root. Every asset has a `.sha256` companion and the
-release also carries an aggregate `SHA256SUMS.txt`.
+`uniproxy-<version>.tgz` is the platform-neutral npm package. `PLATFORMS.md`
+(release asset) repeats the matrix, and every archive contains an
+`ENVIRONMENT.txt` with the exact target, Node.js build and install commands.
+
+uniproxy is pure JavaScript: the archives contain identical code and no
+compiled binaries, so the suffix tells you which environment and Node.js
+runtime the bundle is for. Official Linux Node builds need glibc >= 2.28 and no
+special kernel features are used. `uniproxy apply` additionally needs
+`systemd`, `xray`, `sing-box`, `nginx` and root. Every asset ships a `.sha256`
+companion plus an aggregate `SHA256SUMS.txt`.
 
 ### Security notes
 
@@ -469,15 +481,26 @@ node src/index.js apply -c config.json --yes    # 校验 + 下发 + reload
 
 ### 发布包
 
-uniproxy 是纯 JavaScript，没有按 CPU 编译的二进制：同一个包在任意装有 Node.js >= 18 的环境都能跑。因此发布包按**真实运行要求**命名，而不是照搬 3x-ui 的系统/架构矩阵：
+Release 资产按**运行环境**命名，直接选和目标机器匹配的那个：
 
-| 资产 | 内容 | 要求 |
-|------|------|------|
-| `uniproxy-<版本>.tar.gz` | 便携包，含 `uniproxy`（sh）启动器 | Node.js >= 18 |
-| `uniproxy-<版本>.zip` | 同一份内容，含 `uniproxy.cmd` / `uniproxy.ps1` | Node.js >= 18 |
-| `uniproxy-<版本>.tgz` | npm 包（`npm i -g`） | Node.js >= 18 |
+| 资产 | 环境 | 位数 | Node.js 构建 | 启动器 |
+|------|------|------|--------------|--------|
+| `uniproxy-<版本>-linux-x86_64.tar.gz` | Linux x86_64 | 64 位 | `linux-x64` | `./uniproxy` |
+| `uniproxy-<版本>-linux-i386.tar.gz` | Linux i386 | 32 位 | `linux-ia32`（发行版构建） | `./uniproxy` |
+| `uniproxy-<版本>-linux-arm64.tar.gz` | Linux arm64 | 64 位 | `linux-arm64` | `./uniproxy` |
+| `uniproxy-<版本>-linux-armv7l.tar.gz` | Linux armv7l | 32 位 | `linux-armv7l` | `./uniproxy` |
+| `uniproxy-<版本>-linux-armv6l.tar.gz` | Linux armv6l | 32 位 | `linux-armv6l`（非官方） | `./uniproxy` |
+| `uniproxy-<版本>-linux-s390x.tar.gz` | Linux s390x | 64 位 | `linux-s390x` | `./uniproxy` |
+| `uniproxy-<版本>-linux-ppc64le.tar.gz` | Linux ppc64le | 64 位 | `linux-ppc64le` | `./uniproxy` |
+| `uniproxy-<版本>-windows-x86_64.zip` | Windows x64 | 64 位 | `win-x64` | `uniproxy.cmd` |
+| `uniproxy-<版本>-windows-i386.zip` | Windows x86 | 32 位 | `win-x86` | `uniproxy.cmd` |
+| `uniproxy-<版本>-windows-arm64.zip` | Windows ARM64 | 64 位 | `win-arm64` | `uniproxy.cmd` |
+| `uniproxy-<版本>-macos-x86_64.tar.gz` | macOS Intel | 64 位 | `darwin-x64` | `./uniproxy` |
+| `uniproxy-<版本>-macos-arm64.tar.gz` | macOS Apple 芯片 | 64 位 | `darwin-arm64` | `./uniproxy` |
 
-包内 `REQUIREMENTS.txt` 写明实际约束：任意有官方 Node.js 构建的架构（无原生模块）、官方 Linux 构建要求 glibc >= 2.28、无特殊内核特性要求；在 Linux 上执行 `uniproxy apply` 还需要 `systemd`、`xray`、`sing-box`、`nginx` 在 `PATH` 中并以 root 运行。每个资产带 `.sha256`，另有汇总 `SHA256SUMS.txt`。
+`uniproxy-<版本>.tgz` 是与平台无关的 npm 包；`PLATFORMS.md`（Release 资产）重复这份矩阵，每个压缩包内还有 `ENVIRONMENT.txt` 写明目标环境、Node.js 构建和安装命令。
+
+uniproxy 是纯 JavaScript：压缩包内代码一致、不含编译产物，后缀只是告诉你它面向哪个环境、该装哪种 Node.js 运行时。Linux 官方 Node 构建要求 glibc >= 2.28，不使用特殊内核特性；在 Linux 上执行 `uniproxy apply` 额外需要 `systemd`、`xray`、`sing-box`、`nginx` 与 root。每个资产带 `.sha256`，另有汇总 `SHA256SUMS.txt`。
 
 ### 安全提醒
 

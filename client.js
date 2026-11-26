@@ -423,6 +423,7 @@ window.__ModuleLoader__.load({
           const [path, setPath] = React.useState('')
           const [refInput, setRefInput] = React.useState('')
           const [uploadRef, setUploadRef] = React.useState('')
+          const [branchNames, setBranchNames] = React.useState([])
           const [preview, setPreview] = React.useState(null)
           const [uploadFile, setUploadFile] = React.useState(null)
           const [uploadPath, setUploadPath] = React.useState('')
@@ -516,6 +517,22 @@ window.__ModuleLoader__.load({
           }
 
           /**
+           * Refresh the branch names offered by the branch inputs.
+           * @returns {Promise<void>} when the suggestion list settles.
+           */
+          async function loadBranchNames() {
+            try {
+              const view = await call('branches', {})
+              const names = Array.isArray(view?.branches)
+                ? view.branches.map((entry) => entry?.name).filter((name) => typeof name === 'string' && name !== '')
+                : []
+              setBranchNames([...new Set(names)])
+            } catch {
+              setBranchNames([])
+            }
+          }
+
+          /**
            * Read status and, for a bound repository, its root listing.
            * @returns {Promise<void>} when the page has its baseline.
            */
@@ -536,6 +553,8 @@ window.__ModuleLoader__.load({
               setSearchResult(null)
               await loadFiles('', view.branch ?? '')
             }
+            if (view.bound === true) void loadBranchNames()
+            else setBranchNames([])
           }
 
           React.useEffect(() => {
@@ -573,6 +592,7 @@ window.__ModuleLoader__.load({
             } catch (failure) {
               throw new Error(`${t('boundNotice')} ${t('filesUnavailable')} ${describeFailure(failure)}`)
             }
+            void loadBranchNames()
             notify(t('boundNotice'), 'bind')
           }, 'bind')
 
@@ -584,6 +604,7 @@ window.__ModuleLoader__.load({
             setPreview(null)
             setPath('')
             setSearchResult(null)
+            setBranchNames([])
             notify(t('unboundNotice'), 'bind')
           }, 'bind')
 
@@ -848,6 +869,7 @@ window.__ModuleLoader__.load({
                   placeholder: t('branchPlaceholder'),
                   value: form.branch,
                   disabled: busy,
+                  list: 'ghp-branch-names',
                   onChange: (event) => { setForm((current) => ({ ...current, branch: event.target.value })) },
                 }), 'branch'),
               ),
@@ -977,6 +999,7 @@ window.__ModuleLoader__.load({
                   value: refInput,
                   disabled: busy,
                   placeholder: t('branchPlaceholder'),
+                  list: 'ghp-branch-names',
                   onChange: (event) => { setRefInput(event.target.value) },
                   onKeyDown: (event) => {
                     if (event.key !== 'Enter') return
@@ -1038,6 +1061,7 @@ window.__ModuleLoader__.load({
                   placeholder: t('branchPlaceholder'),
                   value: uploadRef,
                   disabled: busy,
+                  list: 'ghp-branch-names',
                   onChange: (event) => { setUploadRef(event.target.value) },
                 }), 'upload-branch'),
                 field(t('commitMessage'), h('input', {
@@ -1124,8 +1148,15 @@ window.__ModuleLoader__.load({
             results,
           )
 
+          const branchDatalist = branchNames.length === 0
+            ? null
+            : h('datalist', { key: 'branch-names', id: 'ghp-branch-names' },
+                branchNames.map((name) => h('option', { key: name, value: name })),
+              )
+
           return h('div', { className: 'ghp-root' },
             h('style', { key: 'styles' }, CSS),
+            branchDatalist,
             h('h2', { className: 'ghp-heading' }, t('title')),
             h('p', { className: 'ghp-intro' }, t('intro')),
             statusCard,

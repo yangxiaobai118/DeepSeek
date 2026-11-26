@@ -12,7 +12,8 @@
  * value in the local credential store.
  */
 
-import { mkdir, readdir, readFile, stat } from 'node:fs/promises'
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /** Loader plugin name. */
@@ -34,6 +35,10 @@ const GIT_TIMEOUT_MS = 180_000
 const GIT_OUTPUT_BYTES = 1024 * 1024
 const MAX_COMMIT_FILES = 2_000
 const MAX_COMMIT_TOTAL_BYTES = 32 * 1024 * 1024
+const SCAN_MAX_FILE_BYTES = 1024 * 1024
+const SCAN_MAX_FILES = 500
+const SCAN_REPORT_LIMIT = 30
+const LARGE_FILE_BYTES = 5 * 1024 * 1024
 
 /** One operation failure with a stable code for the UI and the tool result. */
 class GithubError extends Error {
@@ -230,6 +235,64 @@ function sameRemote(left, right) {
   return normalize(left) === normalize(right)
 }
 
+/** Content patterns that usually mean a secret is about to be committed. */
+const SECRET_CONTENT_RULES = [
+  { message: 'private key header', pattern: /-----BEGIN (?:[A-Z0-9]+ )?PRIVATE KEY-----/ },
+  { message: 'GitHub token', pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/ },
+  { message: 'AWS access key', pattern: /\bAKIA[0-9A-Z]{16}\b/ },
+  { message: 'API secret key', pattern: /\bsk-[A-Za-z0-9]{20,}\b/ },
+  { message: 'Slack token', pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
+  { message: 'Google API key', pattern: /\bAIza[0-9A-Za-z_-]{30,}\b/ },
+  { message: 'credential assignment', pattern: /(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*['"][^'"\s]{8,}['"]/i },
+]
+
+/**
+ * Filename and directory rules for the pre-commit safety scan.
+ * @param {string} relative - repository-relative path.
+ * @returns {Array<{ path: string, message: string, severity: string }>} findings.
+ */
+function pathFindings(relative) {
+  const segments = relative.split('/')
+  const base = (segments[segments.length - 1] ?? '').toLowerCase()
+  const lower = relative.toLowerCase()
+  const findings = []
+  const add = (message, severity) => findings.push({ path: relative, message, severity })
+  if (/^\.env(\.|$)/.test(base) && !/\.(example|sample|template)$/.test(base)) add('environment file', 'secret')
+  if (/^(id_rsa|id_dsa|id_ecdsa|id_ed25519)$/.test(base)) add('private key file', 'secret')
+  if (/\.(pem|key|p12|pfx|jks|keystore)$/.test(base)) add('key or certificate file', 'secret')
+  if (/^(\.npmrc|\.pypirc|\.netrc|\.git-credentials)$/.test(base)) add('credential file', 'secret')
+  if (/^(credentials|secrets?)(\.|$)/.test(base)) add('credential file', 'secret')
+  if (/(^|\/)(\.ssh|\.aws)\//.test(lower)) add('credential directory', 'secret')
+  if (/(^|\/)(node_modules|\.venv|__pycache__)\//.test(lower)) add('temporary or generated directory', 'temp')
+  if (/^(\.ds_store|thumbs\.db)$/.test(base)) add('OS metadata file', 'temp')
+  if (/\.(tmp|temp|log|bak|swp|swo|orig|rej|pyc)$/.test(base)) add('temporary or backup file', 'temp')
+  return findings
+}
+
+/**
+ * Scan one buffered file for likely secrets and temporary content.
+ * @param {string} relative - repository-relative path.
+ * @param {Buffer} buffer - file bytes.
+ * @returns {Array<{ path: string, message: string, severity: string }>} findings.
+ */
+function scanBuffer(relative, buffer) {
+  const findings = pathFindings(relative)
+  if (buffer.length > LARGE_FILE_BYTES) findings.push({ path: relative, message: 'large file', severity: 'large' })
+  if (buffer.length <= SCAN_MAX_FILE_BYTES && isText(buffer)) {
+    const text = buffer.toString('utf8')
+    for (const rule of SECRET_CONTENT_RULES) {
+      if (rule.pattern.test(text)) findings.push({ path: relative, message: rule.message, severity: 'secret' })
+    }
+  }
+  const seen = new Set()
+  return findings.filter((finding) => {
+    const key = `${finding.path}|${finding.message}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 /** JSON response with no-store, matching the shipped route convention. */
 function sendJson(res, status, payload) {
   res.statusCode = status
@@ -266,6 +329,311 @@ export function apply(ctx, rawConfig) {
     : 'GITHUB_TOKEN'
   const maxFileBytes = boundedInt(config.maxFileBytes, 1024, 8 * 1024 * 1024, DEFAULT_MAX_FILE_BYTES)
   const timeoutMs = boundedInt(config.timeoutMs, 5_000, 120_000, DEFAULT_TIMEOUT_MS)
+
+  /** Profile-owned session-to-branch map; it holds no secrets. */
+  const explicitProfileDir = typeof process.env.DSH_PROFILE_DIR === 'string' ? process.env.DSH_PROFILE_DIR.trim() : ''
+  const dshHome = typeof process.env.DSH_HOME === 'string' && process.env.DSH_HOME.trim() !== ''
+    ? process.env.DSH_HOME.trim()
+    : join(homedir(), '.dsh')
+  const profileName = typeof process.env.DSH_PROFILE === 'string' ? process.env.DSH_PROFILE.trim() : ''
+  const profileDir = explicitProfileDir !== ''
+    ? explicitProfileDir
+    : (profileName === '' ? '' : join(dshHome, 'profiles', profileName))
+  const sessionStoreFile = profileDir === '' ? undefined : join(profileDir, 'github-integration', 'session-branches.json')
+  let sessionMapPromise
+  let sessionWrite = Promise.resolve()
+
+  /** Load the persisted session map once. */
+  function loadSessionMap() {
+    sessionMapPromise ??= (async () => {
+      const map = new Map()
+      if (sessionStoreFile === undefined) return map
+      try {
+        const data = JSON.parse(await readFile(sessionStoreFile, 'utf8'))
+        if (data !== null && typeof data === 'object') {
+          for (const [sessionId, value] of Object.entries(data)) {
+            if (value === null || typeof value !== 'object') continue
+            if (typeof value.owner !== 'string' || typeof value.repo !== 'string' || typeof value.branch !== 'string') continue
+            if (value.owner === '' || value.repo === '' || value.branch === '') continue
+            map.set(sessionId, { owner: value.owner, repo: value.repo, branch: value.branch })
+          }
+        }
+      } catch {
+        // A missing or malformed state file starts from an empty map.
+      }
+      return map
+    })()
+    return sessionMapPromise
+  }
+
+  /** Persist the session map, serializing writes. */
+  async function persistSessionMap() {
+    if (sessionStoreFile === undefined) return
+    sessionWrite = sessionWrite.then(async () => {
+      const map = await loadSessionMap()
+      await mkdir(dirname(sessionStoreFile), { recursive: true })
+      await writeFile(sessionStoreFile, JSON.stringify(Object.fromEntries(map), null, 2), 'utf8')
+    }).catch(() => {
+      // Session routing is a convenience; a failed write leaves the in-memory map usable.
+    })
+    await sessionWrite
+  }
+
+  /**
+   * Session id owning one tool execution.
+   * @param {{ agent?: any } | undefined} exec - execution context.
+   * @returns {string | undefined} session id.
+   */
+  function sessionIdOf(exec) {
+    const id = exec?.agent?.session?.id
+    return typeof id === 'string' && id !== '' ? id : undefined
+  }
+
+  /**
+   * Read the branch remembered for this session and repository.
+   * @param {{ agent?: any } | undefined} exec - execution context.
+   * @param {Record<string, any>} binding - current binding.
+   * @returns {Promise<string | undefined>} remembered branch.
+   */
+  async function storedSessionBranch(exec, binding) {
+    const sessionId = sessionIdOf(exec)
+    if (sessionId === undefined) return undefined
+    const map = await loadSessionMap()
+    const entry = map.get(sessionId)
+    if (entry === undefined) return undefined
+    if (entry.owner !== binding.owner || entry.repo !== binding.repo) {
+      map.delete(sessionId)
+      await persistSessionMap()
+      return undefined
+    }
+    return entry.branch
+  }
+
+  /**
+   * Remember a branch for this session and repository.
+   * @param {{ agent?: any } | undefined} exec - execution context.
+   * @param {Record<string, any>} binding - current binding.
+   * @param {string} branch - chosen branch.
+   * @returns {Promise<boolean>} whether a session id was available.
+   */
+  async function rememberSessionBranch(exec, binding, branch) {
+    const sessionId = sessionIdOf(exec)
+    if (sessionId === undefined) return false
+    const map = await loadSessionMap()
+    map.set(sessionId, { owner: binding.owner, repo: binding.repo, branch })
+    await persistSessionMap()
+    return true
+  }
+
+  /**
+   * Branch choices offered in the first-commit question.
+   * @param {Record<string, any>} binding - current binding.
+   * @returns {Promise<string[]>} branch names, bound and default first.
+   */
+  async function branchChoices(binding) {
+    try {
+      const result = await branches()
+      const names = result.branches.map((entry) => entry.name)
+      const preferred = [binding.branch, binding.defaultBranch].filter((name) => typeof name === 'string' && name !== '')
+      return [...new Set([...preferred, ...names])].slice(0, 12)
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Ask the user which branch this session commits to.
+   * @param {{ agent?: any, signal?: AbortSignal } | undefined} exec - execution context.
+   * @param {Record<string, any>} binding - current binding.
+   * @returns {Promise<{ kind: 'chosen', branch: string } | { kind: 'cancelled' } | { kind: 'unavailable' } | { kind: 'failed' }>} outcome.
+   */
+  async function askForBranch(exec, binding) {
+    const questions = ctx.get('userQuestions')
+    if (questions === undefined || exec?.agent === undefined) return { kind: 'unavailable' }
+    const names = await branchChoices(binding)
+    const options = names.map((name) => ({
+      label: name,
+      ...(name === binding.branch ? { description: 'Currently bound branch' } : {}),
+    }))
+    try {
+      const answer = await questions.ask({
+        questions: [{
+          id: 'github-branch',
+          header: '提交分支',
+          question: `选择要提交到 ${binding.owner}/${binding.repo} 的分支，或直接输入新分支名称。`,
+          ...(options.length === 0 ? {} : { options }),
+        }],
+        agent: exec.agent,
+        signal: exec.signal,
+      })
+      const item = answer.answers.find((entry) => entry.id === 'github-branch')
+      if (item === undefined) return { kind: 'cancelled' }
+      const custom = typeof item.custom === 'string' ? item.custom.trim() : ''
+      const selected = Array.isArray(item.selected) ? item.selected : []
+      const chosen = custom !== '' ? custom : selected[0]
+      if (typeof chosen !== 'string' || chosen.trim() === '') return { kind: 'cancelled' }
+      return { kind: 'chosen', branch: branchName(chosen.trim()) }
+    } catch {
+      return { kind: 'failed' }
+    }
+  }
+
+  /**
+   * Resolve the branch for one commit: explicit argument, session memory, or a
+   * first-commit question. A caller without interactive support receives a
+   * selection request instead of a write.
+   * @param {{ agent?: any, signal?: AbortSignal } | undefined} exec - execution context.
+   * @param {Record<string, any>} binding - current binding.
+   * @param {{ branch?: unknown }} input - action input.
+   * @returns {Promise<{ kind: 'chosen', branch: string } | { kind: 'cancelled' } | { kind: 'select', branches: string[] }>} resolution.
+   */
+  async function resolveSessionBranch(exec, binding, input) {
+    if (typeof input.branch === 'string' && input.branch.trim() !== '') {
+      const branch = branchName(input.branch)
+      await rememberSessionBranch(exec, binding, branch)
+      return { kind: 'chosen', branch }
+    }
+    const stored = await storedSessionBranch(exec, binding)
+    if (stored !== undefined) return { kind: 'chosen', branch: stored }
+    const asked = await askForBranch(exec, binding)
+    if (asked.kind === 'chosen') {
+      await rememberSessionBranch(exec, binding, asked.branch)
+      return asked
+    }
+    if (asked.kind === 'cancelled') return { kind: 'cancelled' }
+    return { kind: 'select', branches: await branchChoices(binding) }
+  }
+
+  /**
+   * Ask the user to accept scan findings before a write.
+   * @param {{ agent?: any, signal?: AbortSignal } | undefined} exec - execution context.
+   * @param {Array<{ path: string, message: string }>} findings - scan findings.
+   * @returns {Promise<{ kind: 'proceed' } | { kind: 'cancel' } | { kind: 'unavailable' }>} decision.
+   */
+  async function askScanConfirmation(exec, findings) {
+    const questions = ctx.get('userQuestions')
+    if (questions === undefined || exec?.agent === undefined) return { kind: 'unavailable' }
+    const listed = findings.slice(0, 10).map((finding) => `- ${finding.path}: ${finding.message}`).join('\n')
+    try {
+      const answer = await questions.ask({
+        questions: [{
+          id: 'github-confirm',
+          header: '提交前确认',
+          question: `提交前扫描到以下可能不该提交的内容：\n${listed}\n\n是否仍然提交？`,
+          options: [
+            { label: '取消 (Recommended)', description: '先移除或忽略这些文件再提交。' },
+            { label: '仍然提交', description: '已确认这些内容可以提交。' },
+          ],
+        }],
+        agent: exec.agent,
+        signal: exec.signal,
+      })
+      const item = answer.answers.find((entry) => entry.id === 'github-confirm')
+      const selected = Array.isArray(item?.selected) ? item.selected : []
+      return { kind: selected.includes('仍然提交') ? 'proceed' : 'cancel' }
+    } catch {
+      return { kind: 'unavailable' }
+    }
+  }
+
+  /**
+   * Apply one scan result: clean or explicitly confirmed writes proceed.
+   * @param {{ agent?: any, signal?: AbortSignal } | undefined} exec - execution context.
+   * @param {{ findings: Array<Record<string, any>>, checked: number, truncated: boolean }} scan - scan result.
+   * @param {boolean | undefined} confirm - explicit approval from a prior turn.
+   * @returns {Promise<{ kind: 'proceed' } | { kind: 'cancel' } | { kind: 'needs-confirmation' }>} decision.
+   */
+  async function decideScan(exec, scan, confirm) {
+    if (scan.findings.length === 0 || confirm === true) return { kind: 'proceed' }
+    const asked = await askScanConfirmation(exec, scan.findings)
+    if (asked.kind === 'proceed') return asked
+    if (asked.kind === 'cancel') return asked
+    return { kind: 'needs-confirmation' }
+  }
+
+  /**
+   * Shape one scan result for the tool result.
+   * @param {{ findings: Array<Record<string, any>>, checked: number }} scan - scan result.
+   * @returns {Record<string, any>} public summary.
+   */
+  function scanSummary(scan) {
+    return {
+      clean: scan.findings.length === 0,
+      checkedFiles: scan.checked,
+      findings: scan.findings.slice(0, SCAN_REPORT_LIMIT),
+      truncated: scan.truncated === true || scan.findings.length > SCAN_REPORT_LIMIT,
+      scannedFileLimit: SCAN_MAX_FILES,
+    }
+  }
+
+  /**
+   * Scan files that a push would commit.
+   * @param {string} gitRoot - repository root.
+   * @param {readonly string[]} paths - repository-relative paths.
+   * @returns {Promise<{ findings: Array<Record<string, any>>, checked: number, truncated: boolean }>} scan result.
+   */
+  async function scanStagedFiles(gitRoot, paths) {
+    const findings = []
+    let checked = 0
+    let truncated = false
+    for (const relative of paths) {
+      if (checked >= SCAN_MAX_FILES) {
+        truncated = true
+        break
+      }
+      checked += 1
+      const absolute = join(gitRoot, relative)
+      let info
+      try {
+        info = await stat(absolute)
+      } catch {
+        continue
+      }
+      if (!info.isFile()) continue
+      if (info.size > LARGE_FILE_BYTES) {
+        findings.push({ path: relative, message: 'large file', severity: 'large' })
+        continue
+      }
+      if (info.size > SCAN_MAX_FILE_BYTES) continue
+      try {
+        findings.push(...scanBuffer(relative, await readFile(absolute)))
+      } catch {
+        // An unreadable file is left out of the scan; git will report its own failure.
+      }
+    }
+    return { findings, checked, truncated }
+  }
+
+  /**
+   * Scan a set of already-collected source files.
+   * @param {Array<{ relative: string, absolute: string }>} files - collected files.
+   * @returns {Promise<{ findings: Array<Record<string, any>>, checked: number, truncated: boolean }>} scan result.
+   */
+  async function scanCollectedFiles(files) {
+    const findings = []
+    let checked = 0
+    let truncated = false
+    for (const file of files) {
+      if (checked >= SCAN_MAX_FILES) {
+        truncated = true
+        break
+      }
+      checked += 1
+      try {
+        const info = await stat(file.absolute)
+        if (!info.isFile()) continue
+        if (info.size > LARGE_FILE_BYTES) {
+          findings.push({ path: file.relative, message: 'large file', severity: 'large' })
+          continue
+        }
+        if (info.size > SCAN_MAX_FILE_BYTES) continue
+        findings.push(...scanBuffer(file.relative, await readFile(file.absolute)))
+      } catch {
+        // An unreadable file is left out of the scan; the writer will report its own failure.
+      }
+    }
+    return { findings, checked, truncated }
+  }
 
   /** @returns {any} the credential service when the profile provides one. */
   const credentialsOf = () => ctx.get('credentials')
@@ -694,9 +1062,10 @@ export function apply(ctx, rawConfig) {
   /**
    * Create a branch from an existing base branch through the API.
    * @param {{ branch?: unknown, base?: unknown }} input - branch request.
+   * @param {{ agent?: any, signal?: AbortSignal } | undefined} exec - execution facts.
    * @returns {Promise<Record<string, any>>} created branch facts.
    */
-  async function createBranch(input = {}) {
+  async function createBranch(input = {}, exec) {
     const { binding, owner, repo, token } = await contextOf()
     const branch = branchName(input.branch)
     const base = branchName(input.base === undefined || input.base === ''
@@ -710,7 +1079,32 @@ export function apply(ctx, rawConfig) {
       token: token.value,
       body: { ref: `refs/heads/${branch}`, sha },
     })
-    return { branch, base, sha, url: branchUrl(owner, repo, branch) }
+    const remembered = await rememberSessionBranch(exec, binding, branch)
+    return { branch, base, sha, sessionBranchStored: remembered, url: branchUrl(owner, repo, branch) }
+  }
+
+  /**
+   * Ensure one branch exists, creating it from a base branch when absent.
+   * @param {string} owner - repository owner.
+   * @param {string} repo - repository name.
+   * @param {string} token - personal access token.
+   * @param {string} branch - target branch.
+   * @param {string | undefined} base - base branch for a new branch.
+   * @returns {Promise<boolean>} true when the branch was created.
+   */
+  async function ensureBranch(owner, repo, token, branch, base) {
+    const repoPath = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+    const existing = await requestJson('GET', `${repoPath}/git/ref/heads/${branch}`, { token, allowNotFound: true })
+    if (existing !== undefined) return false
+    const baseName = branchName(base === undefined || base === '' ? 'main' : base)
+    const baseRef = await requestJson('GET', `${repoPath}/git/ref/heads/${baseName}`, { token })
+    const sha = baseRef?.object?.sha
+    if (typeof sha !== 'string' || sha === '') throw new GithubError('not-found', `Base branch ${baseName} has no head commit.`)
+    await requestJson('POST', `${repoPath}/git/refs`, {
+      token,
+      body: { ref: `refs/heads/${branch}`, sha },
+    })
+    return true
   }
 
   /**
@@ -736,9 +1130,29 @@ export function apply(ctx, rawConfig) {
     if (!info.isDirectory()) throw new GithubError('bad-request', `Source path is not a directory: ${input.sourceDir}`)
     const { files, total } = await collectCommitFiles(sourceDir)
     if (files.length === 0) throw new GithubError('bad-request', `No files found in ${input.sourceDir}.`)
-    const branch = branchName(input.branch === undefined || input.branch === ''
-      ? (binding.branch || binding.defaultBranch || 'main')
-      : input.branch)
+    const resolved = await resolveSessionBranch(exec, binding, input)
+    if (resolved.kind === 'cancelled') return { cancelled: true, reason: 'branch-selection-cancelled' }
+    if (resolved.kind === 'select') {
+      return {
+        branchSelectionRequired: true,
+        repository: `${owner}/${repo}`,
+        branches: resolved.branches,
+        instructions: 'Ask the user which branch to commit to (an existing branch or a new name); then call commit_files again with branch set.',
+      }
+    }
+    const branch = resolved.branch
+    const scan = await scanCollectedFiles(files)
+    const decision = await decideScan(exec, scan, input.confirm)
+    if (decision.kind === 'cancel') {
+      return { cancelled: true, reason: 'confirmation-declined', scan: scanSummary(scan) }
+    }
+    if (decision.kind === 'needs-confirmation') {
+      return {
+        requiresConfirmation: true,
+        scan: scanSummary(scan),
+        instructions: 'Show the scan findings to the user; after explicit approval, call commit_files again with confirm=true.',
+      }
+    }
     const repoDir = normalizeRepoDir(input.repoDir)
     const message = typeof input.message === 'string' && input.message.trim() !== ''
       ? input.message.trim()
@@ -814,6 +1228,7 @@ export function apply(ctx, rawConfig) {
       branchUrl: branchUrl(owner, repo, branch),
       files: entries.map((entry) => entry.path),
       bytes: total,
+      scan: scanSummary(scan),
     }
   }
 
@@ -886,6 +1301,17 @@ export function apply(ctx, rawConfig) {
       throw new GithubError('bad-request', `Push directory does not exist: ${String(input.cwd)}`)
     }
     if (!info.isDirectory()) throw new GithubError('bad-request', `Push path is not a directory: ${String(input.cwd)}`)
+    const resolved = await resolveSessionBranch(exec, binding, input)
+    if (resolved.kind === 'cancelled') return { cancelled: true, reason: 'branch-selection-cancelled' }
+    if (resolved.kind === 'select') {
+      return {
+        branchSelectionRequired: true,
+        repository: `${owner}/${repo}`,
+        branches: resolved.branches,
+        instructions: 'Ask the user which branch to push to (an existing branch or a new name); then call push again with branch set.',
+      }
+    }
+    const branch = resolved.branch
     const requestedGit = (args) => runGit(['-C', cwd, ...args], { cwd, token: token.value, signal: exec?.signal })
     let inside = false
     try {
@@ -929,6 +1355,20 @@ export function apply(ctx, rawConfig) {
       await git(['remote', 'set-url', 'origin', remote])
     }
     await git(['add', '-A'])
+    const staged = await git(['diff', '--cached', '--name-only', '-z'])
+    const stagedPaths = staged.stdout.split('\0').filter((entry) => entry !== '')
+    const scan = await scanStagedFiles(gitRoot, stagedPaths)
+    const decision = await decideScan(exec, scan, input.confirm)
+    if (decision.kind === 'cancel') {
+      return { cancelled: true, reason: 'confirmation-declined', scan: scanSummary(scan) }
+    }
+    if (decision.kind === 'needs-confirmation') {
+      return {
+        requiresConfirmation: true,
+        scan: scanSummary(scan),
+        instructions: 'Show the scan findings to the user; after explicit approval, call push again with confirm=true.',
+      }
+    }
     const status = await git(['status', '--porcelain'])
     const login = binding.login ?? binding.owner ?? 'dsh'
     const message = typeof input.message === 'string' && input.message.trim() !== ''
@@ -944,15 +1384,6 @@ export function apply(ctx, rawConfig) {
       ])
       committed = true
     }
-    let current = ''
-    try {
-      current = (await git(['symbolic-ref', '--short', 'HEAD'])).stdout.trim()
-    } catch {
-      current = ''
-    }
-    const branch = typeof input.branch === 'string' && input.branch.trim() !== ''
-      ? branchName(input.branch)
-      : (current || 'main')
     let headSha
     try {
       headSha = (await git(['rev-parse', '--verify', 'HEAD'])).stdout.trim()
@@ -967,6 +1398,7 @@ export function apply(ctx, rawConfig) {
       committed,
       remote,
       url: branchUrl(owner, repo, branch),
+      scan: scanSummary(scan),
     }
   }
 
@@ -1264,7 +1696,7 @@ export function apply(ctx, rawConfig) {
     ctx.effect(() => systemPrompt.section({
       name: 'github-integration',
       order: 1900,
-      text: 'GitHub operations use the account and repository bound in Settings > GitHub. When the `github` tool is available, use it for GitHub status, repository/branch/file reads, download, upload, search, branch creation, multi-file commits, clone, and push before `bash`, `git`, or `gh`. Never ask the user for a token in chat. Use a direct git command only when the user explicitly asks for a git workflow or when the tool reports that it cannot perform the operation.',
+      text: 'GitHub operations use the account and repository bound in Settings > GitHub. When the `github` tool is available, use it for GitHub status, repository/branch/file reads, download, upload, search, branch creation, multi-file commits, clone, and push before `bash`, `git`, or `gh`. On the first push, upload, or commit in a session, the tool asks the user to choose an existing branch or type a new branch, then reuses that choice for later writes in the same session. Before writing, it scans the files for private keys, tokens, environment files, and temporary files, and asks the user to confirm any finding. Do not pass `branch` or `confirm` to skip these interactions unless the user explicitly chose the branch or approved the findings. If the tool reports branchSelectionRequired or requiresConfirmation, ask the user with ask_user_question and retry. Never ask for a token in chat.',
     }), 'github-integration: routing section')
   }
 
@@ -1280,7 +1712,7 @@ export function apply(ctx, rawConfig) {
 
   ctx.effect(() => ctx.tools.register({
     name: 'github',
-    description: 'Use this tool for GitHub operations before shell git/gh. The account and repository are bound in Settings > GitHub; never ask the user for a token in chat. Actions: status, list_repos, search, branches, list_files, download, upload (one file to a branch), create_branch, commit_files (a local folder as one commit; creates the branch when missing), clone (git clone into the workspace), push (commit and push the whole workspace directory with git).',
+    description: 'Use this tool for GitHub operations before shell git/gh. The account and repository are bound in Settings > GitHub; never ask the user for a token in chat. On the first push, upload, or commit in a session it asks the user to choose a branch and remembers it for later writes; before writing it scans for keys, secrets, environment files, and temporary files and asks for confirmation when needed. Actions: status, list_repos, search, branches, list_files, download, upload (one file to a branch), create_branch, commit_files (a local folder as one commit; creates the branch when missing), clone (git clone into the workspace), push (commit and push the whole workspace directory with git).',
     parameters: {
       action: {
         type: 'string',
@@ -1298,14 +1730,15 @@ export function apply(ctx, rawConfig) {
       localPath: { type: 'string', description: 'Workspace-local file to upload; required for upload.' },
       remotePath: { type: 'string', description: 'Target repository path for upload; defaults to the local file name.' },
       message: { type: 'string', description: 'Commit message for upload, commit_files, and push.' },
-      branch: { type: 'string', description: 'Target branch for upload, commit_files, clone, and push; defaults to the bound branch.' },
-      base: { type: 'string', description: 'Base branch for create_branch, and for a commit_files branch that does not exist yet.' },
+      branch: { type: 'string', description: 'Explicit branch for this write; when omitted the session branch is reused, or the user is asked on the first write.' },
+      base: { type: 'string', description: 'Base branch for create_branch, and for a new branch created by commit_files, upload, or push.' },
       sourceDir: { type: 'string', description: 'Workspace-relative or absolute folder committed by commit_files; required for that action.' },
       repoDir: { type: 'string', description: 'Target folder inside the repository for commit_files; defaults to the repository root.' },
       target: { type: 'string', description: 'Workspace-relative clone target for clone; defaults to the repository name.' },
       cwd: { type: 'string', description: 'Workspace-relative directory pushed by push; defaults to the workspace root.' },
       init: { type: 'boolean', description: 'For push: initialize a git repository when the directory has none.' },
       setRemote: { type: 'boolean', description: 'For push: replace an existing origin that points at another repository.' },
+      confirm: { type: 'boolean', description: 'For upload, commit_files, and push: proceed after the user explicitly approved the scan findings. Do not set without that approval.' },
     },
     output: {
       schema: { type: 'object', additionalProperties: true },
@@ -1361,16 +1794,48 @@ export function apply(ctx, rawConfig) {
           const remotePath = typeof args.remotePath === 'string' && args.remotePath.trim() !== ''
             ? args.remotePath.trim()
             : basename(target.displayPath ?? args.localPath)
-          return await upload({
+          const context = await contextOf()
+          const resolved = await resolveSessionBranch(exec, context.binding, { branch: args.branch })
+          if (resolved.kind === 'cancelled') return { cancelled: true, reason: 'branch-selection-cancelled' }
+          if (resolved.kind === 'select') {
+            return {
+              branchSelectionRequired: true,
+              repository: `${context.owner}/${context.repo}`,
+              branches: resolved.branches,
+              instructions: 'Ask the user which branch to upload to (an existing branch or a new name); then call upload again with branch set.',
+            }
+          }
+          const buffer = Buffer.from(bytes)
+          const scan = { findings: scanBuffer(remotePath, buffer), checked: 1, truncated: false }
+          const decision = await decideScan(exec, scan, args.confirm)
+          if (decision.kind === 'cancel') {
+            return { cancelled: true, reason: 'confirmation-declined', scan: scanSummary(scan) }
+          }
+          if (decision.kind === 'needs-confirmation') {
+            return {
+              requiresConfirmation: true,
+              scan: scanSummary(scan),
+              instructions: 'Show the scan findings to the user; after explicit approval, call upload again with confirm=true.',
+            }
+          }
+          await ensureBranch(
+            context.owner,
+            context.repo,
+            context.token.value,
+            resolved.branch,
+            args.base ?? context.binding.defaultBranch,
+          )
+          const result = await upload({
             path: remotePath,
-            content: Buffer.from(bytes).toString('base64'),
+            content: buffer.toString('base64'),
             encoding: 'base64',
             message: args.message,
-            branch: args.branch,
+            branch: resolved.branch,
           })
+          return { ...result, branch: resolved.branch, scan: scanSummary(scan) }
         }
         case 'create_branch':
-          return await createBranch({ branch: args.branch, base: args.base })
+          return await createBranch({ branch: args.branch, base: args.base }, exec)
         case 'commit_files':
           return await commitFiles({
             sourceDir: args.sourceDir,
@@ -1378,6 +1843,7 @@ export function apply(ctx, rawConfig) {
             base: args.base,
             repoDir: args.repoDir,
             message: args.message,
+            confirm: args.confirm,
           }, exec)
         case 'clone':
           return await cloneRepository({ target: args.target, branch: args.branch }, exec)
@@ -1388,6 +1854,7 @@ export function apply(ctx, rawConfig) {
             message: args.message,
             init: args.init,
             setRemote: args.setRemote,
+            confirm: args.confirm,
           }, exec)
         default:
           throw new GithubError('bad-request', `Unknown action: ${String(args.action)}`)

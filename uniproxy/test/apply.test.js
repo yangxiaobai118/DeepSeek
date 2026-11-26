@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { makeConfig } from './helpers.js';
-import { buildPlan, formatPlan, applyPlan } from '../src/apply.js';
+import { buildPlan, formatPlan, applyPlan, DEFAULT_RELOAD } from '../src/apply.js';
 
 function withApplyTargets(c) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uniproxy-test-'));
@@ -16,6 +16,15 @@ function withApplyTargets(c) {
   };
   return { c, dir };
 }
+
+test('plan uses service reload commands, not validators', () => {
+  const { c } = withApplyTargets(makeConfig());
+  const plan = buildPlan(c);
+  for (const target of plan) {
+    assert.equal(target.reload, DEFAULT_RELOAD[target.kind]);
+    assert.notEqual(target.reload, target.validate);
+  }
+});
 
 test('plan marks every target as changed on first install', () => {
   const { c } = withApplyTargets(makeConfig());

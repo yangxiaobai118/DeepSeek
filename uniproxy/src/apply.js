@@ -27,8 +27,8 @@ export function buildPlan(c) {
       kind: 'xray',
       file: c.apply.xrayConfig,
       content: JSON.stringify(xray, null, 2) + '\n',
-      validate: pick(c.apply.validate, 'xray'),
-      reload: pick(c.apply.reload, 'xray'),
+      validate: pick(c.apply.validate, 'xray', DEFAULT_VALIDATE),
+      reload: pick(c.apply.reload, 'xray', DEFAULT_RELOAD),
     });
   }
   const singbox = generateSingbox(c);
@@ -37,8 +37,8 @@ export function buildPlan(c) {
       kind: 'singbox',
       file: c.apply.singboxConfig,
       content: JSON.stringify(singbox, null, 2) + '\n',
-      validate: pick(c.apply.validate, 'singbox'),
-      reload: pick(c.apply.reload, 'singbox'),
+      validate: pick(c.apply.validate, 'singbox', DEFAULT_VALIDATE),
+      reload: pick(c.apply.reload, 'singbox', DEFAULT_RELOAD),
     });
   }
   if (c.apply.nginxConfig) {
@@ -46,17 +46,17 @@ export function buildPlan(c) {
       kind: 'nginx',
       file: c.apply.nginxConfig,
       content: generateNginx(c),
-      validate: pick(c.apply.validate, 'nginx'),
-      reload: pick(c.apply.reload, 'nginx'),
+      validate: pick(c.apply.validate, 'nginx', DEFAULT_VALIDATE),
+      reload: pick(c.apply.reload, 'nginx', DEFAULT_RELOAD),
     });
   }
   for (const t of targets) t.changed = readIfExists(t.file) !== t.content;
   return targets;
 }
 
-function pick(map, key) {
+function pick(map, key, defaults) {
   if (map && typeof map[key] === 'string') return map[key];
-  return DEFAULT_VALIDATE[key];
+  return defaults[key];
 }
 
 function readIfExists(file) {

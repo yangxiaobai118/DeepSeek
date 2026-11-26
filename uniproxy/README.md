@@ -17,6 +17,8 @@
 
 `uniproxy` is a zero-dependency Node.js **control plane** that fuses **Xray**, **sing-box** and **nginx** on a single host. One JSON config drives all three: it plans ports, detects conflicts, generates native configs, produces client share links, serves **per-client subscriptions** in three formats, and can install the result with staged validation and rollback.
 
+**Installation manual (Chinese, step by step):** [docs/INSTALL.zh-CN.md](docs/INSTALL.zh-CN.md)
+
 Version 0.2 added the operational layer that a panel like [s-ui-x](https://github.com/deposist/s-ui-x) provides: multi-format subscriptions, per-client profiles, transport coverage (HTTPUpgrade, XHTTP), flow safety rules, a pre-flight `doctor` and a guarded `apply`. Version 0.3 adds a [Marzban](https://github.com/Gozargah/Marzban) / [Hiddify](https://github.com/hiddify/Hiddify-Manager) style **user registry**: one user across both cores, one subscription, with quotas, expiry and routing profiles.
 
 ### The problem it solves
@@ -259,7 +261,7 @@ files are restored. Configure paths and commands under `apply`:
 "apply": {
   "xrayConfig": "/usr/local/etc/xray/config.json",
   "singboxConfig": "/usr/local/etc/sing-box/config.json",
-  "nginxConfig": "/etc/uniproxy/nginx.conf",
+  "nginxConfig": "/etc/nginx/nginx.conf",
   "backup": true,
   "validate": {
     "xray": "xray run -test -c {file}",
@@ -288,7 +290,7 @@ node src/index.js apply -c config.json --yes
 # or copy by hand
 cp out/xray/config.json    /usr/local/etc/xray/config.json
 cp out/singbox/config.json /usr/local/etc/sing-box/config.json
-cp out/nginx/nginx.conf    /etc/uniproxy/nginx.conf
+cp out/nginx/nginx.conf    /etc/nginx/nginx.conf
 ```
 
 ### Release assets
@@ -403,6 +405,8 @@ MIT. See [LICENSE](LICENSE).
 ### 这是什么
 
 `uniproxy` 是一个零依赖的 Node.js **控制面**，把 **Xray**、**sing-box**、**nginx** 在同一台服务器上融合起来：一份 JSON 配置同时驱动三者，自动规划端口、检测冲突、生成三套原生配置、输出客户端链接、生成**分客户端订阅**（三种格式），并且可以在校验后安全地下发配置、失败自动回滚。
+
+**安装手册（中文，逐步操作 + 预期结果）：** [docs/INSTALL.zh-CN.md](docs/INSTALL.zh-CN.md)
 
 0.2 版本补齐了 [s-ui-x](https://github.com/deposist/s-ui-x) 这类面板擅长的运维能力：多格式订阅、按客户端生成配置、HTTPUpgrade / XHTTP 传输、flow 合法性规则、`doctor` 预检和带保护的 `apply`。0.3 版本参考 [Marzban](https://github.com/Gozargah/Marzban) 与 [Hiddify](https://github.com/hiddify/Hiddify-Manager)，加入**用户注册表**：一个用户跨双内核、一个订阅，支持配额、到期与分流规则。
 

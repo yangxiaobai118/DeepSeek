@@ -157,7 +157,7 @@ function scaffold() {
     apply: {
       xrayConfig: '/usr/local/etc/xray/config.json',
       singboxConfig: '/usr/local/etc/sing-box/config.json',
-      nginxConfig: '/etc/uniproxy/nginx.conf',
+      nginxConfig: '/etc/nginx/nginx.conf',
       backup: true,
     },
   };

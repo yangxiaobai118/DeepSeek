@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.2
+
+### Fixed
+
+- `apply` used each target's **validator** command as its reload command, so
+  `--yes` never restarted the services. Reload now uses
+  `systemctl restart xray`, `systemctl restart sing-box` and
+  `systemctl reload nginx` (or the `apply.reload` overrides).
+- The default `apply.nginxConfig` is now `/etc/nginx/nginx.conf`, matching the
+  configuration file that `systemctl reload nginx` actually loads.
+
+### Added
+
+- `docs/INSTALL.zh-CN.md`: end-to-end installation manual covering package
+  choice, core installation, certificates, configuration, `validate`/`doctor`,
+  `generate`, `apply`, subscriptions, acceptance checks, routine operations,
+  troubleshooting and uninstall.
+
 ## 0.3.1
 
 ### Added

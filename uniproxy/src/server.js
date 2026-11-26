@@ -6,6 +6,7 @@ import { generateXray } from './generators/xray.js';
 import { generateSingbox } from './generators/singbox.js';
 import { generateNginx } from './generators/nginx.js';
 import { buildSubscriptions, subscriptionHeaders } from './subscribe.js';
+import { resolveUsers, formatUsersTable } from './users.js';
 
 const templatePath = new URL('./dashboard.html', import.meta.url);
 
@@ -36,6 +37,7 @@ function render(config, cfgPath) {
   const nginx = generateNginx(config);
   const links = generateLinks(config);
   const subs = config.subscription.enabled ? buildSubscriptions(config) : [];
+  const users = resolveUsers(config);
   const base = config.subscription.basePath;
 
   const portRows = report.entries
@@ -66,6 +68,15 @@ function render(config, cfgPath) {
     .join('');
   const subHtml = subRows || '<tr><td colspan="4">no clients configured</td></tr>';
 
+  const userRows = users
+    .map(function (u) {
+      return '<tr><td>' + esc(u.name) + '</td><td>' + esc(u.status) + '</td>' +
+        '<td>' + esc(u.expireAt ? u.expireAt.toISOString().slice(0, 10) : '-') + '</td>' +
+        '<td>' + esc(u.inbounds.map(function (i) { return i.tag; }).join(', ')) + '</td></tr>';
+    })
+    .join('');
+  const userHtml = userRows || '<tr><td colspan="4">no registry users</td></tr>';
+
   const pre = function (obj) {
     if (!obj) return '(disabled)';
     return esc(JSON.stringify(obj, null, 2));
@@ -77,6 +88,8 @@ function render(config, cfgPath) {
   html = fill(html, '{{PUBLIC_IP}}', esc(config.server.publicIp || 'unset'));
   html = fill(html, '{{PORT_ROWS}}', portRows);
   html = fill(html, '{{ISSUES}}', issueHtml);
+  html = fill(html, '{{USER_COUNT}}', String(users.length));
+  html = fill(html, '{{USER_ROWS}}', userHtml);
   html = fill(html, '{{SUB_COUNT}}', String(subs.length));
   html = fill(html, '{{SUB_ROWS}}', subHtml);
   html = fill(html, '{{LINK_COUNT}}', String(links.length));
@@ -122,7 +135,15 @@ export function startDashboard(config, cfgPath, port) {
           'unknown subscription token');
         return;
       }
-      const headers = subscriptionHeaders(config, sub.title);
+      const headers = subscriptionHeaders(config, sub.title, sub.user);
+      if (sub.user && sub.user.status !== 'active') {
+        const message =
+          sub.user.status === 'expired' ? 'subscription expired'
+            : sub.user.status === 'quota' ? 'traffic limit reached'
+              : 'subscription disabled';
+        send(res, 403, { ...headers, 'content-type': 'text/plain; charset=utf-8' }, message + '\n');
+        return;
+      }
       if (format === 'links') {
         send(res, 200, headers, sub.base64);
       } else if (format === 'json') {

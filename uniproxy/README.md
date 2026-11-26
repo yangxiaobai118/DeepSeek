@@ -17,7 +17,7 @@
 
 `uniproxy` is a zero-dependency Node.js **control plane** that fuses **Xray**, **sing-box** and **nginx** on a single host. One JSON config drives all three: it plans ports, detects conflicts, generates native configs, produces client share links, serves **per-client subscriptions** in three formats, and can install the result with staged validation and rollback.
 
-Version 0.2 adds the operational layer that a panel like [s-ui-x](https://github.com/deposist/s-ui-x) provides: multi-format subscriptions, per-client profiles, transport coverage (HTTPUpgrade, XHTTP), flow safety rules, a pre-flight `doctor` and a guarded `apply`.
+Version 0.2 added the operational layer that a panel like [s-ui-x](https://github.com/deposist/s-ui-x) provides: multi-format subscriptions, per-client profiles, transport coverage (HTTPUpgrade, XHTTP), flow safety rules, a pre-flight `doctor` and a guarded `apply`. Version 0.3 adds a [Marzban](https://github.com/Gozargah/Marzban) / [Hiddify](https://github.com/hiddify/Hiddify-Manager) style **user registry**: one user across both cores, one subscription, with quotas, expiry and routing profiles.
 
 ### The problem it solves
 
@@ -37,6 +37,10 @@ Running x-ui, s-ui and nginx on one server is easy to install but hard to keep c
 - **sing-box** generator: same protocol matrix with the transports sing-box supports.
 - **nginx** generator with two modes: `http` (nginx owns :443) and `stream` (SNI multiplexing on :443).
 - **Per-client subscriptions**: base64 link list, sing-box profile JSON and Clash/Mihomo YAML.
+- **User registry**: a user can bind several inbounds across Xray and sing-box; credentials are derived deterministically from `server.secret` so regeneration never rotates them.
+- **Quotas and expiry**: per-user `dataLimitBytes`, `usage` and `expireAt`; expired, disabled or over-quota users receive HTTP 403 with `subscription-userinfo`.
+- **Routing profiles**: bypass LAN, direct domains/CIDRs and blocked domains applied to both sing-box route rules and Clash rules.
+- **Xray fallbacks**: several services on one inbound port (Marzban-style multi-inbound single port).
 - Reality keypair generation and automatic **public-key derivation** for client links and profiles.
 - **Flow safety**: `xtls-rprx-vision` is emitted only for VLESS over TCP with TLS/Reality; elsewhere it is dropped instead of producing an invalid config.
 - **`doctor`**: pre-flight diagnostics for placeholders, certificates, Reality keys, duplicate SNI, ports and core binaries.
@@ -80,6 +84,14 @@ It is an **orchestration layer**, not a replacement for the three programs. Gene
 
 `uniproxy validate` rejects transports the target core cannot speak; the subscription generators skip what the client cannot import.
 
+Xray inbounds that use `tcp` + `tls` can also declare `fallbacks` to put several
+services on one port (panel, website, extra path) — the Marzban "multi-inbound on
+a single port" pattern:
+
+```json
+{ "dest": "127.0.0.1:2095", "path": "/sui" }
+```
+
 ### Two nginx modes
 
 | Mode | Owns :443 | Proxy inbounds | When to use |
@@ -120,6 +132,7 @@ node src/index.js doctor    -c config.json     # pre-flight checks
 node src/index.js generate  -c config.json -o out
 node src/index.js links     -c config.json
 node src/index.js subscribe -c config.json
+node src/index.js users     -c config.json     # registry users, quotas, expiry
 node src/index.js serve     -c config.json -p 8787
 ```
 
@@ -147,14 +160,16 @@ out/
 | `generate` | write xray / sing-box / nginx configs, links and subscriptions |
 | `links` | print client share links (`--client`, `--address`, `--json`) |
 | `subscribe` | print per-client subscription URLs (`--json`) |
+| `users` | list registry users with inbounds, status, quota and expiry (`--json`) |
 | `doctor` | pre-flight diagnostics (`--json`, `--no-probe`) |
 | `apply` | dry-run by default; `--yes` installs and reloads |
 | `serve` | start the dashboard and subscription endpoints |
 
 ### Subscriptions
 
-Each client of each inbound gets a stable token derived from a hash of the name,
-the credential and `server.publicIp`. ``uniproxy serve`` exposes:
+Each client gets a stable token. Registry users share one token across every
+inbound and core; clients outside the registry fall back to a hash of the name,
+credential and `server.publicIp`. ``uniproxy serve`` exposes:
 
 | Path | Content-Type | Body |
 |------|--------------|------|
@@ -162,9 +177,13 @@ the credential and `server.publicIp`. ``uniproxy serve`` exposes:
 | `/sub/<token>/json` | `application/json` | sing-box client profile (TUN + mixed inbound) |
 | `/sub/<token>/clash` | `text/yaml` | Clash / Mihomo profile |
 
-Responses carry `Cache-Control: no-store`, `profile-title` and
-`profile-update-interval`. To expose them on your domain, either point an
-`nginx.extraSites` entry at the dashboard or the s-ui subscription server:
+Responses carry `Cache-Control: no-store`, `profile-title`,
+`profile-update-interval` and, when the user has a quota or expiry,
+`subscription-userinfo: upload=…; download=…; total=…; expire=…` (the header
+v2rayN, NekoBox, Mihomo and sing-box clients read). `profile-web-page-url` and
+`support-url` can be set in `subscription`. To expose subscriptions on your
+domain, either point an `nginx.extraSites` entry at the dashboard or the s-ui
+subscription server:
 
 ```json
 "nginx": {
@@ -176,6 +195,53 @@ Responses carry `Cache-Control: no-store`, `profile-title` and
 
 A user who exists on both cores (same name and UUID/password) is merged into a
 single subscription; `subToken` can be pinned per client in `config.json`.
+
+### Users, quotas and expiry
+
+```json
+"users": [
+  {
+    "name": "alice",
+    "inbounds": ["xray-vless-reality", "sb-vless-ws-tls"],
+    "expireAt": "2027-01-01T00:00:00Z",
+    "dataLimitBytes": 107374182400,
+    "usage": { "upload": 0, "download": 0 },
+    "subToken": "optional-pinned-token",
+    "enabled": true,
+    "note": "team A"
+  }
+]
+```
+
+- Listing `inbounds` provisions the user into those inbounds. A client with the
+  same `name` is reused; otherwise a credential is derived from
+  `server.secret` (a UUID for VLESS/VMess, a password for Trojan). The
+  derivation is stable, so re-running `generate` never rotates credentials.
+- Leave `inbounds` out to bind only to inbounds that already contain a client
+  with that name.
+- Without a `users` entry, every inbound client keeps working as before.
+- `uniproxy users` prints status (`active`, `expired`, `quota`, `disabled`),
+  used/total traffic and the subscription token. `uniproxy doctor` warns about
+  expired or over-quota users.
+
+### Routing profiles
+
+The generated client profiles can split traffic the way Hiddify does:
+
+```json
+"subscription": {
+  "routing": {
+    "bypassPrivate": true,
+    "directDomains": ["corp.example.org"],
+    "directCidrs": ["10.0.0.0/8"],
+    "blockDomains": ["ads.example.net"]
+  }
+}
+```
+
+sing-box profiles get matching `route.rules` (with a `block` outbound when
+needed); Clash profiles get `GEOIP,LAN,DIRECT`, `DOMAIN-SUFFIX,…` and
+`REJECT` rules before `MATCH,PROXY`.
 
 ### Apply safely
 
@@ -246,6 +312,12 @@ sing-box). What uniproxy adopted from it:
 - verifying the generated config before installing it, with rollback;
 - the `doctor` idea: check placeholders, certificates and core binaries first.
 
+The user layer follows [Marzban](https://github.com/Gozargah/Marzban) and
+[Hiddify Manager](https://github.com/hiddify/Hiddify-Manager): one user object
+with several protocols/inbounds and a single subscription, traffic quota and
+expiry limits, `subscription-userinfo` headers, split-tunnelling profiles, and
+multi-inbound single-port via Xray fallbacks.
+
 uniproxy stays dependency-free and file-based: no database, no embedded core.
 
 ### Roadmap
@@ -254,6 +326,9 @@ uniproxy stays dependency-free and file-based: no database, no embedded core.
 - [x] Per-client subscriptions: base64, sing-box JSON, Clash YAML.
 - [x] `doctor` pre-flight checks.
 - [x] HTTPUpgrade and XHTTP transports.
+- [x] User registry with quota, expiry and one subscription across both cores.
+- [x] Routing profiles (bypass LAN, direct, block) in sing-box and Clash.
+- [x] Xray fallbacks (several services on one inbound port).
 - [ ] ACME certificate issuance and renewal.
 - [ ] x-ui / s-ui API drivers for true one-console control.
 - [ ] Editable dashboard.
@@ -271,7 +346,7 @@ MIT. See [LICENSE](LICENSE).
 
 `uniproxy` 是一个零依赖的 Node.js **控制面**，把 **Xray**、**sing-box**、**nginx** 在同一台服务器上融合起来：一份 JSON 配置同时驱动三者，自动规划端口、检测冲突、生成三套原生配置、输出客户端链接、生成**分客户端订阅**（三种格式），并且可以在校验后安全地下发配置、失败自动回滚。
 
-0.2 版本补齐了 [s-ui-x](https://github.com/deposist/s-ui-x) 这类面板擅长的运维能力：多格式订阅、按客户端生成配置、HTTPUpgrade / XHTTP 传输、flow 合法性规则、`doctor` 预检和带保护的 `apply`。
+0.2 版本补齐了 [s-ui-x](https://github.com/deposist/s-ui-x) 这类面板擅长的运维能力：多格式订阅、按客户端生成配置、HTTPUpgrade / XHTTP 传输、flow 合法性规则、`doctor` 预检和带保护的 `apply`。0.3 版本参考 [Marzban](https://github.com/Gozargah/Marzban) 与 [Hiddify](https://github.com/hiddify/Hiddify-Manager)，加入**用户注册表**：一个用户跨双内核、一个订阅，支持配额、到期与分流规则。
 
 ### 解决什么问题
 
@@ -291,6 +366,10 @@ MIT. See [LICENSE](LICENSE).
 - **sing-box** 生成器：同协议矩阵，使用 sing-box 支持的传输；
 - **nginx** 生成器：`http`（nginx 独占 443）与 `stream`（443 上按 SNI 分流）两种模式；
 - **按客户端订阅**：base64 链接、sing-box 客户端 JSON、Clash/Mihomo YAML 三种格式；
+- **用户注册表**：一个用户可绑定双内核的多个入站；凭据由 `server.secret` 确定性派生，重新生成不会换 UUID；
+- **配额与到期**：按用户的 `dataLimitBytes`、`usage`、`expireAt`；过期/超额/禁用用户订阅返回 403 且带 `subscription-userinfo`；
+- **分流规则**：绕过局域网、直连域名/CIDR、屏蔽域名，同时应用到 sing-box 与 Clash；
+- **Xray fallbacks**：单入站端口承载多个服务（Marzban 式「单端口多入站」）；
 - Reality 密钥对生成 + 客户端公钥自动推导；
 - **flow 合法性**：`xtls-rprx-vision` 只在 VLESS + TCP + TLS/Reality 下输出，其它组合自动丢弃，避免生成被内核整体拒绝的配置；
 - **`doctor`**：预检占位符、证书、Reality 密钥、重复 SNI、端口和内核二进制；
@@ -307,12 +386,13 @@ node src/index.js validate  -c config.json
 node src/index.js doctor    -c config.json
 node src/index.js generate  -c config.json -o out
 node src/index.js subscribe -c config.json
+node src/index.js users     -c config.json     # 用户、配额、到期
 node src/index.js serve     -c config.json -p 8787
 ```
 
 ### 订阅
 
-每个客户端一个稳定 token（由名称、凭据和 `server.publicIp` 哈希得到），`serve` 提供：
+每个客户端一个稳定 token；注册表用户在所有入站/内核间共用一个 token，未登记客户端则按名称、凭据和 `server.publicIp` 哈希。`serve` 提供：
 
 | 路径 | 内容 |
 |------|------|
@@ -320,7 +400,44 @@ node src/index.js serve     -c config.json -p 8787
 | `/sub/<token>/json` | sing-box 客户端配置（TUN + mixed 入站） |
 | `/sub/<token>/clash` | Clash / Mihomo 配置 |
 
-响应带 `Cache-Control: no-store`、`profile-title`、`profile-update-interval`。要放到自己的域名上，给 `nginx.extraSites` 加一条指向仪表盘或 s-ui 订阅端口的记录即可。同一用户（同名同 UUID/密码）跨内核会被合并成一个订阅，也可以在配置里用 `subToken` 固定 token。
+响应带 `Cache-Control: no-store`、`profile-title`、`profile-update-interval`；用户有配额或到期时间时还会带 `subscription-userinfo: upload=…; download=…; total=…; expire=…`（v2rayN / NekoBox / Mihomo / sing-box 都识别）。`subscription.webPageUrl`、`supportUrl` 可补 `profile-web-page-url` / `support-url`。要放到自己的域名上，给 `nginx.extraSites` 加一条指向仪表盘或 s-ui 订阅端口的记录即可。同一用户（同名同 UUID/密码）跨内核会被合并成一个订阅，也可以在配置里用 `subToken` 固定 token。
+
+### 用户与配额
+
+```json
+"users": [
+  {
+    "name": "alice",
+    "inbounds": ["xray-vless-reality", "sb-vless-ws-tls"],
+    "expireAt": "2027-01-01T00:00:00Z",
+    "dataLimitBytes": 107374182400,
+    "usage": { "upload": 0, "download": 0 },
+    "subToken": "可选固定 token",
+    "enabled": true,
+    "note": "team A"
+  }
+]
+```
+
+- 写了 `inbounds` 就会把用户下发到这些入站：同名客户端直接复用，没有则用 `server.secret` 派生凭据（VLESS/VMess 为 UUID，Trojan 为密码），重复生成不会变。
+- 不写 `inbounds` 时，只绑定已经在这些入站里存在同名客户端的用户。
+- 完全不写 `users` 时，行为与旧版一致（按入站客户端生成订阅）。
+- `uniproxy users` 输出状态（`active` / `expired` / `quota` / `disabled`）、已用/总量与订阅 token；`uniproxy doctor` 会对过期或超额用户告警。
+
+### 分流规则
+
+```json
+"subscription": {
+  "routing": {
+    "bypassPrivate": true,
+    "directDomains": ["corp.example.org"],
+    "directCidrs": ["10.0.0.0/8"],
+    "blockDomains": ["ads.example.net"]
+  }
+}
+```
+
+sing-box 客户端配置生成对应的 `route.rules`（有屏蔽规则时追加 `block` 出站）；Clash 生成 `GEOIP,LAN,DIRECT`、`DOMAIN-SUFFIX,…`、`REJECT`，最后 `MATCH,PROXY`。
 
 ### 安全下发
 
@@ -341,7 +458,11 @@ node src/index.js apply -c config.json --yes    # 校验 + 下发 + reload
 
 ### 参考工程
 
-设计与实现参考了 [s-ui-x](https://github.com/deposist/s-ui-x)（Go 编写的 sing-box 面板，`alireza0/s-ui` 的强化分支），主要借鉴其订阅三格式与响应头、按客户端订阅模型、`xtls-rprx-vision` 的传输约束规则、先校验后下发与回滚、以及 `doctor` 预检思路。uniproxy 依然保持零依赖、纯文件配置，不引入数据库或内嵌内核。
+设计与实现参考了 [s-ui-x](https://github.com/deposist/s-ui-x)（Go 编写的 sing-box 面板，`alireza0/s-ui` 的强化分支），主要借鉴其订阅三格式与响应头、按客户端订阅模型、`xtls-rprx-vision` 的传输约束规则、先校验后下发与回滚、以及 `doctor` 预检思路。
+
+用户层参考 [Marzban](https://github.com/Gozargah/Marzban) 与 [Hiddify Manager](https://github.com/hiddify/Hiddify-Manager)：一个用户对象跨多协议/多入站、单一订阅、流量与到期限制、`subscription-userinfo` 响应头、分流配置，以及用 Xray fallbacks 实现单端口多入站。
+
+uniproxy 依然保持零依赖、纯文件配置，不引入数据库或内嵌内核。
 
 ### 路线图
 
@@ -349,6 +470,9 @@ node src/index.js apply -c config.json --yes    # 校验 + 下发 + reload
 - [x] 按客户端订阅（base64 / sing-box / Clash）；
 - [x] `doctor` 预检；
 - [x] HTTPUpgrade / XHTTP 传输；
+- [x] 用户注册表（配额、到期、跨内核单一订阅）；
+- [x] 分流规则（绕局域网、直连、屏蔽）；
+- [x] Xray fallbacks（单入站端口承载多服务）；
 - [ ] ACME 证书自动签发与续期；
 - [ ] 接 x-ui / s-ui API，实现单控制台；
 - [ ] 仪表盘可编辑；

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { PROTOCOLS, TRANSPORTS, inboundClients, clientSubToken, effectiveFlow, isPathTransport } from './clients.js';
+import { materializeUsers, parseDate, findInbound } from './users.js';
 
 const PANELS = ['xui', 'sui'];
 const PROXY_KINDS = ['xray', 'singbox'];
@@ -61,6 +62,8 @@ export function applyDefaults(c) {
   if (c.subscription.updateIntervalHours == null) c.subscription.updateIntervalHours = 12;
   if (c.subscription.profileTitle == null) c.subscription.profileTitle = 'uniproxy';
   if (c.subscription.publicBase == null) c.subscription.publicBase = '';
+  if (c.subscription.webPageUrl == null) c.subscription.webPageUrl = '';
+  if (c.subscription.supportUrl == null) c.subscription.supportUrl = '';
 
   c.xray = c.xray || {};
   if (c.xray.inbounds == null) c.xray.inbounds = [];
@@ -79,8 +82,11 @@ export function applyDefaults(c) {
       // sing-box h2 spelling differs; normalise the user-facing "h2" on read
       // so links/Clash/nginx agree, and translate at generator time.
       if (kind === 'singbox' && ib.network === 'http') ib.network = 'h2';
+      if (ib.fallbacks == null) ib.fallbacks = undefined;
     }
   }
+  // project registry users onto inbounds before anything validates them
+  materializeUsers(c);
   return c;
 }
 
@@ -103,9 +109,72 @@ export function validateConfig(c) {
   if (!c.subscription.basePath.startsWith('/')) {
     errors.push('subscription.basePath must start with "/"');
   }
-  if (c.subscription.publicBase && !/^https?:\/\//.test(c.subscription.publicBase)) {
-    errors.push('subscription.publicBase must start with http:// or https://');
+  for (const key of ['publicBase', 'webPageUrl', 'supportUrl']) {
+    if (c.subscription[key] && !/^https?:\/\//.test(c.subscription[key])) {
+      errors.push(`subscription.${key} must start with http:// or https://`);
+    }
   }
+
+  const routing = c.subscription.routing;
+  if (typeof routing.bypassPrivate !== 'boolean') {
+    errors.push('subscription.routing.bypassPrivate must be true or false');
+  }
+  for (const key of ['directDomains', 'directCidrs', 'blockDomains']) {
+    if (!Array.isArray(routing[key])) {
+      errors.push(`subscription.routing.${key} must be an array`);
+      continue;
+    }
+    for (const value of routing[key]) {
+      if (typeof value !== 'string' || !value.trim()) {
+        errors.push(`subscription.routing.${key} entries must be non-empty strings`);
+      }
+    }
+  }
+  for (const cidr of routing.directCidrs) {
+    if (typeof cidr === 'string' && !/^[0-9a-fA-F:.]+\/\d{1,3}$/.test(cidr)) {
+      errors.push(`subscription.routing.directCidrs entry "${cidr}" is not a CIDR block`);
+    }
+  }
+
+  const seenUserNames = new Map();
+  (c.users || []).forEach((user, i) => {
+    const at = `users[${i}]`;
+    if (!user || typeof user !== 'object') {
+      errors.push(at + ' must be an object');
+      return;
+    }
+    if (!user.name) errors.push(at + '.name is required');
+    else if (seenUserNames.has(user.name)) {
+      errors.push(`duplicate user name "${user.name}" (${seenUserNames.get(user.name)} and ${at})`);
+    } else seenUserNames.set(user.name, at);
+
+    if (user.expireAt && !parseDate(user.expireAt)) {
+      errors.push(`${at}.expireAt is not a valid ISO date`);
+    }
+    if (user.dataLimitBytes != null) {
+      const limit = Number(user.dataLimitBytes);
+      if (!Number.isFinite(limit) || limit < 0) errors.push(`${at}.dataLimitBytes must be a non-negative number`);
+    }
+    if (user.usage) {
+      for (const key of ['upload', 'download']) {
+        if (user.usage[key] == null) continue;
+        const value = Number(user.usage[key]);
+        if (!Number.isFinite(value) || value < 0) errors.push(`${at}.usage.${key} must be a non-negative number`);
+      }
+    }
+    if (user.inbounds != null) {
+      if (!Array.isArray(user.inbounds)) {
+        errors.push(`${at}.inbounds must be an array of inbound tags`);
+      } else {
+        for (const tag of user.inbounds) {
+          if (!findInbound(c, tag)) errors.push(`${at}.inbounds references unknown inbound "${tag}"`);
+        }
+        if (user.inbounds.length && !c.server.secret && user.enabled !== false) {
+          warnings.push(`${at} will be provisioned with a predictable credential; set server.secret (run "uniproxy init" for a new config)`);
+        }
+      }
+    }
+  });
 
   for (const key of PANELS) {
     const p = c.panels[key];
@@ -165,6 +234,19 @@ export function validateConfig(c) {
     if (isPathTransport(ib.network) && !ib.path && !ib.wsPath && !ib.h2Path) {
       warnings.push(`${at} network=${ib.network} without a path (defaults to /ws)`);
     }
+    if (ib.fallbacks != null) {
+      if (kind !== 'xray') {
+        errors.push(at + '.fallbacks is Xray-only');
+      } else if (!Array.isArray(ib.fallbacks)) {
+        errors.push(at + '.fallbacks must be an array');
+      } else if ((ib.network || 'tcp') !== 'tcp' || ib.security !== 'tls') {
+        errors.push(at + '.fallbacks requires network=tcp and security=tls');
+      } else {
+        ib.fallbacks.forEach((fallback, j) => {
+          if (!fallback || !fallback.dest) errors.push(`${at}.fallbacks[${j}].dest is required`);
+        });
+      }
+    }
 
     const clients = inboundClients(ib);
     if (!clients.length) warnings.push(`${at} has no clients/users; nothing to connect with`);
@@ -176,7 +258,7 @@ export function validateConfig(c) {
         warnings.push(`${who} flow "${client.flow}" is only valid on vless+tcp+tls/reality over TCP; it will be dropped`);
       }
       if (c.subscription.enabled) {
-        const identity = client.name + '|' + client.id;
+        const identity = client.name;
         const token = clientSubToken(c, client);
         const previous = seenTokens.get(token);
         if (previous && previous.identity !== identity) {

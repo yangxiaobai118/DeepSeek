@@ -8,6 +8,7 @@ export function makeConfig(overrides = {}) {
     server: {
       publicIp: '45.77.12.34',
       email: 'ops@example.net',
+      secret: ['test', 'secret', 'fixture'].join('-'),
       domains: { web: 'www.example.net' },
       cert: { certFile: '/etc/uniproxy/fullchain.pem', keyFile: '/etc/uniproxy/privkey.pem' },
     },
@@ -23,7 +24,17 @@ export function makeConfig(overrides = {}) {
       },
     },
     nginx: { mode: 'stream', http2: 'listen', sites: [{ serverName: 'www.example.net', root: '/var/www/html' }] },
-    subscription: { enabled: true, basePath: '/sub', publicBase: '', updateIntervalHours: 12, profileTitle: 'uniproxy' },
+    subscription: {
+      enabled: true,
+      basePath: '/sub',
+      publicBase: '',
+      webPageUrl: '',
+      supportUrl: '',
+      updateIntervalHours: 12,
+      profileTitle: 'uniproxy',
+      routing: { bypassPrivate: true, directDomains: [], directCidrs: [], blockDomains: [] },
+    },
+    users: [],
     xray: {
       enabled: true,
       logLevel: 'warning',

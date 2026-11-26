@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { validateConfig } from './config.js';
 import { analyzePorts } from './ports.js';
 import { inboundClients, clientSubToken } from './clients.js';
+import { resolveUsers } from './users.js';
 import { isPlaceholderAddress, x25519PublicFromPrivate } from './util.js';
 
 /**
@@ -45,6 +46,7 @@ export function runDoctor(c, cfgPath, options = {}) {
   checkNginxServers(c, add);
   checkCertificate(c, add);
   checkSubscriptions(c, add);
+  checkUsers(c, add);
 
   if (options.probe !== false) checkBinaries(add);
 
@@ -170,6 +172,21 @@ function checkSubscriptions(c, add) {
     }
   }
   add('ok', 'subscriptions', users.size + ' client profile(s) under ' + c.subscription.basePath + '/<token>');
+}
+
+function checkUsers(c, add) {
+  const users = resolveUsers(c);
+  if (!users.length) {
+    add('ok', 'users', 'no registry users; inbound clients are used as-is');
+    return;
+  }
+  add('ok', 'users', users.length + ' registry user(s), ' + users.filter((u) => u.status === 'active').length + ' active');
+  for (const user of users) {
+    if (user.status === 'expired') add('warn', 'user ' + user.name, 'expired on ' + user.expireAt.toISOString().slice(0, 10) + '; subscriptions return 403');
+    else if (user.status === 'quota') add('warn', 'user ' + user.name, 'traffic quota reached; subscriptions return 403');
+    else if (user.status === 'disabled') add('warn', 'user ' + user.name, 'disabled; subscriptions return 403');
+    if (user.status === 'active' && !user.inbounds.length) add('warn', 'user ' + user.name, 'not bound to any inbound');
+  }
 }
 
 function checkBinaries(add) {

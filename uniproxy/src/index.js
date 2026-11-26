@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadConfig, validateConfig } from './config.js';
@@ -8,6 +9,7 @@ import { generateSingbox } from './generators/singbox.js';
 import { generateNginx } from './generators/nginx.js';
 import { generateLinkRecords, generateLinks } from './generators/links.js';
 import { buildSubscriptions } from './subscribe.js';
+import { resolveUsers, formatUsersTable } from './users.js';
 import { runDoctor, formatDoctor } from './doctor.js';
 import { buildPlan, formatPlan, applyPlan } from './apply.js';
 import { genUuid, genRealityKeypair, genShortId } from './util.js';
@@ -25,6 +27,7 @@ function usage() {
     '  uniproxy generate  -c <config.json> [-o out]   write configs, links and subscriptions',
     '  uniproxy links     -c <config.json>            print client share links',
     '  uniproxy subscribe -c <config.json>            print per-client subscription URLs',
+    '  uniproxy users     -c <config.json>            list registry users, quotas and expiry',
     '  uniproxy doctor    -c <config.json>            pre-flight diagnostics',
     '  uniproxy apply     -c <config.json> [--yes]    validate, install and reload services',
     '  uniproxy serve     -c <config.json> [-p 8787]  start the dashboard + subscription server',
@@ -73,6 +76,7 @@ function scaffold() {
     server: {
       publicIp: '203.0.113.10',
       email: 'admin@example.com',
+      secret: crypto.randomBytes(32).toString('base64url'),
       domains: { web: 'www.example.com' },
       cert: {
         certFile: '/etc/uniproxy/certs/fullchain.pem',
@@ -100,9 +104,18 @@ function scaffold() {
       enabled: true,
       basePath: '/sub',
       publicBase: '',
+      webPageUrl: '',
+      supportUrl: '',
       updateIntervalHours: 12,
       profileTitle: 'uniproxy',
+      routing: {
+        bypassPrivate: true,
+        directDomains: [],
+        directCidrs: [],
+        blockDomains: [],
+      },
     },
+    users: [],
     xray: {
       enabled: true,
       logLevel: 'warning',
@@ -238,6 +251,11 @@ function cmdGenerate(args) {
     return '  - ' + s.name + ': ' + url;
   });
 
+  const registryUsers = resolveUsers(config).map(function (u) {
+    return '  - ' + u.name + ': ' + u.status +
+      (u.expireAt ? ', expires ' + u.expireAt.toISOString().slice(0, 10) : '');
+  });
+
   const summary = [
     '# uniproxy deployment summary',
     '',
@@ -250,6 +268,8 @@ function cmdGenerate(args) {
     '## generated files',
   ]
     .concat(Object.keys(files).map(function (f) { return '  - ' + path.relative(outDir, f); }))
+    .concat(['', '## users'])
+    .concat(registryUsers.length ? registryUsers : ['  - (no registry users)'])
     .concat(['', '## subscriptions (serve with "uniproxy serve")'])
     .concat(subLines.length ? subLines : ['  - (disabled)'])
     .concat(['', '## client links'])
@@ -298,11 +318,38 @@ function cmdSubscribe(args) {
   console.log('subscriptions (' + subs.length + '):');
   for (const s of subs) {
     const root = base + config.subscription.basePath + '/' + s.token;
-    console.log('  ' + s.name + '  (' + s.links.length + ' link(s))');
+    const status = s.user ? s.user.status : 'active';
+    const expiry = s.user && s.user.expireAt ? s.user.expireAt.toISOString().slice(0, 10) : '-';
+    console.log('  ' + s.name + '  (' + s.links.length + ' link(s), ' + status + ', expires ' + expiry + ')');
     console.log('    links: ' + root);
     console.log('    json:  ' + root + '/json');
     console.log('    clash: ' + root + '/clash');
   }
+}
+
+function cmdUsers(args) {
+  const loaded = loadConfig(args.config || 'config.json');
+  const users = resolveUsers(loaded.config);
+  if (args.json) {
+    console.log(JSON.stringify(users.map(function (u) {
+      return {
+        name: u.name,
+        status: u.status,
+        expireAt: u.expireAt ? u.expireAt.toISOString() : null,
+        dataLimitBytes: u.dataLimitBytes,
+        usage: u.usage,
+        token: u.token,
+        inbounds: u.inbounds.map(function (x) { return x.tag; }),
+        note: u.note,
+      };
+    }), null, 2));
+    return;
+  }
+  if (!users.length) {
+    console.log('no users in the registry; add a "users" array to config.json');
+    return;
+  }
+  console.log(formatUsersTable(users));
 }
 
 function cmdDoctor(args) {
@@ -371,6 +418,7 @@ async function main() {
     else if (cmd === 'generate') cmdGenerate(args);
     else if (cmd === 'links') cmdLinks(args);
     else if (cmd === 'subscribe') cmdSubscribe(args);
+    else if (cmd === 'users') cmdUsers(args);
     else if (cmd === 'doctor') cmdDoctor(args);
     else if (cmd === 'apply') cmdApply(args);
     else if (cmd === 'serve') await cmdServe(args);

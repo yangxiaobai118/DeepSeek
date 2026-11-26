@@ -2,6 +2,7 @@
   "server": {
     "publicIp": "203.0.113.10",
     "email": "admin@example.com",
+    "secret": "REPLACE_WITH_64_CHAR_RANDOM_SECRET",
     "domains": {
       "web": "www.example.com"
     },
@@ -51,9 +52,18 @@
     "enabled": true,
     "basePath": "/sub",
     "publicBase": "",
+    "webPageUrl": "",
+    "supportUrl": "",
     "updateIntervalHours": 12,
-    "profileTitle": "uniproxy"
+    "profileTitle": "uniproxy",
+    "routing": {
+      "bypassPrivate": true,
+      "directDomains": [],
+      "directCidrs": [],
+      "blockDomains": []
+    }
   },
+  "users": [],
   "xray": {
     "enabled": true,
     "logLevel": "warning",

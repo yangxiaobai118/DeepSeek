@@ -38,6 +38,10 @@ ul.issues li{padding:4px 0}
     <ul class="issues">{{ISSUES}}</ul>
   </section>
   <section class="wide">
+    <h2>Users ({{USER_COUNT}})</h2>
+    <table><thead><tr><th>USER</th><th>STATUS</th><th>EXPIRES</th><th>INBOUNDS</th></tr></thead><tbody>{{USER_ROWS}}</tbody></table>
+  </section>
+  <section class="wide">
     <h2>Subscriptions ({{SUB_COUNT}})</h2>
     <table><thead><tr><th>CLIENT</th><th>LINKS (BASE64)</th><th>SING-BOX JSON</th><th>CLASH YAML</th></tr></thead><tbody>{{SUB_ROWS}}</tbody></table>
   </section>

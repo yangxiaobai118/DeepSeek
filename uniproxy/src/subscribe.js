@@ -2,6 +2,7 @@ import { generateLinkRecords } from './generators/links.js';
 import { generateClash } from './generators/clash.js';
 import { slugify } from './clients.js';
 import { x25519PublicFromPrivate, stripUndefined } from './util.js';
+import { resolveUsers } from './users.js';
 
 /**
  * Per-client subscriptions in the three formats s-ui-x serves: base64 link
@@ -9,6 +10,7 @@ import { x25519PublicFromPrivate, stripUndefined } from './util.js';
  */
 export function buildSubscriptions(c) {
   const records = generateLinkRecords(c);
+  const users = new Map(resolveUsers(c).map((user) => [user.token, user]));
   const groups = new Map();
 
   for (const record of records) {
@@ -23,6 +25,7 @@ export function buildSubscriptions(c) {
 
   const out = [];
   for (const group of groups.values()) {
+    group.user = users.get(group.token) || null;
     const links = group.records.map((r) => r.uri);
     const singbox = buildSingboxProfile(c, group);
     const clash = generateClash(c, group.records);
@@ -36,6 +39,8 @@ export function buildSubscriptions(c) {
       base64: Buffer.from(links.join('\n') + '\n', 'utf8').toString('base64'),
       singbox,
       clash,
+      user: group.user,
+      status: group.user ? group.user.status : 'active',
       skipped: group.records.length - represented,
     });
   }
@@ -50,6 +55,17 @@ function buildSingboxProfile(c, group) {
   }
   if (!outbounds.length) return null;
   const first = outbounds[0].tag;
+  const routing = (c.subscription && c.subscription.routing) || {};
+  const rules = [];
+  if (routing.bypassPrivate !== false) rules.push({ ip_is_private: true, outbound: 'direct' });
+  if (routing.directDomains && routing.directDomains.length) {
+    rules.push({ domain_suffix: routing.directDomains, outbound: 'direct' });
+  }
+  if (routing.directCidrs && routing.directCidrs.length) {
+    rules.push({ ip_cidr: routing.directCidrs, outbound: 'direct' });
+  }
+  const blockDomains = routing.blockDomains || [];
+  if (blockDomains.length) rules.push({ domain_suffix: blockDomains, outbound: 'block' });
   return {
     log: { level: 'info', timestamp: true },
     inbounds: [
@@ -63,8 +79,12 @@ function buildSingboxProfile(c, group) {
       },
       { type: 'mixed', tag: 'mixed-in', listen: '127.0.0.1', listen_port: 2080 },
     ],
-    outbounds: outbounds.concat([{ type: 'direct', tag: 'direct' }]),
-    route: { auto_detect_interface: true, final: first },
+    outbounds: outbounds.concat(
+      blockDomains.length
+        ? [{ type: 'direct', tag: 'direct' }, { type: 'block', tag: 'block' }]
+        : [{ type: 'direct', tag: 'direct' }],
+    ),
+    route: stripUndefined({ auto_detect_interface: true, rules: rules.length ? rules : undefined, final: first }),
   };
 }
 
@@ -137,12 +157,21 @@ function realityPublicKey(ib) {
 }
 
 /** Header set used by the dashboard subscription endpoints. */
-export function subscriptionHeaders(c, title) {
-  return {
+export function subscriptionHeaders(c, title, user) {
+  const headers = {
     'content-type': 'text/plain; charset=utf-8',
     'cache-control': 'no-store',
     'profile-title': title,
     'profile-update-interval': String(c.subscription.updateIntervalHours || 12),
     'x-content-type-options': 'nosniff',
   };
+  if (c.subscription.webPageUrl) headers['profile-web-page-url'] = c.subscription.webPageUrl;
+  if (c.subscription.supportUrl) headers['support-url'] = c.subscription.supportUrl;
+  if (user && (user.dataLimitBytes || user.expireAt || user.usedBytes)) {
+    const expire = user.expireAt ? Math.floor(user.expireAt.getTime() / 1000) : 0;
+    headers['subscription-userinfo'] =
+      'upload=' + user.usage.upload + '; download=' + user.usage.download +
+      '; total=' + (user.dataLimitBytes || 0) + '; expire=' + expire;
+  }
+  return headers;
 }

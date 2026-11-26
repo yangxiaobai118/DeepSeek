@@ -55,12 +55,23 @@ export function generateClash(c, records) {
       ...proxies.map((p) => '      - ' + yamlScalar(p.name)),
       '',
       'rules:',
-      '  - MATCH,PROXY',
+      ...clashRules(c).map((rule) => '  - ' + rule),
       '',
     );
   }
 
   return lines.join('\n');
+}
+
+export function clashRules(c) {
+  const routing = (c.subscription && c.subscription.routing) || {};
+  const rules = [];
+  if (routing.bypassPrivate !== false) rules.push('GEOIP,LAN,DIRECT');
+  for (const domain of routing.directDomains || []) rules.push('DOMAIN-SUFFIX,' + domain + ',DIRECT');
+  for (const cidr of routing.directCidrs || []) rules.push('IP-CIDR,' + cidr + ',DIRECT,no-resolve');
+  for (const domain of routing.blockDomains || []) rules.push('DOMAIN-SUFFIX,' + domain + ',REJECT');
+  rules.push('MATCH,PROXY');
+  return rules;
 }
 
 function clashProxy(record, existing) {

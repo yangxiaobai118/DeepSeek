@@ -25,12 +25,24 @@ export function generateXray(c) {
 
 function buildInbound(ib, ctx) {
   const protocol = ib.protocol || 'vless';
+  const settings = buildSettings(protocol, ib);
+  if (Array.isArray(ib.fallbacks) && ib.fallbacks.length) {
+    settings.fallbacks = ib.fallbacks.map((fallback) =>
+      stripUndefined({
+        dest: fallback.dest,
+        path: fallback.path,
+        name: fallback.name,
+        alpn: fallback.alpn,
+        xver: fallback.xver,
+      }),
+    );
+  }
   return stripUndefined({
     tag: ib.tag,
     listen: ib.listen || '0.0.0.0',
     port: Number(ib.port),
     protocol,
-    settings: buildSettings(protocol, ib),
+    settings,
     streamSettings: buildStream(ib, ctx),
     sniffing:
       ib.sniff === false

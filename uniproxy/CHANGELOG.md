@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.0
+
+Reference upgrade after comparing with [Marzban](https://github.com/Gozargah/Marzban)
+and [Hiddify Manager](https://github.com/hiddify/Hiddify-Manager).
+
+### Added
+
+- **User registry** (`users` in `config.json`): one user spans several inbounds
+  and both cores, with `expireAt`, `dataLimitBytes`, `usage`, `enabled`,
+  `subToken` and `note`.
+- Deterministic provisioning: users listed with `inbounds` are materialised into
+  those inbounds; credentials derive from `server.secret` and stay stable across
+  regenerations.
+- Quota / expiry / disabled status; subscription endpoints return **403** with
+  `subscription-userinfo` for inactive users.
+- Subscription headers `subscription-userinfo`, `profile-web-page-url`,
+  `support-url`.
+- Routing profiles (`subscription.routing`): bypass LAN, direct domains/CIDRs
+  and blocked domains for both sing-box route rules and Clash rules.
+- Xray `fallbacks` support (multi-inbound on a single port, Marzban pattern).
+- `users` command (table or `--json`); dashboard user table; doctor warnings
+  for expired / over-quota / unbound users.
+- 10 new tests (44 total).
+
+### Changed
+
+- Registry users share one subscription token across inbounds and cores; the
+  subscription identity is the user name instead of name + credential.
+- `init` now writes `server.secret`, `users` and `subscription.routing`.
+- `subscription.publicBase` validation also covers `webPageUrl` and
+  `supportUrl`.
+
 ## 0.2.0
 
 Reference upgrade after comparing with [s-ui-x](https://github.com/deposist/s-ui-x).

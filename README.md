@@ -1,5 +1,20 @@
 # DeepSeek
-deepseek
+
+English | [中文](#中文)
+
+## English
+
+DeepSeek project repository. The `plugin/github-integration` branch contains
+the DeepSeek Harness GitHub integration plugin.
+
+---
+
+## 中文
+
+DeepSeek 项目仓库。`plugin/github-integration` 分支包含 DeepSeek Harness 的
+GitHub 集成插件。
+
+---
 
 ## Disclaimer / 免责声明
 

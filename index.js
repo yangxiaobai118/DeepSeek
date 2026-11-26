@@ -197,9 +197,11 @@ function gitAuthEnv(token) {
   const basic = Buffer.from(`x-access-token:${token}`, 'utf8').toString('base64')
   return {
     GIT_TERMINAL_PROMPT: '0',
-    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_COUNT: '2',
     GIT_CONFIG_KEY_0: 'http.extraHeader',
     GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
+    GIT_CONFIG_KEY_1: 'credential.helper',
+    GIT_CONFIG_VALUE_1: '',
     GIT_PAGER: 'cat',
     PAGER: 'cat',
   }
@@ -937,6 +939,7 @@ export function apply(ctx, rawConfig) {
       await git([
         '-c', `user.name=${login}`,
         '-c', `user.email=${login}@users.noreply.github.com`,
+        '-c', 'commit.gpgsign=false',
         'commit', '-m', message,
       ])
       committed = true

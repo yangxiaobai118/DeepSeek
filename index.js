@@ -1630,14 +1630,12 @@ export function apply(ctx, rawConfig) {
     search,
   }
 
-  const webServer = ctx.get('webServer')
-  const connection = ctx.get('connection')
-  if (webServer !== undefined && connection !== undefined) {
-    ctx.effect(() => webServer.register({
+  ctx.inject(['webServer', 'connection'], (routeCtx) => {
+    routeCtx.effect(() => routeCtx.webServer.register({
       kind: 'exact',
       path: RPC_PATH,
       handler: async (req, res) => {
-        const rejection = connection.requestRejection(req)
+        const rejection = routeCtx.connection.requestRejection(req)
         if (rejection !== undefined) {
           res.statusCode = rejection
           res.end()
@@ -1689,7 +1687,7 @@ export function apply(ctx, rawConfig) {
         }
       },
     }), `github-integration: POST ${RPC_PATH}`)
-  }
+  })
 
   const systemPrompt = ctx.get('systemPrompt')
   if (systemPrompt !== undefined) {

@@ -13,6 +13,9 @@
 
 ### Added
 
+- `docs/INSTALL.md`: English end-to-end installation manual; the release
+  workflow now renders DOCX/PDF manuals (English and Chinese) and attaches
+  them to the release.
 - `docs/INSTALL.zh-CN.md`: end-to-end installation manual covering package
   choice, core installation, certificates, configuration, `validate`/`doctor`,
   `generate`, `apply`, subscriptions, acceptance checks, routine operations,

@@ -159,3 +159,50 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           gh release upload "uniproxy-v$VERSION" bin/* --clobber
+
+  docs:
+    name: manuals
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install python-docx
+        run: pip install python-docx
+
+      - name: Build the manuals (DOCX)
+        run: |
+          mkdir -p docs-out
+          VERSION=$(node -p "require('./uniproxy/package.json').version")
+          python uniproxy/scripts/md2docx.py uniproxy/docs/INSTALL.zh-CN.md "docs-out/uniproxy-$VERSION-manual-zh.docx" "$VERSION" "安装与部署手册" "按实际操作顺序编写：每一步包含目的、操作、预期结果与排查方式" "目录"
+          python uniproxy/scripts/md2docx.py uniproxy/docs/INSTALL.md "docs-out/uniproxy-$VERSION-manual-en.docx" "$VERSION" "Installation & Deployment Manual" "Step-by-step: goal, commands, expected result and troubleshooting" "Contents"
+
+      - name: Convert the manuals to PDF
+        run: |
+          if ! command -v soffice >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libreoffice-writer
+          fi
+          if ! fc-list :lang=zh | grep -q .; then
+            sudo apt-get install -y fonts-noto-cjk
+          fi
+          (cd docs-out && soffice --headless --convert-to pdf *.docx) || echo "PDF conversion failed; DOCX will still be uploaded"
+          ls -lh docs-out
+
+      - name: Upload the manuals to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./uniproxy/package.json').version")
+          gh release upload "uniproxy-v$VERSION" docs-out/* --clobber

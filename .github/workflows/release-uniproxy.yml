@@ -1,0 +1,69 @@
+name: release uniproxy
+
+on:
+  push:
+    branches: [feature/uniproxy]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: uniproxy-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: uniproxy
+    steps:
+      - name: Check out the branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Run the test suite
+        run: node --test test/*.test.js
+
+      - name: Resolve package version and tag
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=uniproxy-v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build tarball, source zip and checksums
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p dist
+          npm pack --pack-destination dist
+          STAGE="$RUNNER_TEMP/uniproxy-$VERSION"
+          mkdir -p "$STAGE"
+          cp -R package.json README.md CHANGELOG.md LICENSE DISCLAIMER.md config.example.json src test "$STAGE"/
+          (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/uniproxy/dist/uniproxy-$VERSION.zip" "uniproxy-$VERSION")
+          (cd dist && sha256sum *.tgz *.zip > SHA256SUMS.txt && ls -lh)
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          awk 'BEGIN { n = 0 } /^## / { n++ } n <= 1 { print }' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/*.tgz dist/*.zip dist/SHA256SUMS.txt --clobber
+          else
+            gh release create "$TAG" dist/*.tgz dist/*.zip dist/SHA256SUMS.txt \
+              --title "uniproxy $VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --target "$GITHUB_SHA"
+          fi

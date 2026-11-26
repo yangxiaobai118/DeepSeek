@@ -1,3 +1,9 @@
+**Disclaimer:** This project is only for personal learning and communication, please do not use it for illegal purposes, please do not use it in a production environment.
+
+**免责声明：** 本项目仅供个人学习与交流使用，请勿用于非法用途，请勿在生产环境中使用。
+
+---
+
 # GitHub integration / GitHub 集成
 
 English | [中文](#中文)
@@ -143,10 +149,3 @@ The bundle row accepts these optional fields:
   仍可使用智能体工具。
 - 令牌保存在本 profile 的本地凭据库中。关闭插件不会删除它；请使用 **断开连接** 移除。
 
----
-
-## Disclaimer / 免责声明
-
-**Disclaimer:** This project is only for personal learning and communication, please do not use it for illegal purposes, please do not use it in a production environment.
-
-**免责声明：** 本项目仅供个人学习与交流使用，请勿用于非法用途，请勿在生产环境中使用。

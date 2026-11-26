@@ -23,6 +23,9 @@ export function collectPorts(c) {
   }
   if (c.panels.sui && c.panels.sui.enabled) {
     add(c.panels.sui.port, 'panel:s-ui', { listen: c.panels.sui.listen });
+    if (c.panels.sui.sub && c.panels.sui.sub.enabled) {
+      add(c.panels.sui.sub.port, 'panel:s-ui-sub', { listen: c.panels.sui.listen });
+    }
   }
 
   (c.xray.inbounds || []).forEach((ib, i) =>
@@ -66,6 +69,13 @@ export function analyzePorts(c) {
       warnings.push(
         `panel:${key} listens on ${p.listen}; recommended 127.0.0.1 behind nginx`,
       );
+    }
+  }
+
+  if (c.panels.sui && c.panels.sui.enabled && c.panels.sui.sub && c.panels.sui.sub.enabled) {
+    const sub = c.panels.sui.sub;
+    if (sub.domain && sub.domain === c.panels.sui.domain) {
+      warnings.push('panels.sui.sub.domain equals panels.sui.domain; s-ui subscriptions will shadow the panel path');
     }
   }
 

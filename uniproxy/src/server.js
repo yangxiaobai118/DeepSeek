@@ -5,6 +5,7 @@ import { generateLinks } from './generators/links.js';
 import { generateXray } from './generators/xray.js';
 import { generateSingbox } from './generators/singbox.js';
 import { generateNginx } from './generators/nginx.js';
+import { buildSubscriptions, subscriptionHeaders } from './subscribe.js';
 
 const templatePath = new URL('./dashboard.html', import.meta.url);
 
@@ -21,6 +22,12 @@ function fill(tpl, token, value) {
   return tpl.split(token).join(value);
 }
 
+function send(res, status, headers, body) {
+  res.writeHead(status, headers);
+  if (res.req && res.req.method === 'HEAD') res.end();
+  else res.end(body);
+}
+
 function render(config, cfgPath) {
   const tpl = fs.readFileSync(templatePath, 'utf8');
   const report = analyzePorts(config);
@@ -28,6 +35,8 @@ function render(config, cfgPath) {
   const singbox = generateSingbox(config);
   const nginx = generateNginx(config);
   const links = generateLinks(config);
+  const subs = config.subscription.enabled ? buildSubscriptions(config) : [];
+  const base = config.subscription.basePath;
 
   const portRows = report.entries
     .map(function (e) {
@@ -46,6 +55,17 @@ function render(config, cfgPath) {
     .join('');
   const linkHtml = linkItems || '<li>none</li>';
 
+  const subRows = subs
+    .map(function (s) {
+      const root = base + '/' + s.token;
+      return '<tr><td>' + esc(s.name) + '</td>' +
+        '<td><code>' + esc(root) + '</code></td>' +
+        '<td><code>' + esc(root + '/json') + '</code></td>' +
+        '<td><code>' + esc(root + '/clash') + '</code></td></tr>';
+    })
+    .join('');
+  const subHtml = subRows || '<tr><td colspan="4">no clients configured</td></tr>';
+
   const pre = function (obj) {
     if (!obj) return '(disabled)';
     return esc(JSON.stringify(obj, null, 2));
@@ -57,6 +77,8 @@ function render(config, cfgPath) {
   html = fill(html, '{{PUBLIC_IP}}', esc(config.server.publicIp || 'unset'));
   html = fill(html, '{{PORT_ROWS}}', portRows);
   html = fill(html, '{{ISSUES}}', issueHtml);
+  html = fill(html, '{{SUB_COUNT}}', String(subs.length));
+  html = fill(html, '{{SUB_ROWS}}', subHtml);
   html = fill(html, '{{LINK_COUNT}}', String(links.length));
   html = fill(html, '{{LINK_ITEMS}}', linkHtml);
   html = fill(html, '{{XRAY_PREVIEW}}', pre(xray));
@@ -66,29 +88,66 @@ function render(config, cfgPath) {
 }
 
 export function startDashboard(config, cfgPath, port) {
+  const base = config.subscription.basePath;
   const server = http.createServer(function (req, res) {
-    if (req.url === '/api/state') {
+    const url = new URL(req.url, 'http://127.0.0.1');
+
+    if (url.pathname === '/api/state') {
       const report = analyzePorts(config);
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(
+      const subs = config.subscription.enabled ? buildSubscriptions(config) : [];
+      send(res, 200, { 'content-type': 'application/json', 'cache-control': 'no-store' },
         JSON.stringify(
           {
             ports: report.entries,
             errors: report.errors,
             warnings: report.warnings,
             links: generateLinks(config),
+            subscriptions: subs.map(function (s) {
+              return { name: s.name, token: s.token, url: base + '/' + s.token };
+            }),
           },
           null,
           2,
-        ),
-      );
+        ));
       return;
     }
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(render(config, cfgPath));
+
+    if (config.subscription.enabled && url.pathname.startsWith(base + '/')) {
+      const parts = url.pathname.slice(base.length + 1).split('/').filter(Boolean);
+      const token = parts[0];
+      const format = parts[1] || 'links';
+      const sub = buildSubscriptions(config).find(function (s) { return s.token === token; });
+      if (!sub) {
+        send(res, 404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' },
+          'unknown subscription token');
+        return;
+      }
+      const headers = subscriptionHeaders(config, sub.title);
+      if (format === 'links') {
+        send(res, 200, headers, sub.base64);
+      } else if (format === 'json') {
+        if (!sub.singbox) {
+          send(res, 404, headers, 'no sing-box compatible inbounds for this client');
+          return;
+        }
+        send(res, 200, { ...headers, 'content-type': 'application/json; charset=utf-8' },
+          JSON.stringify(sub.singbox, null, 2));
+      } else if (format === 'clash') {
+        send(res, 200, { ...headers, 'content-type': 'text/yaml; charset=utf-8' }, sub.clash);
+      } else {
+        send(res, 404, headers, 'unknown subscription format');
+      }
+      return;
+    }
+
+    send(res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
+      render(config, cfgPath));
   });
   server.listen(port, '127.0.0.1', function () {
     console.log('uniproxy dashboard -> http://127.0.0.1:' + port);
+    if (config.subscription.enabled) {
+      console.log('subscriptions   -> http://127.0.0.1:' + port + base + '/<token>[/json|/clash]');
+    }
   });
   return server;
 }

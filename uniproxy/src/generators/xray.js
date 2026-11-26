@@ -1,4 +1,5 @@
 import { stripUndefined } from '../util.js';
+import { effectiveFlow } from '../clients.js';
 
 /** Build a complete Xray config.json from the unified config. */
 export function generateXray(c) {
@@ -39,20 +40,25 @@ function buildInbound(ib, ctx) {
 }
 
 function buildSettings(protocol, ib) {
+  const clients = Array.isArray(ib.clients) ? ib.clients : ib.users || [];
   if (protocol === 'vless') {
     return {
-      clients: (ib.clients || []).map((cl) =>
-        stripUndefined({ id: cl.id, email: cl.email, flow: cl.flow }),
+      clients: clients.map((cl) =>
+        stripUndefined({
+          id: cl.id || cl.uuid,
+          email: cl.email || cl.name,
+          flow: effectiveFlow(ib, cl) || undefined,
+        }),
       ),
       decryption: 'none',
     };
   }
   if (protocol === 'vmess') {
     return {
-      clients: (ib.clients || []).map((cl) =>
+      clients: clients.map((cl) =>
         stripUndefined({
-          id: cl.id,
-          email: cl.email,
+          id: cl.id || cl.uuid,
+          email: cl.email || cl.name,
           alterId: cl.alterId == null ? 0 : cl.alterId,
         }),
       ),
@@ -60,8 +66,8 @@ function buildSettings(protocol, ib) {
   }
   if (protocol === 'trojan') {
     return {
-      clients: (ib.clients || []).map((cl) =>
-        stripUndefined({ password: cl.password, email: cl.email }),
+      clients: clients.map((cl) =>
+        stripUndefined({ password: cl.password, email: cl.email || cl.name }),
       ),
     };
   }
@@ -72,25 +78,35 @@ function buildStream(ib, ctx) {
   const network = ib.network || 'tcp';
   const security = ib.security || 'none';
   const ss = { network, security };
+  const host = ib.host || ib.wsHost || ib.httpHost;
+  const path = ib.path || ib.wsPath || ib.h2Path || (network === 'ws' ? '/ws' : '/');
 
   if (network === 'ws') {
     ss.wsSettings = stripUndefined({
-      path: ib.wsPath || '/ws',
-      headers: ib.wsHost ? { Host: ib.wsHost } : undefined,
+      path,
+      headers: host ? { Host: host } : undefined,
     });
   } else if (network === 'grpc') {
-    ss.grpcSettings = { serviceName: ib.grpcService || 'grpc' };
+    ss.grpcSettings = stripUndefined({
+      serviceName: ib.grpcService || 'grpc',
+      multiMode: ib.grpcMultiMode === true ? true : undefined,
+    });
   } else if (network === 'h2') {
-    ss.httpSettings = stripUndefined({
-      path: ib.h2Path || '/',
-      host: ib.wsHost ? [ib.wsHost] : undefined,
+    ss.httpSettings = stripUndefined({ path, host: host ? [host] : undefined });
+  } else if (network === 'httpupgrade') {
+    ss.httpupgradeSettings = stripUndefined({ path, host: host || undefined });
+  } else if (network === 'xhttp') {
+    ss.xhttpSettings = stripUndefined({
+      path,
+      host: host || undefined,
+      mode: ib.xhttpMode || 'auto',
     });
   }
 
   if (security === 'tls') {
     ss.tlsSettings = stripUndefined({
       serverName: ib.sni,
-      alpn: ['h2', 'http/1.1'],
+      alpn: network === 'h2' ? ['h2', 'http/1.1'] : ['http/1.1'],
       certificates: [{ certificateFile: ctx.certFile, keyFile: ctx.keyFile }],
     });
   } else if (security === 'reality') {
@@ -102,6 +118,7 @@ function buildStream(ib, ctx) {
       shortIds: ib.reality && ib.reality.shortIds && ib.reality.shortIds.length
         ? ib.reality.shortIds
         : [''],
+      spiderX: ib.reality && ib.reality.spiderX,
     });
   }
   return ss;

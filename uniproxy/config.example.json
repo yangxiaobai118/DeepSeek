@@ -26,18 +26,33 @@
       "enabled": true,
       "domain": "sui.example.com",
       "listen": "127.0.0.1",
-      "port": 2095
+      "port": 2095,
+      "sub": {
+        "enabled": true,
+        "domain": "sub.example.com",
+        "port": 2096,
+        "path": "/sub/"
+      }
     }
   },
   "nginx": {
     "mode": "stream",
+    "http2": "listen",
     "sites": [
       {
         "serverName": "www.example.com",
         "root": "/var/www/html",
         "index": "index.html"
       }
-    ]
+    ],
+    "extraSites": []
+  },
+  "subscription": {
+    "enabled": true,
+    "basePath": "/sub",
+    "publicBase": "",
+    "updateIntervalHours": 12,
+    "profileTitle": "uniproxy"
   },
   "xray": {
     "enabled": true,
@@ -63,8 +78,8 @@
         },
         "clients": [
           {
-            "id": "6f1a7d2e-0000-4000-8000-000000000001",
-            "email": "user1",
+            "id": "11111111-2222-4333-8444-555555555555",
+            "name": "user1",
             "flow": "xtls-rprx-vision"
           }
         ]
@@ -82,15 +97,20 @@
         "sni": "sb.example.com",
         "network": "ws",
         "security": "tls",
-        "wsPath": "/sbws",
+        "path": "/sbws",
         "users": [
           {
-            "uuid": "6f1a7d2e-0000-4000-8000-000000000002",
-            "name": "sbuser",
-            "flow": ""
+            "uuid": "66666666-7777-4888-8999-000000000000",
+            "name": "sbuser"
           }
         ]
       }
     ]
+  },
+  "apply": {
+    "xrayConfig": "/usr/local/etc/xray/config.json",
+    "singboxConfig": "/usr/local/etc/sing-box/config.json",
+    "nginxConfig": "/etc/uniproxy/nginx.conf",
+    "backup": true
   }
 }

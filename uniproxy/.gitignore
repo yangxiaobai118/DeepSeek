@@ -1,4 +1,5 @@
 out/
 config.json
-test/
 node_modules/
+tmp-test/
+*.bak-*

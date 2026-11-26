@@ -26,6 +26,10 @@ export function genUuid() {
   return crypto.randomUUID();
 }
 
+export function sha256Hex(value) {
+  return crypto.createHash('sha256').update(String(value)).digest('hex');
+}
+
 /**
  * Derive the X25519 public key (websafe base64, no padding) that Reality
  * clients need from a 32-byte raw private key in the same encoding.
@@ -55,4 +59,25 @@ export function genRealityKeypair() {
 
 export function genShortId() {
   return crypto.randomBytes(8).toString('hex');
+}
+
+/** Placeholder IPs from documentation ranges, or every unset value. */
+export function isPlaceholderAddress(value) {
+  if (!value) return true;
+  const v = String(value).trim();
+  if (v === 'YOUR_SERVER_IP' || v === 'REPLACE_ME' || v === '203.0.113.10') return true;
+  return /^203\.0\.113\./.test(v) || /^198\.51\.100\./.test(v) || /^192\.0\.2\./.test(v);
+}
+
+/** Format bytes so the dashboard and doctor agree on units. */
+export function formatBytes(n) {
+  if (!Number.isFinite(n)) return String(n);
+  const units = ['B', 'KiB', 'MiB', 'GiB'];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return (i === 0 ? String(v) : v.toFixed(1)) + ' ' + units[i];
 }

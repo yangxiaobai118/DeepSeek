@@ -1,4 +1,5 @@
 import { stripUndefined } from '../util.js';
+import { effectiveFlow, singboxTransportName } from '../clients.js';
 
 /** Build a complete sing-box config.json from the unified config. */
 export function generateSingbox(c) {
@@ -25,21 +26,24 @@ function buildInbound(ib, ctx) {
     listen_port: Number(ib.port),
   };
 
+  const users = Array.isArray(ib.users) ? ib.users : ib.clients || [];
+
   if (type === 'vless') {
-    inbound.users = (ib.users || []).map((u) =>
-      stripUndefined({ uuid: u.uuid, name: u.name, flow: u.flow || undefined }),
+    inbound.users = users.map((u) =>
+      stripUndefined({ uuid: u.uuid || u.id, name: u.name || u.email, flow: effectiveFlow(ib, u) || undefined }),
     );
   } else if (type === 'vmess') {
-    inbound.users = (ib.users || []).map((u) =>
+    inbound.users = users.map((u) =>
       stripUndefined({
-        uuid: u.uuid,
-        name: u.name,
+        uuid: u.uuid || u.id,
+        name: u.name || u.email,
         alterId: u.alterId == null ? 0 : u.alterId,
       }),
     );
   } else if (type === 'trojan') {
-    inbound.users = (ib.users || []).map((u) =>
-      stripUndefined({ password: u.password, name: u.name }),
+    // sing-box has no top-level trojan password: only per-user "users".
+    inbound.users = users.map((u) =>
+      stripUndefined({ password: u.password, name: u.name || u.email }),
     );
   } else {
     throw new Error('unsupported sing-box protocol: ' + type);
@@ -51,6 +55,7 @@ function buildInbound(ib, ctx) {
       certificate_path: ctx.certFile,
       key_path: ctx.keyFile,
       server_name: ib.sni,
+      alpn: (ib.network || 'tcp') === 'h2' ? ['h2', 'http/1.1'] : undefined,
     });
   } else if (ib.security === 'reality') {
     const dest = (ib.reality && ib.reality.dest) || '';
@@ -60,6 +65,7 @@ function buildInbound(ib, ctx) {
     inbound.tls = stripUndefined({
       enabled: true,
       server_name: ib.sni,
+      alpn: (ib.network || 'tcp') === 'h2' ? ['h2', 'http/1.1'] : undefined,
       reality: stripUndefined({
         enabled: true,
         handshake: stripUndefined({ server: host, server_port: port }),
@@ -70,15 +76,34 @@ function buildInbound(ib, ctx) {
   }
 
   const network = ib.network || 'tcp';
+  const host = ib.host || ib.wsHost || ib.httpHost;
+  const path = ib.path || ib.wsPath || ib.h2Path || (network === 'ws' ? '/ws' : '/');
+  const transportType = singboxTransportName(network);
+
   if (network === 'ws') {
     inbound.transport = stripUndefined({
       type: 'ws',
-      path: ib.wsPath || '/ws',
-      headers: ib.wsHost ? { Host: ib.wsHost } : undefined,
+      path,
+      headers: host ? { Host: host } : undefined,
     });
   } else if (network === 'grpc') {
     inbound.transport = { type: 'grpc', service_name: ib.grpcService || 'grpc' };
+  } else if (network === 'h2') {
+    inbound.transport = stripUndefined({
+      type: 'http',
+      path,
+      host: host ? [host] : undefined,
+    });
+  } else if (network === 'httpupgrade') {
+    inbound.transport = stripUndefined({
+      type: 'httpupgrade',
+      path,
+      host: host ? [host] : undefined,
+    });
+  } else if (network === 'xhttp') {
+    throw new Error('sing-box does not support the xhttp transport; use it only under xray');
   }
+  if (transportType === 'tcp') delete inbound.transport;
 
   return inbound;
 }

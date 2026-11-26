@@ -6,7 +6,10 @@ import { analyzePorts, formatPortTable } from './ports.js';
 import { generateXray } from './generators/xray.js';
 import { generateSingbox } from './generators/singbox.js';
 import { generateNginx } from './generators/nginx.js';
-import { generateLinks } from './generators/links.js';
+import { generateLinkRecords, generateLinks } from './generators/links.js';
+import { buildSubscriptions } from './subscribe.js';
+import { runDoctor, formatDoctor } from './doctor.js';
+import { buildPlan, formatPlan, applyPlan } from './apply.js';
 import { genUuid, genRealityKeypair, genShortId } from './util.js';
 
 const NL = String.fromCharCode(10);
@@ -19,14 +22,25 @@ function usage() {
     '  uniproxy init      -c <config.json>            create a starter config with real secrets',
     '  uniproxy validate  -c <config.json>            check schema + port conflicts',
     '  uniproxy ports     -c <config.json>            print the resolved port map',
-    '  uniproxy generate  -c <config.json> [-o out]   write xray/sing-box/nginx configs + links',
+    '  uniproxy generate  -c <config.json> [-o out]   write configs, links and subscriptions',
     '  uniproxy links     -c <config.json>            print client share links',
-    '  uniproxy serve     -c <config.json> [-p 8787]  start the read-only web dashboard',
+    '  uniproxy subscribe -c <config.json>            print per-client subscription URLs',
+    '  uniproxy doctor    -c <config.json>            pre-flight diagnostics',
+    '  uniproxy apply     -c <config.json> [--yes]    validate, install and reload services',
+    '  uniproxy serve     -c <config.json> [-p 8787]  start the dashboard + subscription server',
     '',
     'Options:',
     '  -c, --config <file>   path to the unified config (default: config.json)',
     '  -o, --out <dir>       output directory for generate (default: out)',
     '  -p, --port <n>        dashboard port (default: 8787)',
+    '      --client <name>   only emit links for one client (by name or index)',
+    '      --address <ip>    override the public address used in links',
+    '      --json            machine-readable output (links, doctor, subscribe)',
+    '      --no-probe        doctor: skip xray/sing-box/nginx version probes',
+    '      --yes             apply: actually write configs and reload services',
+    '      --strict          apply: fail when a validator/reload command is missing',
+    '      --skip-validate   apply: do not run xray/sing-box/nginx config tests',
+    '      --skip-reload     apply: install configs without reloading services',
   ].join(NL);
 }
 
@@ -37,6 +51,15 @@ function parseArgs(argv) {
     if (a === '-c' || a === '--config') args.config = argv[++i];
     else if (a === '-o' || a === '--out') args.out = argv[++i];
     else if (a === '-p' || a === '--port') args.port = Number(argv[++i]);
+    else if (a === '--client') args.client = argv[++i];
+    else if (a === '--address') args.address = argv[++i];
+    else if (a === '--json') args.json = true;
+    else if (a === '--no-probe') args.probe = false;
+    else if (a === '--yes' || a === '-y') args.yes = true;
+    else if (a === '--strict') args.strict = true;
+    else if (a === '--skip-validate') args.skipValidate = true;
+    else if (a === '--skip-reload') args.skipReload = true;
+    else if (a === '-h' || a === '--help') args.help = true;
     else args._.push(a);
   }
   return args;
@@ -59,11 +82,26 @@ function scaffold() {
     ports: { http: 80, https: 443, nginxInternalTls: 8443 },
     panels: {
       xui: { enabled: true, domain: 'xui.example.com', listen: '127.0.0.1', port: 54321 },
-      sui: { enabled: true, domain: 'sui.example.com', listen: '127.0.0.1', port: 2095 },
+      sui: {
+        enabled: true,
+        domain: 'sui.example.com',
+        listen: '127.0.0.1',
+        port: 2095,
+        sub: { enabled: true, domain: 'sub.example.com', port: 2096, path: '/sub/' },
+      },
     },
     nginx: {
       mode: 'stream',
+      http2: 'listen',
       sites: [{ serverName: 'www.example.com', root: '/var/www/html', index: 'index.html' }],
+      extraSites: [],
+    },
+    subscription: {
+      enabled: true,
+      basePath: '/sub',
+      publicBase: '',
+      updateIntervalHours: 12,
+      profileTitle: 'uniproxy',
     },
     xray: {
       enabled: true,
@@ -83,7 +121,7 @@ function scaffold() {
             privateKey: kp.privateKey,
             shortIds: [genShortId()],
           },
-          clients: [{ id: uuid1, email: 'user1', flow: 'xtls-rprx-vision' }],
+          clients: [{ id: uuid1, name: 'user1', flow: 'xtls-rprx-vision' }],
         },
       ],
     },
@@ -98,10 +136,16 @@ function scaffold() {
           sni: 'sb.example.com',
           network: 'ws',
           security: 'tls',
-          wsPath: '/sbws',
+          path: '/sbws',
           users: [{ uuid: uuid2, name: 'sbuser', flow: '' }],
         },
       ],
+    },
+    apply: {
+      xrayConfig: '/usr/local/etc/xray/config.json',
+      singboxConfig: '/usr/local/etc/sing-box/config.json',
+      nginxConfig: '/etc/uniproxy/nginx.conf',
+      backup: true,
     },
   };
 }
@@ -168,14 +212,31 @@ function cmdGenerate(args) {
 
   files[path.join(outDir, 'nginx', 'nginx.conf')] = generateNginx(config);
 
-  const links = generateLinks(config);
+  const records = generateLinkRecords(config);
+  const links = records.map((r) => r.uri);
   files[path.join(outDir, 'links.txt')] =
-    '# client share links (import into v2rayN / NekoBox)' + NL + links.join(NL) + NL;
+    '# client share links (import into v2rayN / NekoBox / Clash)' + NL + links.join(NL) + NL;
+
+  const subs = config.subscription.enabled ? buildSubscriptions(config) : [];
+  for (const sub of subs) {
+    const stem = path.join(outDir, 'sub', sub.slug + '-' + sub.token);
+    files[stem + '.txt'] = sub.base64 + NL;
+    if (sub.singbox) files[stem + '.json'] = JSON.stringify(sub.singbox, null, 2) + NL;
+    files[stem + '.clash.yaml'] = sub.clash;
+  }
 
   for (const file of Object.keys(files)) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, files[file]);
   }
+
+  const subLines = subs.map(function (s) {
+    const rel = config.subscription.basePath + '/' + s.token;
+    const url = config.subscription.publicBase
+      ? config.subscription.publicBase.replace(/\/+$/, '') + rel
+      : rel;
+    return '  - ' + s.name + ': ' + url;
+  });
 
   const summary = [
     '# uniproxy deployment summary',
@@ -189,6 +250,8 @@ function cmdGenerate(args) {
     '## generated files',
   ]
     .concat(Object.keys(files).map(function (f) { return '  - ' + path.relative(outDir, f); }))
+    .concat(['', '## subscriptions (serve with "uniproxy serve")'])
+    .concat(subLines.length ? subLines : ['  - (disabled)'])
     .concat(['', '## client links'])
     .concat(links.map(function (l) { return '  ' + l; }))
     .concat(['', '']);
@@ -202,7 +265,90 @@ function cmdGenerate(args) {
 
 function cmdLinks(args) {
   const loaded = loadConfig(args.config || 'config.json');
-  for (const l of generateLinks(loaded.config)) console.log(l);
+  const records = generateLinkRecords(loaded.config, {
+    client: args.client,
+    address: args.address,
+  });
+  if (args.json) {
+    console.log(JSON.stringify(records.map(function (r) {
+      return { client: r.client, tag: r.tag, protocol: r.protocol, uri: r.uri };
+    }), null, 2));
+    return;
+  }
+  for (const r of records) console.log(r.uri);
+}
+
+function cmdSubscribe(args) {
+  const loaded = loadConfig(args.config || 'config.json');
+  const config = loaded.config;
+  const subs = buildSubscriptions(config);
+  if (args.json) {
+    console.log(JSON.stringify(subs.map(function (s) {
+      return { name: s.name, token: s.token, url: config.subscription.basePath + '/' + s.token, links: s.links.length };
+    }), null, 2));
+    return;
+  }
+  if (!subs.length) {
+    console.log('no subscriptions (check subscription.enabled and inbound clients)');
+    return;
+  }
+  const base = config.subscription.publicBase
+    ? config.subscription.publicBase.replace(/\/+$/, '')
+    : 'http://127.0.0.1:8787';
+  console.log('subscriptions (' + subs.length + '):');
+  for (const s of subs) {
+    const root = base + config.subscription.basePath + '/' + s.token;
+    console.log('  ' + s.name + '  (' + s.links.length + ' link(s))');
+    console.log('    links: ' + root);
+    console.log('    json:  ' + root + '/json');
+    console.log('    clash: ' + root + '/clash');
+  }
+}
+
+function cmdDoctor(args) {
+  const loaded = loadConfig(args.config || 'config.json');
+  const report = runDoctor(loaded.config, loaded.path, { probe: args.probe !== false });
+  if (args.json) console.log(JSON.stringify(report, null, 2));
+  else console.log(formatDoctor(report));
+  if (report.failed) process.exit(1);
+}
+
+function cmdApply(args) {
+  const loaded = loadConfig(args.config || 'config.json');
+  const config = loaded.config;
+  const val = validateConfig(config);
+  const portReport = analyzePorts(config);
+  const blocking = val.errors.concat(portReport.errors);
+  if (blocking.length) {
+    for (const e of blocking) console.error('ERROR ' + e);
+    console.error('fix errors before applying');
+    process.exit(1);
+  }
+  if (!config.apply) {
+    console.error('no "apply" block in config; add target paths first');
+    process.exit(1);
+  }
+
+  const targets = buildPlan(config);
+  if (!targets.length) {
+    console.error('apply has no target paths; set apply.xrayConfig / singboxConfig / nginxConfig');
+    process.exit(1);
+  }
+  console.log(formatPlan(targets));
+  if (!args.yes) {
+    console.log('');
+    console.log('dry run: re-run with --yes to write these files and reload the services');
+    return;
+  }
+
+  const result = applyPlan(config, targets, {
+    strict: args.strict,
+    skipValidate: args.skipValidate,
+    skipReload: args.skipReload,
+  });
+  console.log('');
+  for (const a of result.actions) console.log(a.level.toUpperCase() + '  ' + a.text);
+  if (result.failed) process.exit(1);
 }
 
 async function cmdServe(args) {
@@ -224,6 +370,9 @@ async function main() {
     else if (cmd === 'ports') cmdPorts(args);
     else if (cmd === 'generate') cmdGenerate(args);
     else if (cmd === 'links') cmdLinks(args);
+    else if (cmd === 'subscribe') cmdSubscribe(args);
+    else if (cmd === 'doctor') cmdDoctor(args);
+    else if (cmd === 'apply') cmdApply(args);
     else if (cmd === 'serve') await cmdServe(args);
     else {
       console.error('unknown command: ' + cmd);

@@ -552,13 +552,18 @@ window.__ModuleLoader__.load({
             if (form.owner.trim() === '' || form.repo.trim() === '') {
               throw new Error(t('required'))
             }
+            const submittedToken = form.token.trim()
             const view = await call('bind', {
-              token: form.token.trim() === '' ? undefined : form.token.trim(),
+              token: submittedToken === '' ? undefined : submittedToken,
               owner: form.owner,
               repo: form.repo,
               branch: form.branch,
             })
             applyStatus(view)
+            if (submittedToken !== '') {
+              setForm((current) => ({ ...current, token: submittedToken }))
+              setTokenVisible(false)
+            }
             setFiles(null)
             setPreview(null)
             setPath('')

@@ -1,6 +1,6 @@
 {
   "name": "uniproxy",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Unified control plane for Xray, sing-box and nginx on a single host: one config, port planning, native configs, 443 SNI multiplexing, a user registry with quotas/expiry, and per-user subscriptions (base64 / sing-box / Clash).",
   "type": "module",
   "bin": {
@@ -17,7 +17,8 @@
     "subscribe": "node src/index.js subscribe -c config.json",
     "doctor": "node src/index.js doctor -c config.json",
     "apply": "node src/index.js apply -c config.json",
-    "users": "node src/index.js users -c config.json"
+    "users": "node src/index.js users -c config.json",
+    "pack:platforms": "node scripts/package.mjs --out dist"
   },
   "engines": {
     "node": ">=18"

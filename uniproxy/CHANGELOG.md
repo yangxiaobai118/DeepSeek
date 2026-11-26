@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.1
+
+### Added
+
+- Per-platform release bundles, mirroring the asset matrix of Go-based panels:
+  `linux-{386,amd64,arm64,armv5,armv6,armv7,s390x}` and
+  `darwin-{amd64,arm64}` as `.tar.gz`, `windows-{amd64,386,arm64}` as
+  `.zip`, each with a companion `.sha256` file and an aggregate
+  `SHA256SUMS.txt`.
+- `scripts/package.mjs` builds the matrix with sh / cmd / ps1 launchers and a
+  `PLATFORM.txt` describing the target.
+- Release workflow now builds the matrix on every push to `feature/uniproxy`
+  (or manual dispatch) and updates the `uniproxy-v<version>` release.
+
+### Notes
+
+- uniproxy is pure JavaScript: every platform bundle carries the same code and
+  runs on Node.js >= 18; the platform label selects the launcher.
+
 ## 0.3.0
 
 Reference upgrade after comparing with [Marzban](https://github.com/Gozargah/Marzban)

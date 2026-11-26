@@ -291,6 +291,23 @@ cp out/singbox/config.json /usr/local/etc/sing-box/config.json
 cp out/nginx/nginx.conf    /etc/uniproxy/nginx.conf
 ```
 
+### Release assets
+
+Each `uniproxy-v<version>` release ships one archive per OS/architecture plus
+checksums, mirroring the asset matrix of Go-based panels such as 3x-ui:
+
+| OS | Architectures | Archive |
+|----|---------------|---------|
+| Linux | `386`, `amd64`, `arm64`, `armv5`, `armv6`, `armv7`, `s390x` | `.tar.gz` |
+| Windows | `amd64`, `386`, `arm64` | `.zip` |
+| macOS | `amd64`, `arm64` | `.tar.gz` |
+| any | — | `uniproxy-<version>.tgz` (npm) |
+
+Every archive carries the same pure-JavaScript code plus a launcher
+(`uniproxy`, `uniproxy.cmd`, `uniproxy.ps1`) and `PLATFORM.txt`; Node.js >= 18
+is the only runtime requirement. Each asset has a `.sha256` companion and the
+release also carries an aggregate `SHA256SUMS.txt`.
+
 ### Security notes
 
 - Prefer `stream` mode so proxy traffic also uses :443.
@@ -447,6 +464,19 @@ node src/index.js apply -c config.json --yes    # 校验 + 下发 + reload
 ```
 
 `apply` 先在临时目录生成配置并跑校验，再生成时间戳备份、写目标文件、执行 reload 命令；任一步失败会恢复旧配置。校验/重载命令可在 `apply.validate` / `apply.reload` 中覆盖。
+
+### 发布包
+
+每个 `uniproxy-v<版本>` Release 都会附带按系统/架构拆分的压缩包与校验文件（参考 3x-ui 的资产矩阵）：
+
+| 系统 | 架构 | 格式 |
+|------|------|------|
+| Linux | `386`、`amd64`、`arm64`、`armv5`、`armv6`、`armv7`、`s390x` | `.tar.gz` |
+| Windows | `amd64`、`386`、`arm64` | `.zip` |
+| macOS | `amd64`、`arm64` | `.tar.gz` |
+| 通用 | — | `uniproxy-<版本>.tgz`（npm） |
+
+所有压缩包内容一致（纯 JavaScript），启动器分别为 `uniproxy` / `uniproxy.cmd` / `uniproxy.ps1`，只要求 Node.js >= 18；每个资产带 `.sha256`，另有汇总 `SHA256SUMS.txt`。
 
 ### 安全提醒
 

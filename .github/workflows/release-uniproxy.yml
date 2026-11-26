@@ -37,17 +37,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=uniproxy-v$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Build tarball, source zip and checksums
-        env:
-          VERSION: ${{ steps.meta.outputs.version }}
+      - name: Build per-platform bundles
+        run: node scripts/package.mjs --out dist
+
+      - name: Build npm tarball and aggregate checksums
         run: |
-          mkdir -p dist
           npm pack --pack-destination dist
-          STAGE="$RUNNER_TEMP/uniproxy-$VERSION"
-          mkdir -p "$STAGE"
-          cp -R package.json README.md CHANGELOG.md LICENSE DISCLAIMER.md config.example.json src test "$STAGE"/
-          (cd "$RUNNER_TEMP" && zip -qr "$GITHUB_WORKSPACE/uniproxy/dist/uniproxy-$VERSION.zip" "uniproxy-$VERSION")
-          (cd dist && sha256sum *.tgz *.zip > SHA256SUMS.txt && ls -lh)
+          (cd dist && sha256sum uniproxy-*.tgz >> SHA256SUMS.txt && ls -1 | sort)
 
       - name: Extract release notes from CHANGELOG
         run: |
@@ -60,9 +56,9 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/*.tgz dist/*.zip dist/SHA256SUMS.txt --clobber
+            gh release upload "$TAG" dist/* --clobber
           else
-            gh release create "$TAG" dist/*.tgz dist/*.zip dist/SHA256SUMS.txt \
+            gh release create "$TAG" dist/* \
               --title "uniproxy $VERSION" \
               --notes-file "$RUNNER_TEMP/notes.md" \
               --target "$GITHUB_SHA"

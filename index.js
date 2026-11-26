@@ -12,7 +12,8 @@
  * value in the local credential store.
  */
 
-import { basename } from 'node:path'
+import { mkdir, readdir, readFile, stat } from 'node:fs/promises'
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 /** Loader plugin name. */
 export const name = 'github-integration'
@@ -29,6 +30,10 @@ const DEFAULT_TIMEOUT_MS = 25_000
 const MAX_BODY_BYTES = 12 * 1024 * 1024
 const TOOL_TEXT_LIMIT = 200 * 1024
 const TOOL_RENDER_LIMIT = 6_000
+const GIT_TIMEOUT_MS = 180_000
+const GIT_OUTPUT_BYTES = 1024 * 1024
+const MAX_COMMIT_FILES = 2_000
+const MAX_COMMIT_TOTAL_BYTES = 32 * 1024 * 1024
 
 /** One operation failure with a stable code for the UI and the tool result. */
 class GithubError extends Error {
@@ -151,6 +156,78 @@ function isText(buffer) {
   }
 }
 
+/**
+ * Validate a branch name conservatively.
+ * @param {unknown} value - branch name.
+ * @returns {string} the accepted name.
+ */
+function branchName(value) {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (text === '') throw new GithubError('bad-request', 'A branch name is required.')
+  if (text.length > 200) throw new GithubError('bad-request', 'The branch name is too long.')
+  if (!/^[A-Za-z0-9._/-]+$/.test(text) || text.startsWith('-') || text.startsWith('/') || text.endsWith('/')
+    || text.includes('..') || text.endsWith('.lock')) {
+    throw new GithubError('bad-request', `Invalid branch name: ${text}`)
+  }
+  return text
+}
+
+/**
+ * Normalize an optional repository subdirectory.
+ * @param {unknown} value - folder inside the repository.
+ * @returns {string} normalized folder, empty for the repository root.
+ */
+function normalizeRepoDir(value) {
+  const text = typeof value === 'string' ? value.trim().replace(/^\/+|\/+$/g, '') : ''
+  if (text === '') return ''
+  const segments = text.split('/')
+  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) {
+    throw new GithubError('bad-request', 'repoDir must be a simple relative path.')
+  }
+  return segments.join('/')
+}
+
+/**
+ * Build the environment that authenticates git HTTPS calls. The token travels
+ * in the child environment through git's config-count mechanism, never in argv.
+ * @param {string} token - personal access token.
+ * @returns {Record<string, string>} child environment overrides.
+ */
+function gitAuthEnv(token) {
+  const basic = Buffer.from(`x-access-token:${token}`, 'utf8').toString('base64')
+  return {
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'http.extraHeader',
+    GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
+    GIT_PAGER: 'cat',
+    PAGER: 'cat',
+  }
+}
+
+/**
+ * Remove embedded credentials from a remote URL before showing it.
+ * @param {string} value - remote URL.
+ * @returns {string} credential-free URL.
+ */
+function sanitizeRemoteUrl(value) {
+  return String(value).replace(/^([a-z][a-z0-9+.-]*:\/\/)[^@/]+@/i, '$1')
+}
+
+/**
+ * Compare two remotes while ignoring embedded credentials and a `.git` suffix.
+ * @param {string} left - first remote.
+ * @param {string} right - second remote.
+ * @returns {boolean} true when both name the same repository.
+ */
+function sameRemote(left, right) {
+  const normalize = (value) => sanitizeRemoteUrl(String(value))
+    .replace(/\/+$/, '')
+    .replace(/\.git$/i, '')
+    .toLowerCase()
+  return normalize(left) === normalize(right)
+}
+
 /** JSON response with no-store, matching the shipped route convention. */
 function sendJson(res, status, payload) {
   res.statusCode = status
@@ -256,7 +333,7 @@ export function apply(ctx, rawConfig) {
    * @returns {Promise<any>} parsed JSON, or the raw response when `raw` is set.
    */
   async function requestJson(method, apiPath, options = {}) {
-    const { body, token, signal, accept = 'application/vnd.github+json', raw = false } = options
+    const { body, token, signal, accept = 'application/vnd.github+json', raw = false, allowNotFound = false } = options
     if (typeof token !== 'string' || token === '') {
       throw new GithubError('unauthenticated', 'No GitHub token is configured. Open Settings > GitHub and bind an account.')
     }
@@ -287,6 +364,7 @@ export function apply(ctx, rawConfig) {
       throw new GithubError('network', `Cannot reach ${apiBase}: ${error instanceof Error ? error.message : String(error)}`)
     }
     if (!response.ok) {
+      if (allowNotFound === true && response.status === 404) return undefined
       const text = await response.text().catch(() => '')
       let message = `${response.status} ${response.statusText}`.trim()
       try {
@@ -441,6 +519,451 @@ export function apply(ctx, rawConfig) {
       repo: binding.repo,
       branch: binding.branch ?? binding.defaultBranch ?? '',
       token,
+    }
+  }
+
+  /** Web origin for repository pages and HTTPS remotes. */
+  function webBase() {
+    return apiBase === 'https://api.github.com' ? 'https://github.com' : apiBase.replace(/\/api\/v3$/, '')
+  }
+
+  /**
+   * Tokenless HTTPS remote for the bound repository.
+   * @param {string} owner - repository owner.
+   * @param {string} repo - repository name.
+   * @returns {string} clone and push URL.
+   */
+  function remoteUrlOf(owner, repo) {
+    return `${webBase()}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}.git`
+  }
+
+  /**
+   * Web page of one branch.
+   * @param {string} owner - repository owner.
+   * @param {string} repo - repository name.
+   * @param {string} branch - branch name.
+   * @returns {string} web URL.
+   */
+  function branchUrl(owner, repo, branch) {
+    return `${webBase()}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tree/${encodePath(branch)}`
+  }
+
+  /**
+   * Resolve the session workspace root.
+   * @param {{ agent?: any } | undefined} exec - tool execution context.
+   * @returns {string} absolute workspace root.
+   */
+  function workspaceRoot(exec) {
+    const workingDirectory = ctx.get('workingDirectory')
+    if (exec?.agent !== undefined && workingDirectory !== undefined) {
+      try {
+        return workingDirectory.get(exec.agent.session)
+      } catch {
+        // Fall through to the process directory when no Session directory is available.
+      }
+    }
+    return process.cwd()
+  }
+
+  /**
+   * Resolve a user path and keep it inside the workspace.
+   * @param {string} root - workspace root.
+   * @param {unknown} value - user path.
+   * @param {string} fallback - path used when the value is empty.
+   * @returns {string} absolute path inside the workspace.
+   */
+  function resolveInWorkspace(root, value, fallback = '.') {
+    const text = typeof value === 'string' && value.trim() !== '' ? value.trim() : fallback
+    const target = resolve(root, text)
+    const rel = relative(root, target)
+    if (rel !== '' && (isAbsolute(rel) || rel.startsWith('..'))) {
+      throw new GithubError('bad-request', `Path is outside the workspace: ${text}`)
+    }
+    return target
+  }
+
+  /**
+   * Run git through the composition's managed subprocess service. The token
+   * reaches git through its environment, never through argv or a URL.
+   * @param {readonly string[]} args - git arguments.
+   * @param {{ cwd: string, token: string, signal?: AbortSignal, timeoutMs?: number }} options - execution facts.
+   * @returns {Promise<{ stdout: string, stderr: string }>} captured output.
+   */
+  async function runGit(args, options) {
+    const subprocess = ctx.get('subprocess')
+    if (subprocess === undefined) {
+      throw new GithubError('unavailable', 'The subprocess service is unavailable, so git cannot run in this profile.')
+    }
+    const { cwd, token, signal, timeoutMs = GIT_TIMEOUT_MS } = options
+    const env = gitAuthEnv(token)
+    let executable
+    try {
+      executable = await subprocess.resolveExecutable('git', env, signal)
+    } catch {
+      throw new GithubError('git-missing', 'Git is not installed or is not on PATH; install Git for Windows and retry.')
+    }
+    const controller = new AbortController()
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      controller.abort()
+    }, timeoutMs)
+    const combined = signal === undefined
+      ? controller.signal
+      : typeof AbortSignal.any === 'function' ? AbortSignal.any([signal, controller.signal]) : controller.signal
+    let handle
+    try {
+      handle = subprocess.spawn({
+        argv: [executable, '-c', 'core.quotepath=false', '--no-pager', ...args],
+        cwd,
+        stdio: {
+          stdin: 'ignore',
+          stdout: { maxBytes: GIT_OUTPUT_BYTES },
+          stderr: { maxBytes: GIT_OUTPUT_BYTES },
+        },
+        graceMs: 3000,
+        signal: combined,
+        env,
+      })
+    } catch (error) {
+      clearTimeout(timer)
+      if (timedOut) throw new GithubError('timeout', `git timed out after ${timeoutMs} ms.`)
+      if (signal?.aborted === true) throw new GithubError('cancelled', 'The git command was cancelled.')
+      throw new GithubError('git-error', `git could not start: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    let outcome
+    try {
+      outcome = await handle.done
+    } catch (error) {
+      clearTimeout(timer)
+      if (timedOut) throw new GithubError('timeout', `git timed out after ${timeoutMs} ms.`)
+      if (signal?.aborted === true) throw new GithubError('cancelled', 'The git command was cancelled.')
+      throw new GithubError('git-error', `git failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    clearTimeout(timer)
+    const stdout = handle.collected.stdout?.readFrom(0).text ?? ''
+    const stderr = handle.collected.stderr?.readFrom(0).text ?? ''
+    if (timedOut) throw new GithubError('timeout', `git timed out after ${timeoutMs} ms.`)
+    if (signal?.aborted === true) throw new GithubError('cancelled', 'The git command was cancelled.')
+    if (outcome.exitCode !== 0) {
+      const detail = (stderr.trim() || stdout.trim() || `exit code ${String(outcome.exitCode)}`).slice(0, 2000)
+      throw new GithubError('git-error', `git failed: ${detail}`)
+    }
+    return { stdout, stderr }
+  }
+
+  /**
+   * Read every regular file below a directory for one API commit.
+   * @param {string} sourceDir - absolute source directory.
+   * @returns {Promise<{ files: Array<{ absolute: string, relative: string, size: number }>, total: number }>} file facts.
+   */
+  async function collectCommitFiles(sourceDir) {
+    const files = []
+    let total = 0
+    const walk = async (directory) => {
+      const entries = await readdir(directory, { withFileTypes: true })
+      for (const entry of entries) {
+        if (entry.name === '.git' || entry.name === 'node_modules') continue
+        const absolute = join(directory, entry.name)
+        if (entry.isDirectory()) {
+          await walk(absolute)
+          continue
+        }
+        if (!entry.isFile()) continue
+        const details = await stat(absolute)
+        if (details.size > maxFileBytes) {
+          throw new GithubError('too-large', `${entry.name} is ${details.size} bytes; the per-file limit is ${maxFileBytes}.`)
+        }
+        total += details.size
+        if (total > MAX_COMMIT_TOTAL_BYTES) {
+          throw new GithubError('too-large', `The folder is larger than the ${MAX_COMMIT_TOTAL_BYTES}-byte commit limit; use push instead.`)
+        }
+        files.push({ absolute, relative: relative(sourceDir, absolute).split(sep).join('/'), size: details.size })
+        if (files.length > MAX_COMMIT_FILES) {
+          throw new GithubError('too-large', `The folder has more than ${MAX_COMMIT_FILES} files; use push instead.`)
+        }
+      }
+    }
+    await walk(sourceDir)
+    files.sort((left, right) => left.relative.localeCompare(right.relative))
+    return { files, total }
+  }
+
+  /**
+   * Create a branch from an existing base branch through the API.
+   * @param {{ branch?: unknown, base?: unknown }} input - branch request.
+   * @returns {Promise<Record<string, any>>} created branch facts.
+   */
+  async function createBranch(input = {}) {
+    const { binding, owner, repo, token } = await contextOf()
+    const branch = branchName(input.branch)
+    const base = branchName(input.base === undefined || input.base === ''
+      ? (binding.branch || binding.defaultBranch || 'main')
+      : input.base)
+    const repoPath = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+    const baseRef = await requestJson('GET', `${repoPath}/git/ref/heads/${base}`, { token: token.value })
+    const sha = baseRef?.object?.sha
+    if (typeof sha !== 'string' || sha === '') throw new GithubError('not-found', `Base branch ${base} has no head commit.`)
+    await requestJson('POST', `${repoPath}/git/refs`, {
+      token: token.value,
+      body: { ref: `refs/heads/${branch}`, sha },
+    })
+    return { branch, base, sha, url: branchUrl(owner, repo, branch) }
+  }
+
+  /**
+   * Commit a local folder to a branch in one API commit, creating the branch
+   * from the base branch when it does not exist.
+   * @param {{ sourceDir?: unknown, branch?: unknown, base?: unknown, repoDir?: unknown, message?: unknown }} input - commit request.
+   * @param {{ signal?: AbortSignal } | undefined} exec - execution facts.
+   * @returns {Promise<Record<string, any>>} commit facts.
+   */
+  async function commitFiles(input = {}, exec) {
+    if (typeof input.sourceDir !== 'string' || input.sourceDir.trim() === '') {
+      throw new GithubError('bad-request', 'sourceDir is required for commit_files.')
+    }
+    const { binding, owner, repo, token } = await contextOf()
+    const root = workspaceRoot(exec)
+    const sourceDir = resolveInWorkspace(root, input.sourceDir)
+    let info
+    try {
+      info = await stat(sourceDir)
+    } catch {
+      throw new GithubError('bad-request', `Source directory does not exist: ${input.sourceDir}`)
+    }
+    if (!info.isDirectory()) throw new GithubError('bad-request', `Source path is not a directory: ${input.sourceDir}`)
+    const { files, total } = await collectCommitFiles(sourceDir)
+    if (files.length === 0) throw new GithubError('bad-request', `No files found in ${input.sourceDir}.`)
+    const branch = branchName(input.branch === undefined || input.branch === ''
+      ? (binding.branch || binding.defaultBranch || 'main')
+      : input.branch)
+    const repoDir = normalizeRepoDir(input.repoDir)
+    const message = typeof input.message === 'string' && input.message.trim() !== ''
+      ? input.message.trim()
+      : `Commit ${files.length} files to ${branch}`
+    const repoPath = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`
+    const signal = exec?.signal
+    const existing = await requestJson('GET', `${repoPath}/git/ref/heads/${branch}`, { token: token.value, signal, allowNotFound: true })
+    let parentSha
+    let base = null
+    if (existing !== undefined) {
+      parentSha = existing?.object?.sha
+    } else {
+      base = branchName(input.base === undefined || input.base === ''
+        ? (binding.defaultBranch || binding.branch || 'main')
+        : input.base)
+      const baseRef = await requestJson('GET', `${repoPath}/git/ref/heads/${base}`, { token: token.value, signal })
+      parentSha = baseRef?.object?.sha
+    }
+    if (typeof parentSha !== 'string' || parentSha === '') throw new GithubError('not-found', 'The branch has no head commit to build on.')
+    const parentCommit = await requestJson('GET', `${repoPath}/git/commits/${parentSha}`, { token: token.value, signal })
+    const baseTree = parentCommit?.tree?.sha
+    if (typeof baseTree !== 'string' || baseTree === '') throw new GithubError('not-found', 'Cannot read the branch tree.')
+    const entries = []
+    for (const file of files) {
+      const bytes = await readFile(file.absolute)
+      const blob = await requestJson('POST', `${repoPath}/git/blobs`, {
+        token: token.value,
+        signal,
+        body: { content: bytes.toString('base64'), encoding: 'base64' },
+      })
+      if (typeof blob?.sha !== 'string' || blob.sha === '') {
+        throw new GithubError('github-error', `GitHub did not return a blob for ${file.relative}.`)
+      }
+      entries.push({
+        path: repoDir === '' ? file.relative : `${repoDir}/${file.relative}`,
+        mode: '100644',
+        type: 'blob',
+        sha: blob.sha,
+      })
+    }
+    const tree = await requestJson('POST', `${repoPath}/git/trees`, {
+      token: token.value,
+      signal,
+      body: { base_tree: baseTree, tree: entries },
+    })
+    if (typeof tree?.sha !== 'string' || tree.sha === '') throw new GithubError('github-error', 'GitHub did not return a tree.')
+    const commit = await requestJson('POST', `${repoPath}/git/commits`, {
+      token: token.value,
+      signal,
+      body: { message, tree: tree.sha, parents: [parentSha] },
+    })
+    if (typeof commit?.sha !== 'string' || commit.sha === '') throw new GithubError('github-error', 'GitHub did not return a commit.')
+    if (existing !== undefined) {
+      await requestJson('PATCH', `${repoPath}/git/refs/heads/${branch}`, {
+        token: token.value,
+        signal,
+        body: { sha: commit.sha, force: false },
+      })
+    } else {
+      await requestJson('POST', `${repoPath}/git/refs`, {
+        token: token.value,
+        signal,
+        body: { ref: `refs/heads/${branch}`, sha: commit.sha },
+      })
+    }
+    return {
+      branch,
+      base,
+      created: existing === undefined,
+      directory: repoDir === '' ? '/' : `/${repoDir}`,
+      commitSha: commit.sha,
+      commitUrl: `${webBase()}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commit/${commit.sha}`,
+      branchUrl: branchUrl(owner, repo, branch),
+      files: entries.map((entry) => entry.path),
+      bytes: total,
+    }
+  }
+
+  /**
+   * Clone the bound repository into the workspace.
+   * @param {{ target?: unknown, branch?: unknown }} input - clone request.
+   * @param {{ signal?: AbortSignal } | undefined} exec - execution facts.
+   * @returns {Promise<Record<string, any>>} clone facts.
+   */
+  async function cloneRepository(input = {}, exec) {
+    const { owner, repo, token } = await contextOf()
+    const root = workspaceRoot(exec)
+    const target = resolveInWorkspace(root, input.target, repo)
+    if (target === root) throw new GithubError('bad-request', 'The clone target cannot be the workspace root.')
+    let exists = false
+    try {
+      const info = await stat(target)
+      if (!info.isDirectory()) throw new GithubError('bad-request', `The clone target is not a directory: ${String(input.target)}`)
+      exists = true
+    } catch (error) {
+      if (error instanceof GithubError) throw error
+      if (error?.code !== 'ENOENT') throw error
+    }
+    if (exists) {
+      const entries = await readdir(target)
+      if (entries.length > 0) throw new GithubError('exists', `The clone target is not empty: ${String(input.target)}`)
+    }
+    await mkdir(dirname(target), { recursive: true })
+    const branch = typeof input.branch === 'string' && input.branch.trim() !== '' ? branchName(input.branch) : ''
+    const remote = remoteUrlOf(owner, repo)
+    await runGit([
+      'clone',
+      ...(branch === '' ? [] : ['--branch', branch, '--single-branch']),
+      remote,
+      target,
+    ], { cwd: root, token: token.value, signal: exec?.signal })
+    let head = ''
+    try {
+      head = (await runGit(['-C', target, 'rev-parse', '--abbrev-ref', 'HEAD'], {
+        cwd: root,
+        token: token.value,
+        signal: exec?.signal,
+      })).stdout.trim()
+    } catch {
+      // The clone succeeded; an unreadable HEAD only leaves the branch unnamed.
+    }
+    return {
+      path: relative(root, target).split(sep).join('/'),
+      branch: head || branch || null,
+      remote,
+      url: head === '' && branch === '' ? `${webBase()}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}` : branchUrl(owner, repo, head || branch),
+    }
+  }
+
+  /**
+   * Commit and push the whole workspace directory, initializing a repository
+   * only when the caller explicitly allows it.
+   * @param {{ cwd?: unknown, branch?: unknown, message?: unknown, init?: unknown, setRemote?: unknown }} input - push request.
+   * @param {{ signal?: AbortSignal } | undefined} exec - execution facts.
+   * @returns {Promise<Record<string, any>>} push facts.
+   */
+  async function pushWorkspace(input = {}, exec) {
+    const { binding, owner, repo, token } = await contextOf()
+    const root = workspaceRoot(exec)
+    const cwd = resolveInWorkspace(root, input.cwd, '.')
+    let info
+    try {
+      info = await stat(cwd)
+    } catch {
+      throw new GithubError('bad-request', `Push directory does not exist: ${String(input.cwd)}`)
+    }
+    if (!info.isDirectory()) throw new GithubError('bad-request', `Push path is not a directory: ${String(input.cwd)}`)
+    const requestedGit = (args) => runGit(['-C', cwd, ...args], { cwd, token: token.value, signal: exec?.signal })
+    let inside = false
+    try {
+      inside = (await requestedGit(['rev-parse', '--is-inside-work-tree'])).stdout.trim() === 'true'
+    } catch {
+      inside = false
+    }
+    let gitRoot = cwd
+    if (!inside) {
+      if (input.init !== true) {
+        throw new GithubError('not-a-repo', `Not a git repository: ${cwd}. Pass init=true to initialize it.`)
+      }
+      await requestedGit(['init'])
+    } else {
+      try {
+        gitRoot = (await requestedGit(['rev-parse', '--show-toplevel'])).stdout.trim() || cwd
+      } catch {
+        gitRoot = cwd
+      }
+      const rel = relative(root, gitRoot)
+      if (rel !== '' && (isAbsolute(rel) || rel.startsWith('..'))) {
+        throw new GithubError('bad-request', `The git repository root is outside the workspace: ${gitRoot}.`)
+      }
+    }
+    const git = (args) => runGit(['-C', gitRoot, ...args], { cwd: gitRoot, token: token.value, signal: exec?.signal })
+    const remote = remoteUrlOf(owner, repo)
+    let origin = ''
+    try {
+      origin = (await git(['remote', 'get-url', 'origin'])).stdout.trim()
+    } catch {
+      origin = ''
+    }
+    if (origin === '') {
+      await git(['remote', 'add', 'origin', remote])
+    } else if (!sameRemote(origin, remote)) {
+      if (input.setRemote !== true) {
+        throw new GithubError('remote-mismatch', `origin points to ${sanitizeRemoteUrl(origin)}, not ${remote}. Pass setRemote=true to replace it.`)
+      }
+      await git(['remote', 'set-url', 'origin', remote])
+    } else if (sanitizeRemoteUrl(origin) !== origin) {
+      await git(['remote', 'set-url', 'origin', remote])
+    }
+    await git(['add', '-A'])
+    const status = await git(['status', '--porcelain'])
+    const login = binding.login ?? binding.owner ?? 'dsh'
+    const message = typeof input.message === 'string' && input.message.trim() !== ''
+      ? input.message.trim()
+      : 'Update workspace'
+    let committed = false
+    if (status.stdout.trim() !== '') {
+      await git([
+        '-c', `user.name=${login}`,
+        '-c', `user.email=${login}@users.noreply.github.com`,
+        'commit', '-m', message,
+      ])
+      committed = true
+    }
+    let current = ''
+    try {
+      current = (await git(['symbolic-ref', '--short', 'HEAD'])).stdout.trim()
+    } catch {
+      current = ''
+    }
+    const branch = typeof input.branch === 'string' && input.branch.trim() !== ''
+      ? branchName(input.branch)
+      : (current || 'main')
+    let headSha
+    try {
+      headSha = (await git(['rev-parse', '--verify', 'HEAD'])).stdout.trim()
+    } catch {
+      throw new GithubError('empty-repository', 'The directory has no commit to push.')
+    }
+    await git(['push', 'origin', `HEAD:refs/heads/${branch}`])
+    return {
+      path: relative(root, gitRoot).split(sep).join('/') || '.',
+      branch,
+      commitSha: headSha,
+      committed,
+      remote,
+      url: branchUrl(owner, repo, branch),
     }
   }
 
@@ -733,6 +1256,15 @@ export function apply(ctx, rawConfig) {
     }), `github-integration: POST ${RPC_PATH}`)
   }
 
+  const systemPrompt = ctx.get('systemPrompt')
+  if (systemPrompt !== undefined) {
+    ctx.effect(() => systemPrompt.section({
+      name: 'github-integration',
+      order: 1900,
+      text: 'GitHub operations: the user has bound a GitHub account and repository in Settings > GitHub. For GitHub status, repository/branch/file reads, download, upload, search, branch creation, multi-file commits, clone, and push, use the `github` tool before `bash`, `git`, or `gh`. Never ask the user for a token in chat. Use a direct git command only when the user explicitly asks for a git workflow or when the tool reports that it cannot perform the operation.',
+    }), 'github-integration: routing section')
+  }
+
   /**
    * Render a tool result as bounded pretty JSON.
    * @param {unknown} value - canonical value.
@@ -745,12 +1277,15 @@ export function apply(ctx, rawConfig) {
 
   ctx.effect(() => ctx.tools.register({
     name: 'github',
-    description: 'Read and change files in the GitHub repository bound in Settings > GitHub, and search GitHub. Requires the user to bind an account first; never ask the user for a token in chat. Actions: status (confirm the binding), list_repos, search (scope repositories|code|issues), branches, list_files (repository directory), download (repository file, returns UTF-8 text or base64), upload (local workspace file to a repository path).',
+    description: 'Use this tool for GitHub operations before shell git/gh. The account and repository are bound in Settings > GitHub; never ask the user for a token in chat. Actions: status, list_repos, search, branches, list_files, download, upload (one file to a branch), create_branch, commit_files (a local folder as one commit; creates the branch when missing), clone (git clone into the workspace), push (commit and push the whole workspace directory with git).',
     parameters: {
       action: {
         type: 'string',
         required: true,
-        enum: ['status', 'list_repos', 'search', 'branches', 'list_files', 'download', 'upload'],
+        enum: [
+          'status', 'list_repos', 'search', 'branches', 'list_files', 'download', 'upload',
+          'create_branch', 'commit_files', 'clone', 'push',
+        ],
         description: 'The operation to run.',
       },
       query: { type: 'string', description: 'Search text, or a filter for list_repos.' },
@@ -759,8 +1294,15 @@ export function apply(ctx, rawConfig) {
       ref: { type: 'string', description: 'Branch, tag, or commit for download and list_files; defaults to the bound branch.' },
       localPath: { type: 'string', description: 'Workspace-local file to upload; required for upload.' },
       remotePath: { type: 'string', description: 'Target repository path for upload; defaults to the local file name.' },
-      message: { type: 'string', description: 'Commit message for upload.' },
-      branch: { type: 'string', description: 'Target branch for upload; defaults to the bound branch.' },
+      message: { type: 'string', description: 'Commit message for upload, commit_files, and push.' },
+      branch: { type: 'string', description: 'Target branch for upload, commit_files, clone, and push; defaults to the bound branch.' },
+      base: { type: 'string', description: 'Base branch for create_branch, and for a commit_files branch that does not exist yet.' },
+      sourceDir: { type: 'string', description: 'Workspace-relative or absolute folder committed by commit_files; required for that action.' },
+      repoDir: { type: 'string', description: 'Target folder inside the repository for commit_files; defaults to the repository root.' },
+      target: { type: 'string', description: 'Workspace-relative clone target for clone; defaults to the repository name.' },
+      cwd: { type: 'string', description: 'Workspace-relative directory pushed by push; defaults to the workspace root.' },
+      init: { type: 'boolean', description: 'For push: initialize a git repository when the directory has none.' },
+      setRemote: { type: 'boolean', description: 'For push: replace an existing origin that points at another repository.' },
     },
     output: {
       schema: { type: 'object', additionalProperties: true },
@@ -824,6 +1366,26 @@ export function apply(ctx, rawConfig) {
             branch: args.branch,
           })
         }
+        case 'create_branch':
+          return await createBranch({ branch: args.branch, base: args.base })
+        case 'commit_files':
+          return await commitFiles({
+            sourceDir: args.sourceDir,
+            branch: args.branch,
+            base: args.base,
+            repoDir: args.repoDir,
+            message: args.message,
+          }, exec)
+        case 'clone':
+          return await cloneRepository({ target: args.target, branch: args.branch }, exec)
+        case 'push':
+          return await pushWorkspace({
+            cwd: args.cwd,
+            branch: args.branch,
+            message: args.message,
+            init: args.init,
+            setRemote: args.setRemote,
+          }, exec)
         default:
           throw new GithubError('bad-request', `Unknown action: ${String(args.action)}`)
       }

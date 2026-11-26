@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import http from 'node:http';
 import { analyzePorts } from './ports.js';
 import { generateLinks } from './generators/links.js';
@@ -6,9 +5,9 @@ import { generateXray } from './generators/xray.js';
 import { generateSingbox } from './generators/singbox.js';
 import { generateNginx } from './generators/nginx.js';
 import { buildSubscriptions, subscriptionHeaders } from './subscribe.js';
+import { readTextAsset } from './assets.js';
 import { resolveUsers, formatUsersTable } from './users.js';
 
-const templatePath = new URL('./dashboard.html', import.meta.url);
 
 function esc(s) {
   return String(s).replace(/[&<>"]/g, function (ch) {
@@ -30,7 +29,7 @@ function send(res, status, headers, body) {
 }
 
 function render(config, cfgPath) {
-  const tpl = fs.readFileSync(templatePath, 'utf8');
+  const tpl = readTextAsset('dashboard.html');
   const report = analyzePorts(config);
   const xray = generateXray(config);
   const singbox = generateSingbox(config);

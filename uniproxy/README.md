@@ -322,6 +322,33 @@ special kernel features are used. `uniproxy apply` additionally needs
 `systemd`, `xray`, `sing-box`, `nginx` and root. Every asset ships a `.sha256`
 companion plus an aggregate `SHA256SUMS.txt`.
 
+### Standalone binaries (no Node.js)
+
+Releases also ship Node.js SEA executables that embed the runtime, so the
+target machine needs no Node.js installation:
+
+| Target | Asset | Notes |
+|--------|-------|-------|
+| Linux x86_64 | `uniproxy-<version>-linux-x64` | glibc >= 2.28, embedded Node runtime |
+| Linux arm64 | `uniproxy-<version>-linux-arm64` | |
+| Linux ppc64le | `uniproxy-<version>-linux-ppc64le` | |
+| Linux s390x | `uniproxy-<version>-linux-s390x` | |
+| Linux musl x64 | `uniproxy-<version>-linux-musl-x64` | Alpine and other musl systems |
+| Windows x64 | `uniproxy-<version>-win-x64.exe` | |
+| Windows arm64 | `uniproxy-<version>-win-arm64.exe` | |
+| macOS Intel | `uniproxy-<version>-darwin-x64` | ad-hoc signed |
+| macOS Apple silicon | `uniproxy-<version>-darwin-arm64` | ad-hoc signed |
+
+```bash
+chmod +x uniproxy-<version>-linux-x64
+./uniproxy-<version>-linux-x64 --help
+```
+
+Each binary has a `.sha256` companion and the release carries `BINARIES.md`
+with the full matrix. 32-bit Linux and Windows binaries are not provided
+because Node.js no longer publishes 32-bit runtimes for those targets; use the
+JS bundle there.
+
 ### Security notes
 
 - Prefer `stream` mode so proxy traffic also uses :443.
@@ -501,6 +528,29 @@ Release 资产按**运行环境**命名，直接选和目标机器匹配的那�
 `uniproxy-<版本>.tgz` 是与平台无关的 npm 包；`PLATFORMS.md`（Release 资产）重复这份矩阵，每个压缩包内还有 `ENVIRONMENT.txt` 写明目标环境、Node.js 构建和安装命令。
 
 uniproxy 是纯 JavaScript：压缩包内代码一致、不含编译产物，后缀只是告诉你它面向哪个环境、该装哪种 Node.js 运行时。Linux 官方 Node 构建要求 glibc >= 2.28，不使用特殊内核特性；在 Linux 上执行 `uniproxy apply` 额外需要 `systemd`、`xray`、`sing-box`、`nginx` 与 root。每个资产带 `.sha256`，另有汇总 `SHA256SUMS.txt`。
+
+### 免安装 Node 的单文件二进制
+
+每个 Release 还会附带用 Node.js SEA 打出的单文件可执行程序（内嵌运行时），目标机器**不需要安装 Node**：
+
+| 目标 | 资产 | 说明 |
+|------|------|------|
+| Linux x86_64 | `uniproxy-<版本>-linux-x64` | glibc >= 2.28，内嵌 Node 运行时 |
+| Linux arm64 | `uniproxy-<版本>-linux-arm64` | |
+| Linux ppc64le | `uniproxy-<版本>-linux-ppc64le` | |
+| Linux s390x | `uniproxy-<版本>-linux-s390x` | |
+| Linux musl x64 | `uniproxy-<版本>-linux-musl-x64` | Alpine 等 musl 系统 |
+| Windows x64 | `uniproxy-<版本>-win-x64.exe` | |
+| Windows arm64 | `uniproxy-<版本>-win-arm64.exe` | |
+| macOS Intel | `uniproxy-<版本>-darwin-x64` | 临时签名 |
+| macOS Apple 芯片 | `uniproxy-<版本>-darwin-arm64` | 临时签名 |
+
+```bash
+chmod +x uniproxy-<版本>-linux-x64
+./uniproxy-<版本>-linux-x64 --help
+```
+
+每个二进制带 `.sha256`，Release 里还有 `BINARIES.md` 列出完整矩阵。32 位 Linux / Windows 二进制没有提供，因为 Node.js 已不再发布对应 32 位运行时；这些环境请用 JS 压缩包。
 
 ### 安全提醒
 

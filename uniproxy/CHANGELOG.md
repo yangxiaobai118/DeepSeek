@@ -12,6 +12,10 @@
   matching Node.js build, launcher and install commands.
 - `PLATFORMS.md` release asset and README matrix mapping each archive to its
   environment.
+- Standalone single-file binaries built with Node.js SEA (embedded runtime, no
+  Node.js installation) for linux-x64, linux-arm64, linux-ppc64le, linux-s390x,
+  linux-musl-x64, win-x64, win-arm64, darwin-x64 and darwin-arm64, each with a
+  `.sha256` file and a `BINARIES.md` manifest.
 - `scripts/package.mjs` builds the matrix with sh / cmd / ps1 launchers and
   writes per-asset `.sha256` files plus `SHA256SUMS.txt`.
 - The release workflow rebuilds everything on every push to
@@ -26,6 +30,10 @@
   environment and the Node.js >= 18 runtime to install; Linux official Node
   builds need glibc >= 2.28 and no special kernel features are used.
 - `uniproxy apply` additionally needs systemd, xray, sing-box, nginx and root.
+- Standalone binaries embed the Node.js runtime: macOS builds are ad-hoc signed,
+  Linux builds follow the glibc baseline of the embedded Node.js. 32-bit Linux
+  and Windows binaries are not built because Node.js no longer ships 32-bit
+  runtimes for those targets.
 
 ## 0.3.0
 

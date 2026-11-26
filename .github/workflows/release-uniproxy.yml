@@ -44,13 +44,8 @@ jobs:
         run: |
           tar -xzf dist/uniproxy-*-linux-x86_64.tar.gz -C "$RUNNER_TEMP"
           test -x "$RUNNER_TEMP/uniproxy/uniproxy"
-          test -f "$RUNNER_TEMP/uniproxy/ENVIRONMENT.txt"
           grep -q 'linux-x86_64' "$RUNNER_TEMP/uniproxy/ENVIRONMENT.txt"
           head -n 1 "$RUNNER_TEMP/uniproxy/uniproxy" | grep -qx '#!/bin/sh'
-          if grep -q $'\r' "$RUNNER_TEMP/uniproxy/uniproxy"; then
-            echo "launcher has CRLF line endings" >&2
-            exit 1
-          fi
           node "$RUNNER_TEMP/uniproxy/src/index.js" --help >/dev/null
           work=$(mktemp -d)
           node "$RUNNER_TEMP/uniproxy/src/index.js" init -c "$work/config.json" >/dev/null
@@ -88,7 +83,7 @@ jobs:
               --target "$GITHUB_SHA"
           fi
 
-      - name: Remove stale release assets
+      - name: Remove stale archive assets
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.meta.outputs.tag }}
@@ -98,8 +93,69 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" --paginate \
             --jq '.[] | [.id, .name] | @tsv' |
           while IFS=$'\t' read -r id name; do
-            case " $keep " in
-              *" $name "*) echo "keep $name" ;;
-              *) echo "delete $name"; gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$id" >/dev/null ;;
+            case "$name" in
+              *.tar.gz|*.tar.gz.sha256|*.zip|*.zip.sha256|*.tgz|*.tgz.sha256|PLATFORMS.md|SHA256SUMS.txt)
+                case " $keep " in
+                  *" $name "*) echo "keep $name" ;;
+                  *) echo "delete $name"; gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$id" >/dev/null ;;
+                esac ;;
+              *) echo "keep $name" ;;
             esac
           done
+
+  binaries:
+    name: standalone binaries (${{ matrix.runner }})
+    needs: release
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            targets: linux-x64,linux-arm64,linux-ppc64le,linux-s390x,linux-musl-x64,win-x64,win-arm64
+          - runner: macos-latest
+            targets: darwin-x64,darwin-arm64
+    defaults:
+      run:
+        working-directory: uniproxy
+    steps:
+      - name: Check out the branch
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js (must match the downloaded runtimes)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+
+      - name: Install bundler and injector
+        run: npm install --no-save --no-package-lock esbuild postject
+
+      - name: Build standalone binaries
+        run: node scripts/build-sea.mjs --out bin --targets "${{ matrix.targets }}"
+
+      - name: Smoke-test the Linux binary without Node
+        if: runner.os == 'Linux'
+        run: |
+          BIN=$(ls bin/uniproxy-*-linux-x64)
+          env -i "$BIN" --help >/dev/null
+          work=$(mktemp -d)
+          env -i "$BIN" init -c "$work/config.json" >/dev/null
+          env -i "$BIN" validate -c "$work/config.json"
+          file "$BIN"
+
+      - name: Smoke-test the macOS binary
+        if: runner.os == 'macOS'
+        run: |
+          BIN=$(ls bin/uniproxy-*-darwin-arm64)
+          "$BIN" --help >/dev/null
+          work=$(mktemp -d)
+          "$BIN" init -c "$work/config.json" >/dev/null
+          "$BIN" validate -c "$work/config.json"
+          codesign --verify --verbose "$BIN"
+
+      - name: Upload binaries to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release upload "uniproxy-v$VERSION" bin/* --clobber

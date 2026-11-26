@@ -3,4 +3,6 @@ dist/
 config.json
 node_modules/
 tmp-test/
-*.bak-*
+*.bak-*bin/
+build-sea/
+.cache/

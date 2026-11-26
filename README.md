@@ -30,11 +30,10 @@ downloads, uploads, and searches from **Settings > GitHub** and from the
 A token already exported as `GITHUB_TOKEN` or `GH_TOKEN` can be used without
 pasting it: leave the token field blank and press **Bind repository**.
 
-The token field masks every typed character with `*` and has an eye toggle to
-show or hide it. After a successful bind, the field keeps the token you typed
-on this page (masked) so the eye can review it; the stored token is never sent
-back to the browser, so after a page reload the field is empty. Leaving it
-blank keeps the current token.
+The token field masks every character with `*` and has an eye toggle. For a
+stored token, the field shows `*` for its length; clicking the eye asks the Host
+for the token once and displays it for this page, and a page reload hides it
+again. The token never enters the agent tool, the session log, or configuration.
 
 ### Files, upload, and search
 
@@ -131,9 +130,9 @@ The plugin's Host-side actions load when DSH starts; after replacing the package
 如果令牌已通过 `GITHUB_TOKEN` 或 `GH_TOKEN` 导出，也可以不粘贴：令牌留空，直接点击
 **绑定仓库**。
 
-令牌输入框会把每个输入字符显示为 `*`，右侧眼睛按钮可切换显示/隐藏。绑定成功后，
-当前页面会保留你刚输入的令牌（默认隐藏），方便用眼睛核对；已保存的令牌不会回传到
-浏览器，因此刷新页面后输入框为空。留空即沿用当前令牌。
+令牌输入框会把每个字符显示为 `*`，右侧眼睛按钮可切换显示/隐藏。对于已保存的令牌，
+输入框默认按长度显示 `*`；点击眼睛会向 Host 请求一次令牌并在当前页面显示，刷新页面
+后重新隐藏。令牌不会进入智能体工具、会话日志或配置文件。
 
 ### 文件、上传与搜索
 

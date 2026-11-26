@@ -1,9 +1,9 @@
 {
   "name": "@local/github-integration",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "Bind a GitHub account, then upload, download, browse, and search repositories from DSH.",
+  "description": "Bind a GitHub account, then upload, download, browse, search, branch, commit, clone, and push from DSH.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

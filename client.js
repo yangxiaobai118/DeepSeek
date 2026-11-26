@@ -759,6 +759,32 @@ window.__ModuleLoader__.load({
             ? t('sizeHint', { size: formatSize(status.maxFileBytes) })
             : ''
 
+          const storedTokenMask = !tokenVisible && form.token === '' && (status?.tokenLength ?? 0) > 0
+          const tokenMask = !tokenVisible
+            ? (form.token !== ''
+                ? '*'.repeat(form.token.length)
+                : storedTokenMask ? '*'.repeat(status.tokenLength) : '')
+            : ''
+          const tokenRevealable = form.token !== '' || (status?.tokenLength ?? 0) > 0
+
+          const toggleToken = () => {
+            if (busy) return
+            if (form.token === '' && (status?.tokenLength ?? 0) > 0) {
+              if (tokenVisible) {
+                setTokenVisible(false)
+                return
+              }
+              void run(async () => {
+                const data = await call('reveal_token', {})
+                if (typeof data?.token !== 'string' || data.token === '') throw new Error(t('errUnknown'))
+                setForm((current) => ({ ...current, token: data.token }))
+                setTokenVisible(true)
+              }, 'bind')
+              return
+            }
+            setTokenVisible((visible) => !visible)
+          }
+
           const bindingCard = h('div', { className: 'ghp-card' },
             h('h3', { className: 'ghp-cardTitle' }, t('bindingTitle')),
             h('p', { className: 'ghp-hint' }, t('bindingHint')),
@@ -773,22 +799,22 @@ window.__ModuleLoader__.load({
                       type: 'text',
                       autoComplete: 'new-password',
                       spellCheck: false,
-                      placeholder: status?.tokenConfigured === true ? t('keepTokenPlaceholder') : t('tokenPlaceholder'),
+                      placeholder: storedTokenMask ? '' : (status?.tokenConfigured === true ? t('keepTokenPlaceholder') : t('tokenPlaceholder')),
                       value: form.token,
                       disabled: busy,
                       onChange: (event) => { setForm((current) => ({ ...current, token: event.target.value })) },
                     }),
-                    !tokenVisible && form.token !== ''
-                      ? h('span', { className: 'ghp-secretMask', 'aria-hidden': true }, '*'.repeat(form.token.length))
+                    tokenMask !== ''
+                      ? h('span', { className: 'ghp-secretMask', 'aria-hidden': true }, tokenMask)
                       : null,
                     h('button', {
                       type: 'button',
                       className: 'ghp-secretToggle',
-                      disabled: busy,
+                      disabled: busy || !tokenRevealable,
                       'aria-label': tokenVisible ? t('hideToken') : t('showToken'),
                       'aria-pressed': tokenVisible,
                       title: tokenVisible ? t('hideToken') : t('showToken'),
-                      onClick: () => { setTokenVisible((visible) => !visible) },
+                      onClick: toggleToken,
                     }, eyeIcon(tokenVisible)),
                   ),
                 ),

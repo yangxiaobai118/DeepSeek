@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>uniproxy dashboard</title>
+<style>
+body{font-family:system-ui,Segoe UI,sans-serif;margin:0;background:#0f1115;color:#e6e6e6}
+header{padding:16px 24px;background:#171a21;border-bottom:1px solid #2a2f3a}
+h1{margin:0;font-size:18px}
+.sub{color:#8b93a3;font-size:12px;margin-top:4px}
+main{padding:24px;display:grid;gap:16px;grid-template-columns:1fr 1fr}
+section{background:#171a21;border:1px solid #2a2f3a;border-radius:8px;padding:16px;min-width:0}
+section h2{margin:0 0 12px;font-size:14px;color:#9fb3ff}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{padding:6px 8px;border-bottom:1px solid #2a2f3a;text-align:left}
+th{color:#8b93a3;font-weight:500}
+code{font-family:ui-monospace,Consolas,monospace;font-size:12px;word-break:break-all}
+pre{background:#0b0d12;padding:12px;border-radius:6px;overflow:auto;max-height:360px;font-size:12px}
+.err{color:#ff6b6b}
+.warn{color:#ffd166}
+ul.issues{list-style:none;padding:0;margin:0;font-size:13px}
+ul.issues li{padding:4px 0}
+.wide{grid-column:1/-1}
+</style>
+</head>
+<body>
+<header>
+  <h1>uniproxy - unified control plane</h1>
+  <div class="sub">config: {{CONFIG_PATH}} - nginx mode: {{MODE}} - server: {{PUBLIC_IP}}</div>
+</header>
+<main>
+  <section>
+    <h2>Port map</h2>
+    <table><thead><tr><th>PORT</th><th>COMPONENT</th><th>LISTEN</th></tr></thead><tbody>{{PORT_ROWS}}</tbody></table>
+  </section>
+  <section>
+    <h2>Checks</h2>
+    <ul class="issues">{{ISSUES}}</ul>
+  </section>
+  <section class="wide">
+    <h2>Client links ({{LINK_COUNT}})</h2>
+    <ul>{{LINK_ITEMS}}</ul>
+  </section>
+  <section>
+    <h2>Xray config (preview)</h2>
+    <pre>{{XRAY_PREVIEW}}</pre>
+  </section>
+  <section>
+    <h2>sing-box config (preview)</h2>
+    <pre>{{SINGBOX_PREVIEW}}</pre>
+  </section>
+  <section class="wide">
+    <h2>nginx config (preview)</h2>
+    <pre>{{NGINX_PREVIEW}}</pre>
+  </section>
+</main>
+</body>
+</html>

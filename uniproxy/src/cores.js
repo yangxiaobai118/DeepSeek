@@ -37,7 +37,17 @@ function curlWrapperDir() {
   if (!real) return '';
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uniproxy-curl-'));
   const bin = path.join(dir, 'curl');
-  fs.writeFileSync(bin, '#!/bin/sh\nexec "' + real + '" --http1.1 --retry 5 --retry-delay 3 "$@"\n');
+  fs.writeFileSync(bin, [
+    '#!/bin/sh',
+    'ADD=""',
+    'for a in "$@"; do',
+    '  case "$a" in',
+    '    *releases/download/*.zip*) ADD="--progress-bar" ;;',
+    '  esac',
+    'done',
+    'exec "' + real + '" --http1.1 --retry 5 --retry-delay 3 $ADD "$@"',
+    '',
+  ].join('\n'));
   fs.chmodSync(bin, 0o755);
   return dir;
 }

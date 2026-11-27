@@ -63,9 +63,12 @@ node_ok() {
 
 human_mib() { awk -v n="$1" 'BEGIN { printf "%.1f", n / 1048576 }'; }
 
+human_rate() { awk -v n="$1" 'BEGIN { if (n >= 1048576) printf "%.1f MiB/s", n / 1048576; else printf "%.0f KiB/s", n / 1024 }'; }
+
 draw_progress() {
   _now=$1
   _total=$2
+  _rate=${3:--1}
   if [ ! -t 2 ] && [ "${UNIPROXY_PROGRESS_TEST:-0}" != "1" ]; then return 0; fi
   [ "$_total" -gt 0 ] || return 0
   _pct=$(( _now * 100 / _total ))
@@ -75,8 +78,10 @@ draw_progress() {
   _empty=$(( _cols - _fill ))
   _bar=$(printf '%*s' "$_fill" '' | tr ' ' '#')
   _spaces=$(printf '%*s' "$_empty" '')
-  printf '\r%s  [%s%s] %3d%%  %s / %s MiB%s' \
-    "$GREEN" "$_bar" "$_spaces" "$_pct" "$(human_mib "$_now")" "$(human_mib "$_total")" "$RESET"
+  _speed=''
+  if [ "$_rate" -ge 0 ] 2>/dev/null; then _speed=$(human_rate "$_rate"); fi
+  printf '\r%s  [%s%s] %3d%%  %s / %s MiB  %s%s' \
+    "$GREEN" "$_bar" "$_spaces" "$_pct" "$(human_mib "$_now")" "$(human_mib "$_total")" "$_speed" "$RESET"
 }
 
 fetch_to() {
@@ -87,18 +92,36 @@ fetch_to() {
     if [ -t 2 ]; then
       curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 --http1.1 $CURL_RETRY_ALL "$_url" -o "$_dest" &
       _pid=$!
+      _last_bytes=0
+      _last_time=$(date +%s)
+      _rate=-1
+      _tick=0
       while kill -0 "$_pid" 2>/dev/null; do
         if [ -f "$_dest" ]; then _now=$(wc -c < "$_dest" | tr -d ' '); else _now=0; fi
         [ -n "$_now" ] || _now=0
+        _tick=$((_tick + 1))
+        if [ $((_tick % 5)) -eq 0 ]; then
+          _nowt=$(date +%s)
+          _dt=$((_nowt - _last_time))
+          if [ "$_dt" -ge 1 ]; then
+            _delta=$((_now - _last_bytes))
+            [ "$_delta" -lt 0 ] && _delta=0
+            _rate=$((_delta / _dt))
+            _last_bytes=$_now
+            _last_time=$_nowt
+          fi
+        fi
         if [ "$_total" -gt 0 ]; then
-          draw_progress "$_now" "$_total"
+          draw_progress "$_now" "$_total" "$_rate"
         else
-          printf '\r%s  downloading ... %s MiB%s' "$GREEN" "$(human_mib "$_now")" "$RESET"
+          _speed=''
+          if [ "$_rate" -ge 0 ] 2>/dev/null; then _speed=$(human_rate "$_rate"); fi
+          printf '\r%s  downloading ... %s MiB  %s%s' "$GREEN" "$(human_mib "$_now")" "$_speed" "$RESET"
         fi
         sleep 0.2
       done
       if wait "$_pid"; then
-        if [ "$_total" -gt 0 ]; then draw_progress "$_total" "$_total"; fi
+        if [ "$_total" -gt 0 ]; then draw_progress "$_total" "$_total" "$_rate"; fi
         printf '\n'
         return 0
       fi
@@ -115,7 +138,7 @@ fetch_to() {
 
 if [ "${UNIPROXY_PROGRESS_TEST:-0}" = "1" ]; then
   for _p in 0 25 50 75 100; do
-    draw_progress $(( _p * 10485760 / 100 )) 10485760
+    draw_progress $(( _p * 10485760 / 100 )) 10485760 1048576
     sleep 0.05
   done
   printf '\n'

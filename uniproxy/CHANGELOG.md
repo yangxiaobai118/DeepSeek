@@ -41,6 +41,9 @@
   group or explicit ids). Deploys are incremental by default - the remote
   `sha256sum` is compared first and an unchanged target is skipped (`force`
   overrides).
+- config backups in the panel: list the automatic `.bak-<stamp>` copies, take a
+  labelled one, download, restore (validated first, with a pre-restore safety
+  copy) or delete. The config tab also accepts pasted JSON as an import.
 - u-ui certificates: read subject/issuer/expiry/SANs, and issue or renew with
   certbot or acme.sh (webroot, standalone or DNS-01, optional staging). The
   command runs as an argv array, so panel input cannot inject shell syntax;

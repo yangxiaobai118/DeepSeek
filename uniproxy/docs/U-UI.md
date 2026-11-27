@@ -42,6 +42,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 审计 | 每次配置写入、apply、内核操作、nginx 测试/重载的时间与动作 |
 | 告警 | 汇总 doctor 发现、端口冲突、内核未运行；配置 webhook / 命令通道，按冷却时间推送（`uniproxy alerts --notify` 亦可） |
 | 证书 | 查看当前证书（subject/issuer/到期/SANs）；用 certbot 或 acme.sh 申请与续期，支持 webroot / standalone / DNS-01，可选 staging；命令以 argv 方式执行，不拼 shell |
+| 备份 | 列出自动备份（每次写配置都会生成 `.bak-<时间戳>`）与手动备份，可下载、恢复、删除；恢复前先校验并自动备份当前版本；支持粘贴 JSON 导入 |
 | 用户 | 表格（状态/到期/配额/入站/订阅 token）+ 新增/编辑/删除 |
 | 配置 | `config.json` 原始文本编辑器，保存前跑 `validate`，写入前自动备份 |
 | 操作 | `validate` / `doctor` / `plan`（只预览）/ `apply`（需输入确认词） |
@@ -84,6 +85,10 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | POST | `/api/nodes/:id/deploy` | scp 配置并远端 `apply --yes` |
 | POST | `/api/nodes/probe-all` | 批量探测全部节点 |
 | POST | `/api/nodes/deploy-all` | 按 `group` 或 `ids` 批量下发，`force: true` 可跳过增量判断 |
+| GET/POST | `/api/backups` | 列出备份 / 立即备份 |
+| GET | `/api/backups/:name/download` | 下载备份文件 |
+| POST | `/api/backups/:name/restore` | 校验后恢复（先自动备份当前版本） |
+| DELETE | `/api/backups/:name` | 删除备份 |
 | POST | `/api/actions/:action` | `validate` `doctor` `plan` `apply` |
 
 所有非 GET 请求必须带 `x-uui-csrf` 头，值与 `uui_csrf` Cookie 相同（双提交）。

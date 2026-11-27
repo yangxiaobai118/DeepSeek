@@ -13,6 +13,7 @@ import { collectAlerts, notify, loadState } from '../alerts.js';
 import { certStatus, normalizeCerts, buildCommand, issue, validDomain } from '../certs.js';
 import { normalizeNodes, probe, deploy, probeBatch, deployBatch } from '../nodes.js';
 import { protocolList } from '../protocols.js';
+import { listBackups, createBackup, readBackup, deleteBackup, restoreBackup } from '../backups.js';
 import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
 import { buildPlan, formatPlan, applyPlan } from '../apply.js';
@@ -122,6 +123,15 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     }
     if (url.pathname === '/api/nginx/test' && req.method === 'POST') return nginxTest(res, abs);
     if (url.pathname === '/api/nginx/reload' && req.method === 'POST') return nginxReload(res, abs);
+
+    if (url.pathname === '/api/backups' && req.method === 'GET') return json(res, 200, { backups: listBackups(abs) });
+    if (url.pathname === '/api/backups' && req.method === 'POST') return createBackupHandler(res, abs);
+    const backupRestore = url.pathname.match(/^\/api\/backups\/([^/]+)\/restore$/);
+    if (backupRestore && req.method === 'POST') return restoreBackupHandler(res, abs, decodeURIComponent(backupRestore[1]));
+    const backupDownload = url.pathname.match(/^\/api\/backups\/([^/]+)\/download$/);
+    if (backupDownload && req.method === 'GET') return downloadBackup(res, abs, decodeURIComponent(backupDownload[1]));
+    const backupOne = url.pathname.match(/^\/api\/backups\/([^/]+)$/);
+    if (backupOne && req.method === 'DELETE') return removeBackup(res, abs, decodeURIComponent(backupOne[1]));
 
     if (url.pathname === '/api/nodes' && req.method === 'GET') return getNodes(res, abs);
     if (url.pathname === '/api/nodes' && req.method === 'POST') return saveNode(req, res, abs, null);
@@ -755,6 +765,54 @@ function readJsonAsync(req) {
   return new Promise(function (resolve, reject) {
     readJson(req, function (err, body) { if (err) reject(err); else resolve(body); });
   });
+}
+
+function createBackupHandler(res, cfgPath) {
+  try {
+    const name = createBackup(cfgPath, 'manual');
+    record(cfgPath, 'backup.create', name);
+    return json(res, 200, { ok: true, name: name, backups: listBackups(cfgPath) });
+  } catch (e) {
+    return json(res, 500, { error: e.message });
+  }
+}
+
+function downloadBackup(res, cfgPath, name) {
+  try {
+    const text = readBackup(cfgPath, name);
+    return send(res, 200, {
+      'content-type': 'application/json; charset=utf-8',
+      'content-disposition': 'attachment; filename="' + name + '"',
+      'cache-control': 'no-store',
+    }, text);
+  } catch (e) {
+    return json(res, 404, { error: e.message });
+  }
+}
+
+function restoreBackupHandler(res, cfgPath, name) {
+  try {
+    const text = readBackup(cfgPath, name);
+    let parsed;
+    try { parsed = JSON.parse(text); } catch (e) { return json(res, 400, { error: 'backup is not valid JSON' }); }
+    const check = validateConfig(derive(parsed));
+    if (check.errors.length) return json(res, 400, { error: 'backup fails validation', errors: check.errors });
+    const result = restoreBackup(cfgPath, name);
+    record(cfgPath, 'backup.restore', name);
+    return json(res, 200, { ok: true, restored: name, safety: result.safety, warnings: check.warnings });
+  } catch (e) {
+    return json(res, 400, { error: e.message });
+  }
+}
+
+function removeBackup(res, cfgPath, name) {
+  try {
+    deleteBackup(cfgPath, name);
+    record(cfgPath, 'backup.delete', name);
+    return json(res, 200, { ok: true, backups: listBackups(cfgPath) });
+  } catch (e) {
+    return json(res, 400, { error: e.message });
+  }
 }
 
 function nodeStatePath(cfgPath) { return cfgPath + '.nodes-state.json'; }

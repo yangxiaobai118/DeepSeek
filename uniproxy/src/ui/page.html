@@ -45,6 +45,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <button data-tab="actions">操作</button>
 <button data-tab="settings">设置</button>
 <button data-tab="certs">证书</button>
+<button data-tab="backups">备份</button>
 <button data-tab="audit">审计</button>
 <button data-tab="alerts">告警</button>
 </nav><span id="roleBadge" class="muted"></span><a href="/logout">退出</a></header>
@@ -145,6 +146,15 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   <span id="certMsg" class="muted"></span></div>
   <div class="muted" style="margin-top:10px" id="certPlan"></div>
   <pre id="certOut" style="margin-top:10px">(idle)</pre></div>
+</section>
+<section id="tab-backups">
+  <div class="card"><h2>配置备份（每次保存都会自动生成一份）</h2>
+  <div class="row" style="margin-bottom:10px"><button class="act" id="createBackup">立即备份</button><span id="backupMsg" class="muted"></span></div>
+  <div id="backupTable"></div></div>
+  <div class="card"><h2>导入配置</h2>
+  <div class="muted">粘贴一份 config.json 覆盖当前配置（会先自动备份当前版本并校验）。</div>
+  <textarea id="importText" style="min-height:180px;margin-top:8px" placeholder="{ ... }"></textarea>
+  <div class="row" style="margin-top:8px"><button class="act" id="importConfig">导入并校验</button><span id="importMsg" class="muted"></span></div></div>
 </section>
 <section id="tab-audit">
   <div class="card"><h2>审计日志（最近 200 条）</h2><div id="auditTable"></div></div>
@@ -391,6 +401,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     if (btn.dataset.tab === 'alerts') loadAlerts();
     if (btn.dataset.tab === 'certs') loadCerts();
     if (btn.dataset.tab === 'nodes') loadNodes();
+    if (btn.dataset.tab === 'backups') loadBackups();
   };
 });
 async function openClients(kind, tag) {
@@ -726,6 +737,57 @@ document.getElementById('deployAll').onclick = async function () {
   const r = await api('POST', '/api/nodes/deploy-all', group ? { group: group } : {});
   showNodeResults(r.data);
   await loadNodes();
+};
+
+async function loadBackups() {
+  const r = await api('GET', '/api/backups');
+  const list = (r.data && r.data.backups) || [];
+  document.getElementById('backupTable').innerHTML = list.length
+    ? '<table><thead><tr><th>文件</th><th>大小</th><th>时间</th><th>操作</th></tr></thead><tbody>' +
+      list.map(function (b) {
+        return '<tr><td><code>' + h(b.name) + '</code></td><td>' + h(Math.round(b.size / 1024) + ' KB') + '</td><td class="muted">' + h(b.mtime) + '</td>' +
+          '<td><button class="ghost" data-backup="' + h(b.name) + '" data-bact="restore">恢复</button> ' +
+          '<button class="ghost" data-backup="' + h(b.name) + '" data-bact="download">下载</button> ' +
+          '<button class="ghost danger" data-backup="' + h(b.name) + '" data-bact="delete">删除</button></td></tr>';
+      }).join('') + '</tbody></table>'
+    : '<div class="muted">还没有备份</div>';
+  document.querySelectorAll('#backupTable [data-backup]').forEach(function (btn) {
+    btn.onclick = function () { backupAct(btn.dataset.backup, btn.dataset.bact); };
+  });
+}
+
+async function backupAct(name, action) {
+  const msg = document.getElementById('backupMsg');
+  if (action === 'download') { window.location = '/api/backups/' + encodeURIComponent(name) + '/download'; return; }
+  if (action === 'delete') {
+    if (!confirm('删除备份 ' + name + ' ?')) return;
+    const r = await api('DELETE', '/api/backups/' + encodeURIComponent(name));
+    if (r.status === 200) await loadBackups(); else alert(r.data.error || '失败');
+    return;
+  }
+  if (!confirm('用 ' + name + ' 覆盖当前配置？会先自动备份当前版本。')) return;
+  msg.textContent = '恢复中 ...'; msg.className = 'muted';
+  const r = await api('POST', '/api/backups/' + encodeURIComponent(name) + '/restore');
+  msg.textContent = r.status === 200 ? ('已恢复，安全备份：' + r.data.safety) : (r.data.error || '失败');
+  msg.className = r.status === 200 ? 'ok' : 'err';
+  await refresh(); await loadBackups();
+}
+
+document.getElementById('createBackup').onclick = async function () {
+  const msg = document.getElementById('backupMsg');
+  const r = await api('POST', '/api/backups');
+  msg.textContent = r.status === 200 ? ('已创建 ' + r.data.name) : (r.data.error || '失败');
+  msg.className = r.status === 200 ? 'ok' : 'err';
+  await loadBackups();
+};
+
+document.getElementById('importConfig').onclick = async function () {
+  const msg = document.getElementById('importMsg');
+  const text = document.getElementById('importText').value;
+  const r = await api('PUT', '/api/config', { json: text });
+  msg.textContent = r.status === 200 ? '已导入（已自动备份旧配置）' : ((r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''));
+  msg.className = r.status === 200 ? 'ok' : 'err';
+  if (r.status === 200) { await refresh(); await loadBackups(); }
 };
 
 refresh();

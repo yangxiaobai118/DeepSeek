@@ -9,6 +9,7 @@ import { shouldSend, markSent, alertsFromDoctor, alertsFromPorts } from '../src/
 import { buildCommand, validDomain, certStatus } from '../src/certs.js';
 import { normalizeNodes, probeCommand, deployCommands, deploy, deployBatch, probeBatch, localChecksum } from '../src/nodes.js';
 import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
+import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup } from '../src/backups.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -459,6 +460,68 @@ test('u-ui: batch node endpoints', async function () {
     const deployed = await fetch(inst.url + '/api/nodes/deploy-all', { method: 'POST', headers: headers, body: JSON.stringify({ group: 'nope' }) });
     assert.equal(deployed.status, 200);
     assert.deepEqual((await deployed.json()).results, []);
+  } finally {
+    await inst.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
+test('backups: create, read, restore and delete', function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bak-'));
+  const cfgPath = path.join(dir, 'config.json');
+  fs.writeFileSync(cfgPath, '{"v":1}\n');
+
+  const name = createBackup(cfgPath, 'manual');
+  assert.ok(name.startsWith('config.json.bak-manual-'));
+  assert.equal(readBackup(cfgPath, name), '{"v":1}\n');
+  assert.equal(listBackups(cfgPath).length, 1);
+
+  fs.writeFileSync(cfgPath, '{"v":2}\n');
+  const result = restoreBackup(cfgPath, name);
+  assert.equal(JSON.parse(fs.readFileSync(cfgPath, 'utf8')).v, 1);
+  assert.ok(result.safety.startsWith('config.json.bak-pre-restore-'));
+
+  assert.throws(function () { readBackup(cfgPath, '../etc/passwd'); }, /invalid backup name/);
+  assert.throws(function () { readBackup(cfgPath, 'config.json'); }, /invalid backup name/);
+
+  deleteBackup(cfgPath, name);
+  assert.equal(listBackups(cfgPath).some(function (b) { return b.name === name; }), false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('u-ui: backup endpoints', async function () {
+  const ctx = setup();
+  const inst = await startUi(ctx.cfgPath, 0, { password: 'secret' });
+  try {
+    const auth = await login(inst);
+    const headers = { cookie: auth.cookie, 'x-uui-csrf': auth.csrf, 'content-type': 'application/json' };
+
+    const created = await fetch(inst.url + '/api/backups', { method: 'POST', headers: headers });
+    assert.equal(created.status, 200);
+    const createdJson = await created.json();
+    assert.ok(createdJson.name.startsWith('config.json.bak-manual-'));
+
+    const listed = await fetch(inst.url + '/api/backups', { headers: { cookie: auth.cookie } });
+    const listedJson = await listed.json();
+    assert.ok(listedJson.backups.length >= 1);
+
+    const download = await fetch(inst.url + '/api/backups/' + encodeURIComponent(createdJson.name) + '/download', { headers: { cookie: auth.cookie } });
+    assert.equal(download.status, 200);
+    assert.ok((await download.text()).includes('server'));
+
+    const before = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
+    before.server.publicIp = '198.51.100.99';
+    fs.writeFileSync(ctx.cfgPath, JSON.stringify(before, null, 2));
+
+    const restored = await fetch(inst.url + '/api/backups/' + encodeURIComponent(createdJson.name) + '/restore', { method: 'POST', headers: headers });
+    assert.equal(restored.status, 200);
+    assert.notEqual(JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8')).server.publicIp, '198.51.100.99');
+
+    const bad = await fetch(inst.url + '/api/backups/..%2Fetc%2Fpasswd/restore', { method: 'POST', headers: headers });
+    assert.equal(bad.status, 400);
+
+    const removed = await fetch(inst.url + '/api/backups/' + encodeURIComponent(createdJson.name), { method: 'DELETE', headers: headers });
+    assert.equal(removed.status, 200);
   } finally {
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });

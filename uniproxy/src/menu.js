@@ -170,7 +170,7 @@ export function buildMenu(ctx) {
   ];
 
   const panel = [
-    { key: '4', label: '查看当前设置 (Show Current Settings)', run: function () { return withCfg(showSettings(ctx)); } },
+    { key: '4', label: '查看当前设置 (Check Current Settings)', run: function () { return withCfg(showSettings(ctx)); } },
     { key: '5', label: '修改面板端口 (Change Panel Port)', run: function () { return withCfg(changePort(ctx)); } },
     { key: '6', label: '重置账号密码 (Reset Password)', run: function () { return withCfg(resetPassword(ctx)); } },
     { key: '7', label: '新增只读账号 (Add Viewer)', run: function () { return withCfg(addViewer(ctx)); } },
@@ -182,8 +182,8 @@ export function buildMenu(ctx) {
     { key: '10', label: '启动面板 (Start Panel)', run: function () { return systemctl(ctx, 'start'); } },
     { key: '11', label: '停止面板 (Stop Panel)', run: function () { return systemctl(ctx, 'stop'); } },
     { key: '12', label: '重启面板 (Restart Panel)', run: function () { return systemctl(ctx, 'restart'); } },
-    { key: '13', label: '查看状态 (Show Status)', run: function () { return showStatus(ctx); } },
-    { key: '14', label: '查看日志 (Show Logs)', run: function () { return showLogs(ctx); } },
+    { key: '13', label: '查看状态 (Check Status)', run: function () { return showStatus(ctx); } },
+    { key: '14', label: '查看日志 (Check Logs)', run: function () { return showLogs(ctx); } },
     { key: '15', label: '启用开机自启 (Enable Autostart)', run: function () { return systemctl(ctx, 'enable'); } },
     { key: '16', label: '关闭开机自启 (Disable Autostart)', run: function () { return systemctl(ctx, 'disable'); } },
   ];
@@ -211,7 +211,7 @@ export function buildMenu(ctx) {
   const extra = [
     { key: '31', label: '证书状态 (Certificate Status)', run: function () { return withCfg(showCert(ctx)); } },
     { key: '32', label: '申请 / 续期证书 (Issue / Renew Cert)', run: function () { return withCfg(issueCert(ctx)); } },
-    { key: '33', label: '查看告警 (Show Alerts)', run: function () { return withCfg(showAlerts(ctx)); } },
+    { key: '33', label: '查看告警 (Check Alerts)', run: function () { return withCfg(showAlerts(ctx)); } },
     { key: '34', label: '节点列表 (List Nodes)', run: function () { return withCfg(showNodes(ctx)); } },
   ];
 

@@ -13,6 +13,7 @@ import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup, pru
 import { runMenu, renderMenu, box, buildMenu, unitFiles, installSystem, installPlan, uninstallSystem } from '../src/menu.js';
 import { randomPassword, randomPort, runSetup } from '../src/setup.js';
 import { verifyPassword } from '../src/auth.js';
+import { version } from '../src/version.js';
 import { syncUnitPorts } from '../src/units.js';
 
 function cookieHeader(res) {
@@ -575,6 +576,11 @@ test('u-ui: backup retention is configurable and enforced on write', async funct
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });
   }
+});
+
+test('version: source checkout reports the package version', function () {
+  const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(version(), pkg.version);
 });
 
 test('menu: renders the boxed sections and exits cleanly', async function () {

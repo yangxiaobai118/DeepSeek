@@ -154,6 +154,7 @@ jobs:
         run: |
           BIN=$(ls bin/uniproxy-*-linux-x64)
           env -i "$BIN" --help >/dev/null
+          test "$(env -i "$BIN" --version)" = "uniproxy $(node -p "require('./package.json').version")"
           work=$(mktemp -d)
           env -i "$BIN" init -c "$work/config.json" >/dev/null
           env -i "$BIN" validate -c "$work/config.json"

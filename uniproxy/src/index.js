@@ -14,6 +14,7 @@ import { resolveUsers, formatUsersTable } from './users.js';
 import { runDoctor, formatDoctor } from './doctor.js';
 import { buildPlan, formatPlan, applyPlan } from './apply.js';
 import { genUuid, genRealityKeypair, genShortId } from './util.js';
+import { version } from './version.js';
 
 const NL = String.fromCharCode(10);
 
@@ -49,6 +50,7 @@ function usage() {
     '      --strict          apply: fail when a validator/reload command is missing',
     '      --skip-validate   apply: do not run xray/sing-box/nginx config tests',
     '      --skip-reload     apply: install configs without reloading services',
+    '  -V, --version         print the version and exit',
   ].join(NL);
 }
 
@@ -69,6 +71,7 @@ function parseArgs(argv) {
     else if (a === '--strict') args.strict = true;
     else if (a === '--skip-validate') args.skipValidate = true;
     else if (a === '--skip-reload') args.skipReload = true;
+    else if (a === '--version' || a === '-V') args.version = true;
     else if (a === '-h' || a === '--help') args.help = true;
     else args._.push(a);
   }
@@ -475,6 +478,10 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
   try {
+    if (args.version) {
+      console.log('uniproxy ' + version());
+      return;
+    }
     if (!cmd && process.stdin.isTTY) {
       await cmdMenu(args);
       return;

@@ -14,6 +14,7 @@ import { collectAlerts } from './alerts.js';
 import { normalizeNodes } from './nodes.js';
 import { syncUnitPorts } from './units.js';
 import { isPlaceholderAddress } from './util.js';
+import { version } from './version.js';
 
 /**
  * Terminal menu, modelled on the 3x-ui management script: boxed sections,
@@ -138,7 +139,7 @@ function readCfg(cfgPath) {
 export function renderMenu(ctx) {
   const sections = buildMenu(ctx);
   const parts = [];
-  parts.push(box('u-ui · uniproxy', ['0. 退出菜单 (Exit)']));
+  parts.push(box('u-ui · uniproxy v' + version(), ['0. 退出菜单 (Exit)']));
   for (const section of sections) {
     parts.push(box(section.title, section.items.map(function (i) { return i.key + '. ' + i.label; })));
   }

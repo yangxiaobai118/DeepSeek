@@ -108,6 +108,7 @@ function bundle(buildDir) {
     '--format=cjs',
     '--target=node' + nodeVersion.split('.')[0],
     '--outfile=' + path.join(buildDir, 'uniproxy.cjs'),
+    '--define:__UNIPROXY_VERSION__=' + JSON.stringify(pkg.version),
   ], { cwd: root });
 }
 

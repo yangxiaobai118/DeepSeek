@@ -38,6 +38,24 @@ prepare server → install uniproxy → install cores → certificates
         → apply (validate + backup + install + reload) → serve → acceptance
 ```
 
+### 0.1 Placeholder conventions (read before copying)
+
+The values below are **not literals** — they are placeholders you must replace. Copying an example as-is will usually fail:
+
+| In the code | Replace with | Why it matters | If you copy it as-is |
+|---|---|---|---|
+| `example.com`, `www.example.com`, `xui.example.com`, `sui.example.com`, `sub.example.com` | your real domain and subdomains | certificates, nginx `server_name`, 443 SNI routing and subscription URLs all match on it | certificate issuance fails, panels unreachable, subscriptions 404 |
+| `www` / `xui` / `sui` / `sub` (e.g. `for d in www xui sui sub`) | the subdomain prefixes you planned; add or remove as needed | the loop builds `$d.example.com` to check DNS | you resolve the example domains, so an IP in the output proves nothing about your own DNS |
+| `<server-ip>` | the server public IP | client links, `server.publicIp` and acceptance commands use it | links point at a placeholder and clients cannot connect |
+| `203.0.113.10` | the real public IP | it is an RFC 5737 example range, not your IP | `validate` fails with `server.publicIp still a placeholder` |
+| `<version>`, `0.3.2` | the actual release version | download URLs, asset names and install paths include it | download 404 |
+| `<service>` | the real unit name: `xray` / `sing-box` / `nginx` / `uniproxy-sub` | `journalctl -u` filters by unit name | no logs, and you may think there were no errors |
+| `<target>`, `<timestamp>` | the backed-up file and its timestamp | `apply` writes `.bak-<timestamp>` | you cannot find the backup to roll back |
+| `<uuid>`, `TOKEN=xxxx...` | the UUID from `uniproxy users`, the subscription token | client credentials and subscription auth | auth fails, subscription 403 |
+| `10.0.0.0/8`, `corp.example.org`, `ads.example.net` | your own networks and domains | configuration examples only | starts fine, but routing follows the example |
+
+> **Rule: commands are copy-pasteable, but the values above must be replaced first.** Do not run DNS, certificate or `apply` commands before replacing them — the half-configured state is hard to debug.
+
 ---
 
 ## 1. Step 1: Preparation
@@ -69,6 +87,8 @@ ss -lntp | grep -E ':(80|443)\b' || echo "80/443 free"
 ```bash
 for d in www xui sui sub; do echo -n "$d.example.com -> "; dig +short $d.example.com; done
 ```
+
+> **What to replace**: `example.com` with your domain, and `www xui sui sub` with your subdomain prefixes. `dig` only queries and changes nothing — but replace first, otherwise you are resolving the example domain and an IP in the output proves nothing about your own DNS.
 
 **1.3 Open the firewall**
 
@@ -668,6 +688,8 @@ Expected:
 vless://<uuid>@<server-ip>:443?encryption=none&type=tcp&security=reality&sni=www.bing.com&fp=chrome&pbk=...&sid=...&flow=xtls-rprx-vision#xray-vless-reality-alice
 ```
 
+> Note: this is **sample output**. `<uuid>`, `<server-ip>` and `pbk=...` become real values on your own run — do not copy them literally.
+
 ### 5) Subscriptions
 
 ```bash
@@ -681,6 +703,8 @@ TOKEN=xxxxxxxxxxxxxxxxxxxxxxxx
 curl -fsS "https://sub.example.com/sub/${TOKEN}" | base64 -d | head -2
 curl -sSI "https://sub.example.com/sub/${TOKEN}" | grep -iE 'subscription-userinfo|profile-title|cache-control'
 ```
+
+> **What to replace**: `TOKEN` with the real token from `uniproxy subscribe` (the `links`, `json` and `clash` URLs share it), and `sub.example.com` with your subscription domain. The endpoint authenticates by token, so the placeholder only yields 404 / 403.
 
 Expected: decoded `vless://...`; headers include `profile-title`, `cache-control: no-store`, and `subscription-userinfo` when the user has quota/expiry.
 

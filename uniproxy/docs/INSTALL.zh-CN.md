@@ -37,6 +37,24 @@
 3. `generate` 生成三套配置
 4. `apply`（校验 + 备份 + 下发 + reload）→ `serve`（订阅）→ 验收
 
+### 0.1 占位符约定（复制命令前必读）
+
+代码块里下面这些值**不是字面量**，是给你替换的占位符。照着示例直接粘贴，多半会失败——先对照这张表：
+
+| 代码里的写法 | 换成你自己的 | 为什么 | 照抄的后果 |
+|---|---|---|---|
+| `example.com`、`www.example.com`、`xui.example.com`、`sui.example.com`、`sub.example.com` | 你的真实域名和子域名 | 证书签发、nginx `server_name`、443 SNI 分流、订阅地址都按它匹配 | 证书签不出、面板打不开、订阅 404 |
+| `www` / `xui` / `sui` / `sub`（例如 `for d in www xui sui sub`） | 你规划的子域名前缀，可增可减 | 循环会把前缀拼成 `$d.example.com` 去查解析 | 查到的是示例域名，你的域名没配好也可能“看到 IP” |
+| `<server-ip>` | 服务器公网 IP | 客户端链接、`server.publicIp`、验收命令都用它 | 链接指向占位符，客户端连不上 |
+| `203.0.113.10` | 真实公网 IP | 它是 RFC 5737 的示例保留地址，不是你的 IP | `validate` 直接报 `server.publicIp still a placeholder` |
+| `<version>`、`0.3.2` | 实际版本号 | 下载 URL、资产名、安装路径都带版本 | 下载 404 |
+| `<service>` | 真实服务名：`xray` / `sing-box` / `nginx` / `uniproxy-sub` | `journalctl -u` 按服务名过滤 | 查不到日志，误以为“没报错” |
+| `<target>`、`<timestamp>` | 被备份的文件、备份时间 | `apply` 生成的 `.bak-<timestamp>` | 找不到备份，无法回滚 |
+| `<uuid>`、`TOKEN=xxxx...` | `uniproxy users` 的 UUID、订阅 token | 客户端凭据与订阅鉴权 | 认证失败、订阅 403 |
+| `10.0.0.0/8`、`corp.example.org`、`ads.example.net` | 你的内网段 / 域名 | 只是配置示例，表示“可以这样写” | 不影响启动，但分流规则会按示例生效 |
+
+> **原则：命令可以照抄，但表里的值必须先换成自己的。** 尤其不要在未替换时执行涉及域名解析、证书签发、`apply` 的命令——会留下错误的中间状态，后面很难排查。
+
 ---
 
 ## 1. 步骤 1：准备
@@ -70,6 +88,8 @@ ss -lntp | grep -E ':(80|443)\b' || echo "80/443 free"
 ```bash
 for d in www xui sui sub; do echo -n "$d.example.com -> "; dig +short $d.example.com; done
 ```
+
+> **替换点**：`example.com` 换成你的域名；`www xui sui sub` 是四个子域名前缀，按需增删。`dig` 只做查询、不改配置，但**必须先替换**——否则查到的是示例域名的解析，输出里有 IP 也说明不了你的域名已经生效。
 
 **1.3 放行端口**
 
@@ -675,6 +695,8 @@ uniproxy links -c /etc/uniproxy/config.json | head -3
 vless://<uuid>@<server-ip>:443?encryption=none&type=tcp&security=reality&sni=www.bing.com&fp=chrome&pbk=...&sid=...&flow=xtls-rprx-vision#xray-vless-reality-alice
 ```
 
+> 说明：这是**示例输出**。`<uuid>`、`<server-ip>`、`pbk=...` 会在你实际运行时变成真实值，不要照抄。
+
 ### 5）订阅
 
 ```bash
@@ -688,6 +710,8 @@ TOKEN=xxxxxxxxxxxxxxxxxxxxxxxx
 curl -fsS "https://sub.example.com/sub/${TOKEN}" | base64 -d | head -2
 curl -sSI "https://sub.example.com/sub/${TOKEN}" | grep -iE 'subscription-userinfo|profile-title|cache-control'
 ```
+
+> **替换点**：`TOKEN` 换成上一步 `uniproxy subscribe` 输出里的真实 token（`links` / `json` / `clash` 三个 URL 用的是同一个 token）；`sub.example.com` 换成你的订阅域名。订阅接口按 token 鉴权，留着占位符只会得到 404 / 403。
 
 预期：解出 `vless://...`；响应头包含 `profile-title`、`cache-control: no-store`，用户有到期/配额时还包含 `subscription-userinfo`。
 

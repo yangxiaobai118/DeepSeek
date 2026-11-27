@@ -38,7 +38,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 设置 | 公网 IP、邮箱、网站域名、证书/私钥路径、80/443/内部 TLS 端口、nginx 模式、两个面板的域名与端口 |
 | nginx | 模式切换（stream/http）、静态站点与反向代理（extraSites）增删、SNI 路由预览、生成配置预览、`nginx -t` 与 reload |
 | 拓扑 | 从 443 入口按 SNI 到各后端的流向，以及全部监听端口 |
-| 节点 | 注册其他服务器（ssh/scp，无需 agent），逐个探测内核状态，或把本地 `config.json` 下发并远端 `apply` |
+| 节点 | 注册其他服务器（ssh/scp，无需 agent），带 `group` 分组；支持全部探测、按分组批量下发；下发前先比较远端 `sha256sum`，一致则跳过（增量同步） |
 | 审计 | 每次配置写入、apply、内核操作、nginx 测试/重载的时间与动作 |
 | 告警 | 汇总 doctor 发现、端口冲突、内核未运行；配置 webhook / 命令通道，按冷却时间推送（`uniproxy alerts --notify` 亦可） |
 | 证书 | 查看当前证书（subject/issuer/到期/SANs）；用 certbot 或 acme.sh 申请与续期，支持 webroot / standalone / DNS-01，可选 staging；命令以 argv 方式执行，不拼 shell |
@@ -82,6 +82,8 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | PUT/DELETE | `/api/nodes/:id` | 修改 / 删除节点 |
 | POST | `/api/nodes/:id/probe` | ssh 探测远端内核状态 |
 | POST | `/api/nodes/:id/deploy` | scp 配置并远端 `apply --yes` |
+| POST | `/api/nodes/probe-all` | 批量探测全部节点 |
+| POST | `/api/nodes/deploy-all` | 按 `group` 或 `ids` 批量下发，`force: true` 可跳过增量判断 |
 | POST | `/api/actions/:action` | `validate` `doctor` `plan` `apply` |
 
 所有非 GET 请求必须带 `x-uui-csrf` 头，值与 `uui_csrf` Cookie 相同（双提交）。

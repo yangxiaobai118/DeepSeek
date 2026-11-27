@@ -7,7 +7,7 @@ import { startUi } from '../src/ui/server.js';
 import { parseXrayStatNames, parseClashConnections, mergeUsage } from '../src/stats.js';
 import { shouldSend, markSent, alertsFromDoctor, alertsFromPorts } from '../src/alerts.js';
 import { buildCommand, validDomain, certStatus } from '../src/certs.js';
-import { normalizeNodes, probeCommand, deployCommands } from '../src/nodes.js';
+import { normalizeNodes, probeCommand, deployCommands, deploy, deployBatch, probeBatch, localChecksum } from '../src/nodes.js';
 import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
 
 function cookieHeader(res) {
@@ -410,6 +410,55 @@ test('u-ui: node registry endpoints', async function () {
     const removed = await fetch(inst.url + '/api/nodes/n1', { method: 'DELETE', headers: headers });
     assert.equal(removed.status, 200);
     assert.equal(JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8')).nodes.length, 0);
+  } finally {
+    await inst.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
+test('nodes: incremental sync skips unchanged targets and batches aggregate', function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nodes-'));
+  const cfgPath = path.join(dir, 'config.json');
+  fs.writeFileSync(cfgPath, '{"a":1}\n');
+  const hash = localChecksum(cfgPath);
+  const node = normalizeNodes({ nodes: [{ id: 'n1', host: 'h1', group: 'g1' }] })[0];
+
+  const calls = [];
+  const run = function (argv) {
+    calls.push(argv[0] + ' ' + argv[argv.length - 1].slice(0, 40));
+    return { ok: true, output: hash, error: null };
+  };
+  const skipped = deploy(cfgPath, node, { run });
+  assert.equal(skipped.skipped, true);
+  assert.equal(skipped.ok, true);
+  assert.equal(calls.length, 1); // only the checksum probe ran
+
+  const forced = deploy(cfgPath, node, { run, force: true });
+  assert.equal(forced.skipped, undefined);
+
+  const batch = deployBatch(cfgPath, [node, node], { run });
+  assert.equal(batch.results.length, 2);
+  assert.equal(batch.ok, true);
+  assert.equal(batch.results[0].skipped, true);
+
+  const probed = probeBatch([node], { run: function () { return { ok: true, output: 'xray=active', error: null }; } });
+  assert.equal(probed.results[0].status.xray, 'active');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('u-ui: batch node endpoints', async function () {
+  const ctx = setup();
+  const inst = await startUi(ctx.cfgPath, 0, { password: 'secret' });
+  try {
+    const auth = await login(inst);
+    const headers = { cookie: auth.cookie, 'x-uui-csrf': auth.csrf, 'content-type': 'application/json' };
+    const probed = await fetch(inst.url + '/api/nodes/probe-all', { method: 'POST', headers: headers });
+    assert.equal(probed.status, 200);
+    assert.deepEqual((await probed.json()).results, []);
+
+    const deployed = await fetch(inst.url + '/api/nodes/deploy-all', { method: 'POST', headers: headers, body: JSON.stringify({ group: 'nope' }) });
+    assert.equal(deployed.status, 200);
+    assert.deepEqual((await deployed.json()).results, []);
   } finally {
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });

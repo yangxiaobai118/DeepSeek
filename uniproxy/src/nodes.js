@@ -1,5 +1,7 @@
-import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 
 /**
  * Multi-node orchestration over plain ssh/scp.
@@ -21,6 +23,7 @@ export function normalizeNodes(c) {
       user: String(n.user || 'root'),
       port: Number(n.port || 22),
       key: String(n.key || ''),
+      group: String(n.group || 'default'),
       configPath: String(n.configPath || '/etc/uniproxy/config.json'),
     };
   }).filter(function (n) { return n.id && n.host; });
@@ -69,9 +72,49 @@ export function probe(node, deps = {}) {
   return { ok: res.ok, status: status, output: res.output, error: res.error || '' };
 }
 
+const SAFE_PATH = /^[A-Za-z0-9._\/-]+$/;
+
+export function localChecksum(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+export function checksumCommand(node) {
+  if (!SAFE_PATH.test(node.configPath)) throw new Error('node configPath contains unsafe characters');
+  return ['ssh'].concat(sshArgs(node, 'sha256sum ' + node.configPath + ' 2>/dev/null | cut -d" " -f1'));
+}
+
+export function probeBatch(nodes, deps = {}) {
+  return {
+    ok: true,
+    results: nodes.map(function (node) {
+      const r = probe(node, deps);
+      return { id: node.id, host: node.host, group: node.group, ok: r.ok, status: r.status, output: r.output, error: r.error };
+    }),
+  };
+}
+
+export function deployBatch(cfgPath, nodes, deps = {}) {
+  const results = [];
+  for (const node of nodes) {
+    const r = deploy(cfgPath, node, deps);
+    results.push({ id: node.id, host: node.host, group: node.group, ok: r.ok, skipped: Boolean(r.skipped), output: r.output, error: r.error });
+  }
+  return { ok: results.every(function (r) { return r.ok; }), results: results };
+}
+
 export function deploy(cfgPath, node, deps = {}) {
   const run = deps.run || defaultRun;
   const steps = [];
+  if (deps.incremental !== false && deps.force !== true) {
+    try {
+      const local = localChecksum(cfgPath);
+      const remote = run(checksumCommand(node));
+      const hash = remote.ok ? String(remote.output || '').trim().split(/\s+/)[0] : '';
+      if (hash && hash === local) return { ok: true, skipped: true, steps: [], output: 'unchanged, skipped', error: '' };
+    } catch (e) {
+      // fall through to a full deploy when the check itself fails
+    }
+  }
   let commands;
   try { commands = deployCommands(cfgPath, node); } catch (e) { return { ok: false, steps: [], output: '', error: e.message }; }
   for (const argv of commands) {

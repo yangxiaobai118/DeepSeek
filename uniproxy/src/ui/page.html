@@ -94,12 +94,15 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   <div class="card"><h2>流量拓扑</h2><div id="topology"></div></div>
 </section>
 <section id="tab-nodes">
-  <div class="card"><h2>节点（通过本机 ssh/scp 编排，无需在远端装 agent）</h2><div id="nodeTable"></div>
+  <div class="card"><h2>节点（通过本机 ssh/scp 编排，无需在远端装 agent）</h2>
+  <div class="row" style="margin-bottom:10px"><button class="ghost" id="probeAll">全部探测</button><button class="ghost" id="deployAll">批量下发</button><input id="batchGroup" placeholder="只处理分组（留空=全部）" size="20"><span id="nodeOut" class="muted"></span></div>
+  <div id="nodeTable"></div>
   <div class="row" style="margin-top:12px">
   <label>id<input id="n_id" size="12"></label>
   <label>名称<input id="n_name" size="12"></label>
   <label>host<input id="n_host" size="18" placeholder="203.0.113.9"></label>
   <label>用户<input id="n_user" size="10" value="root"></label>
+  <label>分组<input id="n_group" size="10" value="default"></label>
   <label>端口<input id="n_port" type="number" value="22" style="width:80px"></label>
   <label>密钥<input id="n_key" size="18" placeholder="/root/.ssh/id_ed25519"></label>
   <label>远端配置<input id="n_path" size="26" value="/etc/uniproxy/config.json"></label>
@@ -657,11 +660,12 @@ document.getElementById('renewCert').onclick = function () { certRun('/api/certs
 async function loadNodes() {
   const r = await api('GET', '/api/nodes');
   const list = (r.data && r.data.nodes) || [];
+  window.__nodes = list;
   const rows = list.length
-    ? '<table><thead><tr><th>id</th><th>host</th><th>user</th><th>远端配置</th><th>最近探测</th><th>操作</th></tr></thead><tbody>' +
+    ? '<table><thead><tr><th>id</th><th>host</th><th>user</th><th>分组</th><th>远端配置</th><th>最近探测</th><th>操作</th></tr></thead><tbody>' +
       list.map(function (n) {
         const last = n.last ? (n.last.ok ? 'ok @ ' + n.last.at : 'failed @ ' + n.last.at) : '未探测';
-        return '<tr><td>' + h(n.id) + '</td><td>' + h(n.host + ':' + n.port) + '</td><td>' + h(n.user) + '</td><td><code>' + h(n.configPath) + '</code></td><td class="muted">' + h(last) + '</td>' +
+        return '<tr><td>' + h(n.id) + '</td><td>' + h(n.host + ':' + n.port) + '</td><td>' + h(n.user) + '</td><td>' + h(n.group || 'default') + '</td><td><code>' + h(n.configPath) + '</code></td><td class="muted">' + h(last) + '</td>' +
           '<td><button class="ghost" data-node="' + h(n.id) + '" data-act="probe">探测</button> ' +
           '<button class="ghost" data-node="' + h(n.id) + '" data-act="deploy">下发</button> ' +
           '<button class="ghost danger" data-node="' + h(n.id) + '" data-act="delete">删除</button></td></tr>';
@@ -697,10 +701,31 @@ document.getElementById('saveNode').onclick = async function () {
     user: document.getElementById('n_user').value,
     port: Number(document.getElementById('n_port').value),
     key: document.getElementById('n_key').value,
+    group: document.getElementById('n_group').value,
     configPath: document.getElementById('n_path').value,
   });
   if (r.status === 200) { msg.textContent = '已保存'; msg.className = 'ok'; await loadNodes(); }
   else { msg.textContent = r.data.error || '失败'; msg.className = 'err'; }
+};
+
+function showNodeResults(data) {
+  const out = document.getElementById('nodeOut');
+  const rows = (data && data.results) || [];
+  out.className = 'muted';
+  out.innerHTML = rows.length
+    ? rows.map(function (r) { return '<div class="' + (r.ok ? 'ok' : 'err') + '">' + h(r.id) + ' (' + h(r.group || '') + ') ' + (r.skipped ? 'skipped' : (r.ok ? 'ok' : 'failed')) + '</div>'; }).join('')
+    : '没有匹配的节点';
+}
+document.getElementById('probeAll').onclick = async function () {
+  const r = await api('POST', '/api/nodes/probe-all');
+  showNodeResults(r.data);
+  await loadNodes();
+};
+document.getElementById('deployAll').onclick = async function () {
+  const group = document.getElementById('batchGroup').value.trim();
+  const r = await api('POST', '/api/nodes/deploy-all', group ? { group: group } : {});
+  showNodeResults(r.data);
+  await loadNodes();
 };
 
 refresh();

@@ -11,7 +11,7 @@ import { collectLogs, logSources } from '../logs.js';
 import { generateNginx } from '../generators/nginx.js';
 import { collectAlerts, notify, loadState } from '../alerts.js';
 import { certStatus, normalizeCerts, buildCommand, issue, validDomain } from '../certs.js';
-import { normalizeNodes, probe, deploy } from '../nodes.js';
+import { normalizeNodes, probe, deploy, probeBatch, deployBatch } from '../nodes.js';
 import { protocolList } from '../protocols.js';
 import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
@@ -128,6 +128,8 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     const nodeMatch = url.pathname.match(/^\/api\/nodes\/([^/]+)$/);
     if (nodeMatch && req.method === 'PUT') return saveNode(req, res, abs, decodeURIComponent(nodeMatch[1]));
     if (nodeMatch && req.method === 'DELETE') return deleteNode(res, abs, decodeURIComponent(nodeMatch[1]));
+    if (url.pathname === '/api/nodes/probe-all' && req.method === 'POST') return nodeBatch(res, abs, 'probe');
+    if (url.pathname === '/api/nodes/deploy-all' && req.method === 'POST') return await nodeBatchDeploy(req, res, abs);
     const nodeAction = url.pathname.match(/^\/api\/nodes\/([^/]+)\/(probe|deploy)$/);
     if (nodeAction && req.method === 'POST') return nodeAct(req, res, abs, decodeURIComponent(nodeAction[1]), nodeAction[2]);
 
@@ -724,6 +726,37 @@ function nginxReload(res, cfgPath) {
   return json(res, result.ok ? 200 : 500, { ok: result.ok, output: result.output, error: result.error });
 }
 
+function nodeBatch(res, cfgPath, action) {
+  const c = derive(readRaw(cfgPath));
+  const nodes = normalizeNodes(c);
+  const result = probeBatch(nodes);
+  const state = readNodeState(cfgPath);
+  for (const row of result.results) {
+    state[row.id] = { ok: row.ok, status: row.status, output: row.output, at: new Date().toISOString() };
+  }
+  writeNodeState(cfgPath, state);
+  record(cfgPath, 'nodes.' + action + '-all', result.results.length + ' node(s)');
+  return json(res, 200, result);
+}
+
+async function nodeBatchDeploy(req, res, cfgPath) {
+  let body = {};
+  try { body = await readJsonAsync(req); } catch (e) { body = {}; }
+  const c = derive(readRaw(cfgPath));
+  let nodes = normalizeNodes(c);
+  if (body.group) nodes = nodes.filter(function (n) { return n.group === body.group; });
+  if (Array.isArray(body.ids) && body.ids.length) nodes = nodes.filter(function (n) { return body.ids.includes(n.id); });
+  const result = deployBatch(cfgPath, nodes, { force: body.force === true });
+  record(cfgPath, 'nodes.deploy-all', nodes.length + ' node(s), ok=' + result.ok);
+  return json(res, 200, result);
+}
+
+function readJsonAsync(req) {
+  return new Promise(function (resolve, reject) {
+    readJson(req, function (err, body) { if (err) reject(err); else resolve(body); });
+  });
+}
+
 function nodeStatePath(cfgPath) { return cfgPath + '.nodes-state.json'; }
 
 function readNodeState(cfgPath) {
@@ -755,6 +788,7 @@ function saveNode(req, res, cfgPath, id) {
       user: String(body.user || 'root').trim(),
       port: Number(body.port || 22),
       key: String(body.key || '').trim(),
+      group: String(body.group || 'default').trim() || 'default',
       configPath: String(body.configPath || '/etc/uniproxy/config.json').trim(),
     };
     if (!node.id || !node.host) return json(res, 400, { error: 'id and host are required' });

@@ -37,6 +37,10 @@
 - multi-node: register remote servers (ssh/scp, no agent), probe their core state
   and deploy the local config with `apply --yes`; results are cached in
   `config.json.nodes-state.json`.
+- cluster scheduling: nodes carry a `group`; batch probe and batch deploy (by
+  group or explicit ids). Deploys are incremental by default - the remote
+  `sha256sum` is compared first and an unchanged target is skipped (`force`
+  overrides).
 - u-ui certificates: read subject/issuer/expiry/SANs, and issue or renew with
   certbot or acme.sh (webroot, standalone or DNS-01, optional staging). The
   command runs as an argv array, so panel input cannot inject shell syntax;

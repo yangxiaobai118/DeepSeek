@@ -238,7 +238,7 @@ fi
 say ''
 ok "installed uniproxy $VERSION ($MODE)"
 say "  panel:  http://127.0.0.1:$UI_PORT  (tunnel: ssh -L $UI_PORT:127.0.0.1:$UI_PORT root@this-host)"
-say "  config: $ETC_DIR/config.json  (edit it, then: u-ui -> 16 validate / 18 apply)"
+say "  config: $ETC_DIR/config.json  (edit it, then: u-ui -> 17 validate / 19 apply)"
 say "  menu:   u-ui"
 
 if [ -t 0 ] && [ -t 1 ]; then

@@ -260,7 +260,7 @@ export async function installSystem(ctx) {
       ctx.io.print('写入 ' + pjoin(plan.unitDir, name));
     }
     run('systemctl daemon-reload');
-    ctx.io.print('安装完成。下一步：编辑 ' + plan.configPath + '，然后菜单 16 validate / 18 apply，或 14 启用自启后 11 启动');
+    ctx.io.print('安装完成。下一步：编辑 ' + plan.configPath + '，然后菜单 17 validate / 19 apply，或 15 启用自启后 10 启动');
   } catch (e) {
     ctx.io.print('安装失败: ' + e.message + '（需要 root 权限）');
   }
@@ -331,7 +331,7 @@ async function installService(ctx) {
   }
   const r = run('systemctl daemon-reload');
   ctx.io.print(r.ok ? 'daemon-reload 完成' : ('daemon-reload 失败: ' + (r.output || r.error)));
-  ctx.io.print('下一步：菜单 12 启用开机自启，或 systemctl enable --now uniproxy-ui');
+  ctx.io.print('下一步：菜单 15 启用开机自启，或 systemctl enable --now uniproxy-ui');
 }
 
 async function uninstallService(ctx) {
@@ -372,7 +372,7 @@ function changePort(ctx) {
     raw.ui = raw.ui || {};
     raw.ui.port = port;
     fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n');
-    ctx.io.print('已保存面板端口 ' + port + '，重启面板后生效（菜单 7）');
+    ctx.io.print('已保存面板端口 ' + port + '，重启面板后生效（菜单 12）');
   };
 }
 
@@ -420,7 +420,7 @@ function setPassword(ctx, key) {
     raw.ui = raw.ui || {};
     raw.ui[key] = value;
     fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n');
-    ctx.io.print('已更新 ' + key + '，重启面板后生效（菜单 7）');
+    ctx.io.print('已更新 ' + key + '，重启面板后生效（菜单 12）');
   };
 }
 

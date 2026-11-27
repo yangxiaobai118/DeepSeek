@@ -1,7 +1,9 @@
 #!/bin/sh
 # uniproxy one-line installer
 #
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)"
+#   bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
+#   bash <(curl -Ls .../install.sh) 0.4.6          # pin a release
+#   UNIPROXY_DRY_RUN=1 bash <(curl -Ls .../install.sh)   # print the plan only
 #
 # Detects the architecture, downloads the matching release asset (the
 # self-contained binary when available, otherwise the Node bundle), installs
@@ -52,7 +54,9 @@ case "$arch" in
   *) die "unsupported architecture: $arch" ;;
 esac
 
-if [ -n "${UNIPROXY_VERSION:-}" ]; then
+if [ -n "${1:-}" ] && [ "${1:-}" != "latest" ]; then
+  VERSION="${1#v}"
+elif [ -n "${UNIPROXY_VERSION:-}" ]; then
   VERSION="$UNIPROXY_VERSION"
 else
   tag=$(fetch_stdout "https://api.github.com/repos/$REPO/releases/latest" \

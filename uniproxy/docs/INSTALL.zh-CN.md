@@ -1,27 +1,39 @@
 # uniproxy 安装与部署手册
 
-> 适用版本：**0.4.6**
+> 适用版本：**0.4.6** · 目标系统：Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+（glibc ≥ 2.28）
+> 读者：负责在一台 Linux 服务器上完成部署的运维/开发人员
+> 示例约定：域名 `example.com`，面板 `xui.example.com` / `sui.example.com`，订阅 `sub.example.com`，Reality SNI `www.bing.com`，服务器公网 IP 记为 `<server-ip>`
+
+快速开始、功能与平台矩阵见[仓库 README](../../README.md)；本手册是详细的按步操作说明。
 
 ## 一键安装（推荐）
 
-在服务器上以 root 执行一行命令，自动识别架构、下载对应发布资产、安装命令与 systemd 单元并启动面板：
+在一台全新的 Linux 服务器上以 root 执行。安装器会自动识别架构、下载对应发布资产（优先免 Node 的单文件二进制）、安装 `uniproxy` / `u-ui`、生成 `/etc/uniproxy/config.json`、写入 systemd 单元并启动面板。
 
-```sh
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)"
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
 ```
 
-想先看它会做什么（不落盘）：
+固定版本（在命令后追加版本号）：
 
-```sh
-UNIPROXY_DRY_RUN=1 sh -c "$(curl -fsSL https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)"
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh) 0.4.6
 ```
 
-装完会自动打开菜单；如果没打开，执行 `u-ui` 后选 **3. 初始化向导**，按提示填域名/端口/密码（能随机的直接回车）。
+只看计划、不落盘：
 
-可用环境变量覆盖：`UNIPROXY_VERSION`、`UNIPROXY_PREFIX`、`UNIPROXY_BIN_DIR`、`UNIPROXY_ETC_DIR`、`UNIPROXY_UI_PORT`、`UNIPROXY_SUB_PORT`。
-　|　目标系统：Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+（glibc ≥ 2.28）
-> 读者：负责在一台 Linux 服务器上完成部署的运维/开发人员
-> 示例约定：域名 `example.com`，面板 `xui.example.com` / `sui.example.com`，订阅 `sub.example.com`，Reality SNI `www.bing.com`，服务器公网 IP 记为 `<server-ip>`
+```bash
+UNIPROXY_DRY_RUN=1 bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
+```
+
+自定义端口/路径：
+
+```bash
+UNIPROXY_UI_PORT=9000 UNIPROXY_SUB_PORT=9001 UNIPROXY_PREFIX=/opt/uniproxy \
+  bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
+```
+
+装完会自动打开菜单；若没有，执行 `u-ui` 后选择初始化向导，按提示填域名、端口和管理员密码。其他可用变量：`UNIPROXY_VERSION`、`UNIPROXY_BIN_DIR`、`UNIPROXY_ETC_DIR`。
 
 本手册按**实际操作顺序**编写。每一步都包含四部分：
 

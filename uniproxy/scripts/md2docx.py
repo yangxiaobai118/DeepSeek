@@ -12,6 +12,7 @@ from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement, parse_xml
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Pt, RGBColor
 
@@ -19,7 +20,7 @@ CJK_FONT = "Microsoft YaHei"
 MONO_FONT = "Consolas"
 ACCENT = RGBColor(0x1F, 0x3A, 0x5F)
 BT = chr(96)
-INLINE = re.compile(r"(\*\*.+?\*\*|" + BT + r"[^" + BT + r"]+" + BT + r")")
+INLINE = re.compile(r"(\*\*.+?\*\*|" + BT + r"[^" + BT + r"]+" + BT + r"|\[[^\]]+\]\([^)]+\))")
 
 
 def set_east_asia(run, name=CJK_FONT):
@@ -67,6 +68,33 @@ def heading(doc, text, level):
     return paragraph
 
 
+def add_link(paragraph, label, url):
+    if url.startswith("http://") or url.startswith("https://"):
+        part = paragraph.part
+        r_id = part.relate_to(url, RT.HYPERLINK, is_external=True)
+        hyperlink = OxmlElement("w:hyperlink")
+        hyperlink.set(qn("r:id"), r_id)
+        run = OxmlElement("w:r")
+        rpr = OxmlElement("w:rPr")
+        color = OxmlElement("w:color")
+        color.set(qn("w:val"), "1F3A5F")
+        rpr.append(color)
+        underline = OxmlElement("w:u")
+        underline.set(qn("w:val"), "single")
+        rpr.append(underline)
+        run.append(rpr)
+        text = OxmlElement("w:t")
+        text.text = label
+        run.append(text)
+        hyperlink.append(run)
+        paragraph._p.append(hyperlink)
+    else:
+        run = paragraph.add_run(label)
+        run.font.color.rgb = ACCENT
+        run.underline = True
+        set_east_asia(run)
+
+
 def add_inline(paragraph, text, bold=False, size=None):
     pos = 0
     for match in INLINE.finditer(text):
@@ -79,6 +107,9 @@ def add_inline(paragraph, text, bold=False, size=None):
         token = match.group(0)
         if token.startswith("**") and token.endswith("**") and len(token) > 4:
             add_inline(paragraph, token[2:-2], bold=True, size=size)
+        elif token.startswith("[") and "](" in token:
+            label, url = token[1:-1].split("](", 1)
+            add_link(paragraph, label, url)
         else:
             run = paragraph.add_run(token[1:-1])
             run.font.name = MONO_FONT

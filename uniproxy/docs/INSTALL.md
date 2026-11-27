@@ -1,27 +1,39 @@
 # uniproxy Installation & Deployment Guide
 
-> Version: **0.4.6**
+> Version: **0.4.6** · Target OS: Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+ (glibc ≥ 2.28)
+> Audience: operators deploying on a single Linux server
+> Examples: domain `example.com`, panels `xui.example.com` / `sui.example.com`, subscriptions `sub.example.com`, Reality SNI `www.bing.com`, server IP written as `<server-ip>`
+
+Quick start, feature list and platform matrix: [repository README](../../README.md). This guide is the detailed walkthrough.
 
 ## One-line install (recommended)
 
-Run this as root: it detects the architecture, downloads the matching release asset, installs the commands and systemd units, and starts the panel.
+Run as root on a fresh Linux server. The installer detects the architecture, downloads the matching release asset (self-contained binary when available, otherwise the Node bundle), installs `uniproxy` / `u-ui`, seeds `/etc/uniproxy/config.json`, writes the systemd units and starts the panel.
 
-```sh
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)"
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
 ```
 
-To see what it would do without touching the system:
+Pin a version by appending the tag number:
 
-```sh
-UNIPROXY_DRY_RUN=1 sh -c "$(curl -fsSL https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)"
+```bash
+bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh) 0.4.6
 ```
 
-The menu opens automatically after install; if it does not, run `u-ui` and pick **3. Setup wizard** to fill in the domain, ports and passwords (press Enter for anything random).
+Preview the plan without touching the system:
 
-Override with `UNIPROXY_VERSION`, `UNIPROXY_PREFIX`, `UNIPROXY_BIN_DIR`, `UNIPROXY_ETC_DIR`, `UNIPROXY_UI_PORT`, `UNIPROXY_SUB_PORT`.
-　|　Target OS: Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+ (glibc ≥ 2.28)
-> Audience: operators deploying on a single Linux server
-> Examples: domain `example.com`, panels `xui.example.com` / `sui.example.com`, subscriptions `sub.example.com`, Reality SNI `www.bing.com`, server IP written as `<server-ip>`
+```bash
+UNIPROXY_DRY_RUN=1 bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
+```
+
+Custom ports or paths:
+
+```bash
+UNIPROXY_UI_PORT=9000 UNIPROXY_SUB_PORT=9001 UNIPROXY_PREFIX=/opt/uniproxy \
+  bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
+```
+
+The menu opens automatically after install; if not, run `u-ui` and choose the setup wizard to fill in the domain, ports and admin password. Other overrides: `UNIPROXY_VERSION`, `UNIPROXY_BIN_DIR`, `UNIPROXY_ETC_DIR`.
 
 This guide follows the **real order of operations**. Every step has four parts:
 

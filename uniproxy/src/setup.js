@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { hashPassword, USERNAME_RE } from './auth.js';
+import { syncUnitPorts } from './units.js';
 
 /**
  * First-run wizard.
@@ -132,6 +133,7 @@ export async function runSetup(opts = {}) {
   }
 
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
+  const synced = syncUnitPorts({ uiPort: cfg.ui.port, subPort: cfg.subscription.port });
 
   const top6 = Object.keys(cfg).slice(0, 6);
   const lines = [
@@ -145,6 +147,8 @@ export async function runSetup(opts = {}) {
     '  管理员密码: ' + adminPassword,
     '  其他账号:   稍后在面板「账号」页添加',
     '  邮箱:       ' + (cfg.server.email || '(未设置)'),
+    ...(synced.updated.length ? ['  服务单元:   已同步端口 -> ' + synced.updated.join(', ')] : []),
+    ...(synced.errors.length ? ['  服务单元:   未能同步（需要 root）: ' + synced.errors.join('; ')] : []),
     '',
     '以下已自动随机生成，无需填写：server.secret、VLESS UUID、Reality 密钥对与 shortId、用户 UUID。',
     '下一步：u-ui → 17 validate → 19 apply（或 uniproxy validate / apply）',

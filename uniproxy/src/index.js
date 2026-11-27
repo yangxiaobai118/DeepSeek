@@ -61,6 +61,8 @@ function parseArgs(argv) {
     else if (a === '-p' || a === '--port') args.port = Number(argv[++i]);
     else if (a === '--client') args.client = argv[++i];
     else if (a === '--address') args.address = argv[++i];
+    else if (a === '--ui-port') args.uiPort = Number(argv[++i]);
+    else if (a === '--sub-port') args.subPort = Number(argv[++i]);
     else if (a === '--json') args.json = true;
     else if (a === '--no-probe') args.probe = false;
     else if (a === '--yes' || a === '-y') args.yes = true;
@@ -175,7 +177,12 @@ function cmdInit(args) {
     process.exit(1);
   }
   fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(scaffold(), null, 2) + NL);
+  const config = scaffold();
+  config.ui = config.ui || {};
+  config.subscription = config.subscription || {};
+  if (Number.isInteger(args.uiPort) && args.uiPort > 0 && args.uiPort < 65536) config.ui.port = args.uiPort;
+  if (Number.isInteger(args.subPort) && args.subPort > 0 && args.subPort < 65536) config.subscription.port = args.subPort;
+  fs.writeFileSync(file, JSON.stringify(config, null, 2) + NL);
   console.log('created ' + file + ' with freshly generated Reality keypair + UUIDs');
   console.log('next: edit server.publicIp / domains / cert paths, then run "uniproxy validate"');
 }

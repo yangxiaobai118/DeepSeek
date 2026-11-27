@@ -12,6 +12,7 @@ import { certStatus, issue } from './certs.js';
 import { listBackups, createBackup, restoreBackup } from './backups.js';
 import { collectAlerts } from './alerts.js';
 import { normalizeNodes } from './nodes.js';
+import { syncUnitPorts } from './units.js';
 
 /**
  * Terminal menu, modelled on the 3x-ui management script: boxed sections,
@@ -432,7 +433,11 @@ function changePort(ctx) {
     raw.ui = raw.ui || {};
     raw.ui.port = port;
     fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n');
-    ctx.io.print('已保存面板端口 ' + port + '，重启面板后生效（菜单 12）');
+    const synced = syncUnitPorts({ uiPort: port });
+    let msg = '已保存面板端口 ' + port;
+    if (synced.updated.length) msg += '，已同步服务单元';
+    if (synced.errors.length) msg += '，服务单元同步失败（需要 root）: ' + synced.errors.join('; ');
+    ctx.io.print(msg + '；重启面板后生效（菜单 12）');
   };
 }
 

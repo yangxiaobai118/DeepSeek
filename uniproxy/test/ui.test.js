@@ -13,6 +13,7 @@ import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup, pru
 import { runMenu, renderMenu, box, buildMenu, unitFiles, installSystem, installPlan, uninstallSystem } from '../src/menu.js';
 import { randomPassword, randomPort, runSetup } from '../src/setup.js';
 import { verifyPassword } from '../src/auth.js';
+import { syncUnitPorts } from '../src/units.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -614,6 +615,21 @@ test('menu: service unit files point at the right command', function () {
   assert.ok(files['uniproxy-ui.service'].includes('WorkingDirectory=/etc/uniproxy'));
   assert.ok(files['uniproxy-ui.service'].includes('WantedBy=multi-user.target'));
   assert.ok(files['uniproxy-sub.service'].includes('serve -c /etc/uniproxy/config.json -p 8787'));
+});
+
+test('units: syncUnitPorts rewrites the installed command', function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'units-'));
+  try {
+    fs.writeFileSync(path.join(dir, 'uniproxy-ui.service'), '[Service]\nExecStart=/opt/uniproxy ui -c /etc/uniproxy/config.json -p 8788\n');
+    const result = syncUnitPorts({ unitDir: dir, uiPort: 9000, subPort: 9001 });
+    assert.equal(result.updated.length, 1);
+    assert.ok(fs.readFileSync(path.join(dir, 'uniproxy-ui.service'), 'utf8').includes('-p 9000'));
+    const again = syncUnitPorts({ unitDir: dir, uiPort: 9000 });
+    assert.equal(again.updated.length, 0);
+    assert.equal(again.errors.length, 0);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('menu: installPlan describes a 3x-ui style layout', function () {

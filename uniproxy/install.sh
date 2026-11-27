@@ -234,7 +234,7 @@ fi
 chmod 755 "$BIN_DIR/uniproxy" "$BIN_DIR/u-ui"
 
 if [ ! -f "$ETC_DIR/config.json" ]; then
-  "$BIN_DIR/uniproxy" init -c "$ETC_DIR/config.json" || true
+  "$BIN_DIR/uniproxy" init -c "$ETC_DIR/config.json" --ui-port "$UI_PORT" --sub-port "$SUB_PORT" || true
   say "generated $ETC_DIR/config.json"
 fi
 

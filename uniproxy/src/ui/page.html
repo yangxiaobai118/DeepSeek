@@ -43,6 +43,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <button data-tab="config">配置</button>
 <button data-tab="actions">操作</button>
 <button data-tab="settings">设置</button>
+<button data-tab="certs">证书</button>
 <button data-tab="audit">审计</button>
 <button data-tab="alerts">告警</button>
 </nav><span id="roleBadge" class="muted"></span><a href="/logout">退出</a></header>
@@ -109,6 +110,25 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 </section>
 <section id="tab-settings">
   <div class="card"><h2>设置（写入 config.json，保存前校验）</h2><div id="settingsForm"><div class="muted">载入中…</div></div></div>
+</section>
+<section id="tab-certs">
+  <div class="card"><h2>当前证书</h2><div id="certStatus"></div></div>
+  <div class="card"><h2>申请 / 续期（certbot 或 acme.sh，argv 方式执行，不做 shell 拼接）</h2>
+  <div class="row">
+  <label>提供方<select id="c_provider"><option value="certbot">certbot</option><option value="acme.sh">acme.sh</option></select></label>
+  <label>校验方式<select id="c_challenge"><option value="http-01">http-01（webroot）</option><option value="standalone">standalone（占 80）</option><option value="dns-01">dns-01（手动）</option></select></label>
+  <label>邮箱<input id="c_email" placeholder="admin@example.com"></label>
+  <label>域名（逗号分隔）<input id="c_domains" size="40" placeholder="example.com,*.example.com"></label>
+  <label>webroot<input id="c_webroot" value="/var/www/html"></label>
+  <label><span>staging</span><input id="c_staging" type="checkbox"></label>
+  </div>
+  <div class="row" style="margin-top:12px">
+  <button class="act" id="saveCerts">保存申请配置</button>
+  <button class="ghost" id="issueCert">申请证书</button>
+  <button class="ghost" id="renewCert">续期</button>
+  <span id="certMsg" class="muted"></span></div>
+  <div class="muted" style="margin-top:10px" id="certPlan"></div>
+  <pre id="certOut" style="margin-top:10px">(idle)</pre></div>
 </section>
 <section id="tab-audit">
   <div class="card"><h2>审计日志（最近 200 条）</h2><div id="auditTable"></div></div>
@@ -340,6 +360,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     if (btn.dataset.tab === 'topology') renderTopology();
     if (btn.dataset.tab === 'audit') loadAudit();
     if (btn.dataset.tab === 'alerts') loadAlerts();
+    if (btn.dataset.tab === 'certs') loadCerts();
   };
 });
 async function openClients(kind, tag) {
@@ -562,6 +583,49 @@ document.getElementById('notifyAlerts').onclick = async function () {
   } else { msg.textContent = r.data.error || '失败'; msg.className = 'err'; }
   await loadAlerts();
 };
+
+function certRow(k, v) {
+  return '<tr><td>' + h(k) + '</td><td><code>' + h(v == null ? '' : v) + '</code></td></tr>';
+}
+async function loadCerts() {
+  const r = await api('GET', '/api/certs');
+  const d = r.data || {};
+  const st = d.status || {};
+  const cfg = d.config || {};
+  document.getElementById('certStatus').innerHTML = st.ok
+    ? '<table><tbody>' + certRow('subject', st.subject) + certRow('issuer', st.issuer) + certRow('validTo', st.validTo) + certRow('daysLeft', st.daysLeft) + certRow('SANs', st.sans) + '</tbody></table>' +
+      (st.daysLeft < 30 ? '<div class="warn" style="margin-top:8px">将在 ' + st.daysLeft + ' 天后过期，建议续期</div>' : '')
+    : '<div class="warn">' + h(st.error || '证书不可读') + '</div><div class="muted">' + h(st.file || '') + '</div>';
+  document.getElementById('c_provider').value = cfg.provider || 'certbot';
+  document.getElementById('c_challenge').value = cfg.challenge || 'http-01';
+  document.getElementById('c_email').value = cfg.email || '';
+  document.getElementById('c_domains').value = (cfg.domains || []).join(',');
+  document.getElementById('c_webroot').value = cfg.webroot || '/var/www/html';
+  document.getElementById('c_staging').checked = Boolean(cfg.staging);
+  document.getElementById('certPlan').textContent = d.planError ? ('计划命令不可用：' + d.planError) : ('将执行：' + (d.plan || '(none)'));
+}
+document.getElementById('saveCerts').onclick = async function () {
+  const msg = document.getElementById('certMsg');
+  const r = await api('PUT', '/api/certs', {
+    provider: document.getElementById('c_provider').value,
+    challenge: document.getElementById('c_challenge').value,
+    email: document.getElementById('c_email').value,
+    domains: document.getElementById('c_domains').value,
+    webroot: document.getElementById('c_webroot').value,
+    staging: document.getElementById('c_staging').checked,
+  });
+  if (r.status === 200) { msg.textContent = '已保存'; msg.className = 'ok'; await loadCerts(); }
+  else { msg.textContent = r.data.error || '失败'; msg.className = 'err'; }
+};
+async function certRun(path) {
+  const out = document.getElementById('certOut');
+  out.textContent = 'running ...';
+  const r = await api('POST', path);
+  out.textContent = (r.data.command ? '$ ' + r.data.command + '\n' : '') + (r.data.output || '') + '\n' + (r.data.ok ? 'OK' : ('FAILED ' + (r.data.error || '')));
+  await loadCerts();
+}
+document.getElementById('issueCert').onclick = function () { certRun('/api/certs/issue'); };
+document.getElementById('renewCert').onclick = function () { certRun('/api/certs/renew'); };
 
 refresh();
 </script></body></html>

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { startUi } from '../src/ui/server.js';
 import { parseXrayStatNames, parseClashConnections, mergeUsage } from '../src/stats.js';
 import { shouldSend, markSent, alertsFromDoctor, alertsFromPorts } from '../src/alerts.js';
+import { buildCommand, validDomain, certStatus } from '../src/certs.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -277,6 +278,66 @@ test('u-ui: alerts endpoints', async function () {
     const sentJson = await sent.json();
     assert.equal(typeof sentJson.sent, 'number');
     assert.equal(typeof sentJson.skipped, 'number');
+  } finally {
+    await inst.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
+test('certs: command building, domain validation and status', function () {
+  const base = { server: { email: 'a@b.co', domains: { web: 'example.com' }, cert: { certFile: '/nope/full.pem', keyFile: '/nope/key.pem' } }, certs: { domains: ['example.com'] } };
+  const webroot = buildCommand(base, 'issue');
+  assert.equal(webroot.argv[0], 'certbot');
+  assert.ok(webroot.argv.includes('--webroot'));
+  assert.ok(webroot.argv.includes('-d'));
+  assert.ok(webroot.argv.includes('example.com'));
+  assert.equal(webroot.shell, false);
+
+  const dns = buildCommand({ server: base.server, certs: { domains: ['example.com'], challenge: 'dns-01' } }, 'issue');
+  assert.ok(dns.argv.includes('--manual'));
+
+  const renew = buildCommand(base, 'renew');
+  assert.deepEqual(renew.argv.slice(0, 2), ['certbot', 'renew']);
+
+  const custom = buildCommand({ server: base.server, certs: { domains: ['example.com'], command: 'echo hi' } }, 'issue');
+  assert.equal(custom.shell, true);
+
+  assert.equal(validDomain('example.com'), true);
+  assert.equal(validDomain('*.example.com'), true);
+  assert.equal(validDomain('bad domain'), false);
+  assert.equal(validDomain('a;rm -rf /'), false);
+
+  const missing = certStatus(base);
+  assert.equal(missing.ok, false);
+  assert.ok(missing.error);
+});
+
+test('u-ui: certificate endpoints', async function () {
+  const ctx = setup();
+  const inst = await startUi(ctx.cfgPath, 0, { password: 'secret' });
+  try {
+    const auth = await login(inst);
+    const headers = { cookie: auth.cookie, 'x-uui-csrf': auth.csrf, 'content-type': 'application/json' };
+
+    const got = await fetch(inst.url + '/api/certs', { headers: { cookie: auth.cookie } });
+    assert.equal(got.status, 200);
+    const gotJson = await got.json();
+    assert.ok(gotJson.config);
+    assert.equal(gotJson.status.ok, false);
+
+    const saved = await fetch(inst.url + '/api/certs', { method: 'PUT', headers: headers, body: JSON.stringify({ domains: 'a.example.com,b.example.com', challenge: 'dns-01', email: 'ops@example.com' }) });
+    assert.equal(saved.status, 200);
+    const raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
+    assert.deepEqual(raw.certs.domains, ['a.example.com', 'b.example.com']);
+    assert.equal(raw.certs.challenge, 'dns-01');
+
+    const badDomain = await fetch(inst.url + '/api/certs', { method: 'PUT', headers: headers, body: JSON.stringify({ domains: 'ok.example.com,a;rm -rf /' }) });
+    assert.equal(badDomain.status, 400);
+
+    const issued = await fetch(inst.url + '/api/certs/issue', { method: 'POST', headers: headers, body: '{}' });
+    assert.ok([200, 500].includes(issued.status));
+    const issuedJson = await issued.json();
+    assert.ok(issuedJson.command.includes('certbot'));
   } finally {
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });

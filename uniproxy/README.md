@@ -440,7 +440,7 @@ MIT. See [LICENSE](LICENSE).
 - **`doctor`**：预检占位符、证书、Reality 密钥、重复 SNI、端口和内核二进制；
 - **`apply`**：先校验（`xray run -test`、`sing-box check`、`nginx -t`），再备份、下发、reload；reload 失败自动回滚；
 - 只读 Web 仪表盘（`serve`）：端口地图、体检、链接、订阅地址与配置预览；
-- **u-ui 管理面板**（`ui`）：双角色登录（admin/只读）、入站增删改（xray + sing-box）、入站级客户端、用户增删改、内核启停与开关、流量采集与同步、日志查看、nginx 站点/反代管理与测试重载、拓扑视图、审计日志、告警与通知、设置表单、配置编辑、validate / doctor / plan / apply；
+- **u-ui 管理面板**（`ui`）：双角色登录（admin/只读）、入站增删改（xray + sing-box）、入站级客户端、用户增删改、内核启停与开关、流量采集与同步、日志查看、nginx 站点/反代管理与测试重载、拓扑视图、审计日志、告警与通知、证书申请与续期、设置表单、配置编辑、validate / doctor / plan / apply；
 - **告警**（`alerts`）：doctor 发现 + 端口冲突 + 内核异常，按冷却推送到 webhook 或命令；
 - 订阅接口带 `no-store`、profile 头与按客户端的 token；
 - 零运行时依赖（Node.js >= 18）。

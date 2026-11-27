@@ -63,6 +63,13 @@
       "blockDomains": []
     }
   },
+  "certs": {
+    "provider": "certbot",
+    "challenge": "http-01",
+    "webroot": "/var/www/html",
+    "staging": false,
+    "domains": []
+  },
   "alerts": {
     "enabled": true,
     "webhook": "",

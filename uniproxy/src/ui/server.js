@@ -10,6 +10,7 @@ import { collectStats, combineStats, mergeUsage } from '../stats.js';
 import { collectLogs, logSources } from '../logs.js';
 import { generateNginx } from '../generators/nginx.js';
 import { collectAlerts, notify, loadState } from '../alerts.js';
+import { certStatus, normalizeCerts, buildCommand, issue, validDomain } from '../certs.js';
 import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
 import { buildPlan, formatPlan, applyPlan } from '../apply.js';
@@ -119,6 +120,13 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     }
     if (url.pathname === '/api/nginx/test' && req.method === 'POST') return nginxTest(res, abs);
     if (url.pathname === '/api/nginx/reload' && req.method === 'POST') return nginxReload(res, abs);
+
+    if (url.pathname === '/api/certs') {
+      if (req.method === 'GET') return getCerts(res, abs);
+      if (req.method === 'PUT') return putCerts(req, res, abs);
+    }
+    if (url.pathname === '/api/certs/issue' && req.method === 'POST') return certAction(res, abs, 'issue');
+    if (url.pathname === '/api/certs/renew' && req.method === 'POST') return certAction(res, abs, 'renew');
 
     if (url.pathname === '/api/alerts' && req.method === 'GET') return getAlerts(res, abs);
     if (url.pathname === '/api/alerts/notify' && req.method === 'POST') return await notifyAlerts(res, abs);
@@ -703,6 +711,45 @@ function nginxReload(res, cfgPath) {
   const result = runCmd(cmd);
   record(cfgPath, 'nginx.reload', result.ok ? 'ok' : 'failed');
   return json(res, result.ok ? 200 : 500, { ok: result.ok, output: result.output, error: result.error });
+}
+
+function getCerts(res, cfgPath) {
+  const c = derive(readRaw(cfgPath));
+  let plan = '';
+  let planError = '';
+  try { plan = buildCommand(c, 'issue').argv.join(' '); } catch (e) { planError = e.message; }
+  return json(res, 200, { status: certStatus(c), config: normalizeCerts(c), plan: plan, planError: planError });
+}
+
+function putCerts(req, res, cfgPath) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    const raw = readRaw(cfgPath);
+    raw.certs = raw.certs || {};
+    if (body.provider) raw.certs.provider = String(body.provider);
+    if (body.challenge) raw.certs.challenge = String(body.challenge);
+    if (body.webroot !== undefined) raw.certs.webroot = String(body.webroot);
+    if (body.email !== undefined) raw.certs.email = String(body.email);
+    if (body.staging !== undefined) raw.certs.staging = Boolean(body.staging);
+    if (body.domains !== undefined) {
+      const list = String(body.domains).split(',').map(function (d) { return d.trim(); }).filter(Boolean);
+      const bad = list.filter(function (d) { return !validDomain(d); });
+      if (bad.length) return json(res, 400, { error: 'invalid domain(s): ' + bad.join(', ') });
+      raw.certs.domains = list;
+    }
+    const check = validateConfig(derive(raw));
+    if (check.errors.length) return json(res, 400, { error: 'validation failed', errors: check.errors });
+    record(cfgPath, 'certs.update', 'provider=' + raw.certs.provider);
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, warnings: check.warnings });
+  });
+}
+
+function certAction(res, cfgPath, mode) {
+  const c = derive(readRaw(cfgPath));
+  const result = issue(c, { mode: mode });
+  record(cfgPath, 'certs.' + mode, result.ok ? 'ok' : 'failed');
+  return json(res, result.ok ? 200 : 500, result);
 }
 
 function getAlerts(res, cfgPath) {

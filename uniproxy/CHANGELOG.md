@@ -30,6 +30,10 @@
   test/reload to `config.json.audit.log` and show the tail in the panel.
 - u-ui roles: `ui.password` is admin and `ui.viewerPassword` is read-only;
   viewer sessions get 403 on every mutation.
+- u-ui certificates: read subject/issuer/expiry/SANs, and issue or renew with
+  certbot or acme.sh (webroot, standalone or DNS-01, optional staging). The
+  command runs as an argv array, so panel input cannot inject shell syntax;
+  issued files are copied to `server.cert` and nginx is reloaded.
 - alerts: `uniproxy alerts` (and the u-ui alert tab) collects doctor findings,
   port conflicts and inactive cores, then pushes due ones to `alerts.webhook`
   (JSON POST) and/or `alerts.command` (text in `UNIPROXY_ALERT_TEXT`), with a

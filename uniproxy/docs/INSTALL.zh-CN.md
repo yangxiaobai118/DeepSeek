@@ -315,7 +315,7 @@ xray version && systemctl is-active xray
 第 1 步：进入 `/tmp` 并设定版本
 
 ```bash
-cd /tmp && SB=1.12.0
+cd /tmp && SB=1.14.5
 ```
 
 > **替换点**：`SB` 换成 sing-box 的最新稳定版；`linux-amd64` 要和架构对应（x86_64 用 `linux-amd64`，aarch64 用 `linux-arm64`）。本步显式 `cd /tmp`，执行后停留在 `/tmp`。
@@ -382,7 +382,7 @@ cp /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.dist-$(date +%F)"
 ### 预期结果
 
 - `xray version` 输出 `Xray 25.x ...`
-- `sing-box version` 输出 `sing-box version 1.12.x`
+- `sing-box version` 输出 `sing-box version 1.14.x`
 - `nginx -V` 中出现 `--with-stream`
 - 三个命令都能执行，说明二进制已在 PATH 中
 
@@ -595,7 +595,7 @@ OK    certificate        valid for 89 day(s), subject ...
 OK    subscriptions      2 client profile(s) under /sub/<token>
 OK    users              1 registry user(s), 1 active
 OK    binary xray        Xray 25.x ...
-OK    binary sing-box    sing-box version 1.12.x
+OK    binary sing-box    sing-box version 1.14.x
 OK    binary nginx       nginx version: nginx/1.24.x
 
 0 failure(s), 0 warning(s)

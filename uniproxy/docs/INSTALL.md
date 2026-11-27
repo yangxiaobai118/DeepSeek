@@ -312,7 +312,7 @@ xray version && systemctl is-active xray
 Step 1: enter `/tmp` and set the version
 
 ```bash
-cd /tmp && SB=1.12.0
+cd /tmp && SB=1.14.5
 ```
 
 > **What to replace**: `SB` with the latest stable sing-box release, and `linux-amd64` with your architecture (`linux-amd64` for x86_64, `linux-arm64` for aarch64). This step runs `cd /tmp` explicitly and leaves you there.
@@ -379,7 +379,7 @@ cp /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.dist-$(date +%F)"
 ### Expected result
 
 - `xray version` prints `Xray 25.x`
-- `sing-box version` prints `sing-box version 1.12.x`
+- `sing-box version` prints `sing-box version 1.14.x`
 - `nginx -V` output contains `--with-stream`
 - All three commands are on `PATH`
 
@@ -592,7 +592,7 @@ OK    certificate        valid for 89 day(s), subject ...
 OK    subscriptions      2 client profile(s) under /sub/<token>
 OK    users              1 registry user(s), 1 active
 OK    binary xray        Xray 25.x ...
-OK    binary sing-box    sing-box version 1.12.x
+OK    binary sing-box    sing-box version 1.14.x
 OK    binary nginx       nginx version: nginx/1.24.x
 
 0 failure(s), 0 warning(s)

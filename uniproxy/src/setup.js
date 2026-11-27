@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import { hashPassword, USERNAME_RE } from './auth.js';
 import { syncUnitPorts } from './units.js';
+import { validDomain } from './certs.js';
 
 /**
  * First-run wizard.
@@ -38,18 +39,10 @@ async function detectPublicIp() {
 function applyDomain(cfg, domain) {
   cfg.server.domains = cfg.server.domains || {};
   cfg.server.domains.web = domain;
-  cfg.certs = cfg.certs || {};
-  cfg.certs.domains = [domain];
   cfg.nginx = cfg.nginx || {};
   cfg.nginx.sites = cfg.nginx.sites || [];
   if (cfg.nginx.sites[0]) cfg.nginx.sites[0].serverName = domain;
   else cfg.nginx.sites.push({ serverName: domain, root: '/var/www/html', index: 'index.html' });
-  cfg.panels = cfg.panels || {};
-  if (cfg.panels.xui) cfg.panels.xui.domain = 'xui.' + domain;
-  if (cfg.panels.sui) {
-    cfg.panels.sui.domain = 'sui.' + domain;
-    if (cfg.panels.sui.sub) cfg.panels.sui.sub.domain = 'sub.' + domain;
-  }
   for (const ib of (cfg.singbox && cfg.singbox.inbounds) || []) {
     if (ib.security === 'tls' && (!ib.sni || ib.sni.endsWith('.example.com'))) ib.sni = 'sb.' + domain;
   }
@@ -84,7 +77,52 @@ export async function runSetup(opts = {}) {
   const domain = flags.domain != null ? flags.domain : await ask('域名（如 example.com；回车=仅 IP，不使用域名）', domainHint);
   if (domain) applyDomain(cfg, domain);
 
-  // 2. public IP: auto-detected, overridable
+  // 2. panel / subscription hostnames: defaults derive from the domain, r = random prefix
+  if (domain) {
+    const askHost = async function (question, fallback) {
+      const value = (await ask(question, fallback)).trim();
+      if (value.toLowerCase() === 'r') {
+        const label = fallback.split('.')[0] + '-' + crypto.randomBytes(2).toString('hex');
+        return label + '.' + domain;
+      }
+      if (!value) return fallback;
+      if (!validDomain(value)) {
+        io.print('域名不合法，改用默认值 ' + fallback);
+        return fallback;
+      }
+      return value;
+    };
+    cfg.panels = cfg.panels || {};
+    cfg.panels.xui = cfg.panels.xui || { enabled: true };
+    cfg.panels.sui = cfg.panels.sui || { enabled: true };
+    cfg.panels.sui.sub = cfg.panels.sui.sub || { enabled: true };
+    const hostDefault = function (current, prefix) {
+      return current && validDomain(current) && current.endsWith('.' + domain) && current !== domain
+        ? current
+        : prefix + '.' + domain;
+    };
+    if (cfg.panels.xui.enabled !== false) {
+      cfg.panels.xui.domain = await askHost('x-ui 面板域名（r = 随机前缀）', hostDefault(cfg.panels.xui.domain, 'xui'));
+    }
+    if (cfg.panels.sui.enabled !== false) {
+      cfg.panels.sui.domain = await askHost('s-ui 面板域名（r = 随机前缀）', hostDefault(cfg.panels.sui.domain, 'sui'));
+    }
+    if (cfg.panels.sui.enabled !== false && cfg.panels.sui.sub.enabled !== false) {
+      cfg.panels.sui.sub.domain = await askHost('订阅域名（r = 随机前缀）', hostDefault(cfg.panels.sui.sub.domain, 'sub'));
+    }
+
+    const hosts = [domain];
+    if (cfg.panels.xui.enabled !== false && cfg.panels.xui.domain) hosts.push(cfg.panels.xui.domain);
+    if (cfg.panels.sui.enabled !== false && cfg.panels.sui.domain) hosts.push(cfg.panels.sui.domain);
+    if (cfg.panels.sui.enabled !== false && cfg.panels.sui.sub.enabled !== false && cfg.panels.sui.sub.domain) hosts.push(cfg.panels.sui.sub.domain);
+    for (const ib of (cfg.singbox && cfg.singbox.inbounds) || []) {
+      if (ib.security === 'tls' && ib.sni && (ib.sni === domain || ib.sni.endsWith('.' + domain))) hosts.push(ib.sni);
+    }
+    cfg.certs = cfg.certs || {};
+    cfg.certs.domains = Array.from(new Set(hosts));
+  }
+
+  // 3. public IP: auto-detected, overridable
   let detected = '';
   if (!yes && opts.detectIp !== false) detected = await detectPublicIp();
   let ip = flags.ip;
@@ -93,17 +131,17 @@ export async function runSetup(opts = {}) {
   }
   if (ip) cfg.server.publicIp = ip;
 
-  // 3. panel port
+  // 4. panel port
   const currentUiPort = String(cfg.ui.port || 8788);
   const uiPort = flags.panelPort != null ? String(flags.panelPort) : await ask('面板端口（r = 随机）', currentUiPort);
   cfg.ui.port = uiPort === 'r' ? randomPort() : Number(uiPort) || 8788;
 
-  // 4. subscription port
+  // 5. subscription port
   const currentSubPort = String(cfg.subscription.port || 8787);
   const subPort = flags.subPort != null ? String(flags.subPort) : await ask('订阅服务端口（r = 随机）', currentSubPort);
   cfg.subscription.port = subPort === 'r' ? randomPort() : Number(subPort) || 8787;
 
-  // 5. the only account created here: an admin. Others are added in the panel.
+  // 6. the only account created here: an admin. Others are added in the panel.
   const existingAdmin = (cfg.ui.users || []).find(function (u) { return u.role !== 'viewer'; });
   const username = flags.username != null ? flags.username : await ask('管理员用户名', existingAdmin ? existingAdmin.username : 'admin');
   if (!USERNAME_RE.test(username)) {
@@ -140,6 +178,7 @@ export async function runSetup(opts = {}) {
     '',
     '已写入 ' + cfgPath,
     '  域名:       ' + (domain || '(仅 IP)'),
+    '  证书域名:   ' + ((cfg.certs && cfg.certs.domains && cfg.certs.domains.length) ? cfg.certs.domains.join(', ') : '(未设置)'),
     '  公网 IP:    ' + cfg.server.publicIp,
     '  面板端口:   ' + cfg.ui.port,
     '  订阅端口:   ' + cfg.subscription.port,

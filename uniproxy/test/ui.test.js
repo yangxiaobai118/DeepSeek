@@ -762,6 +762,25 @@ test('menu: uninstall removes prefix, launchers and units', async function () {
   }
 });
 
+test('setup: derives panel hostnames into certificate SANs', async function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-dom-'));
+  const cfgPath = path.join(dir, 'config.json');
+  const example = JSON.parse(fs.readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'));
+  fs.writeFileSync(cfgPath, JSON.stringify(example, null, 2));
+  try {
+    await runSetup({ configPath: cfgPath, yes: true, detectIp: false, flags: { domain: 'example.com' }, io: { print: function () {}, question: async function () { return ''; } } });
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    assert.equal(cfg.panels.xui.domain, 'xui.example.com');
+    assert.equal(cfg.panels.sui.domain, 'sui.example.com');
+    assert.equal(cfg.panels.sui.sub.domain, 'sub.example.com');
+    for (const host of ['example.com', 'xui.example.com', 'sui.example.com', 'sub.example.com', 'sb.example.com']) {
+      assert.ok(cfg.certs.domains.includes(host), host);
+    }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('setup: random password and port generators', function () {
   const a = randomPassword();
   const b = randomPassword();
@@ -778,7 +797,7 @@ test('setup: asks for the domain, randomises the rest', async function () {
   raw.ui = {};
   fs.writeFileSync(ctx.cfgPath, JSON.stringify(raw, null, 2));
 
-  const answers = ['example.org', '203.0.113.7', 'r', 'r', 'admin', '', 'ops@example.org'];
+  const answers = ['example.org', '', '', '', '203.0.113.7', 'r', 'r', 'admin', '', 'ops@example.org'];
   const printed = [];
   const io = {
     print: function (s) { printed.push(String(s)); },
@@ -790,6 +809,9 @@ test('setup: asks for the domain, randomises the rest', async function () {
   const cfg = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
   assert.equal(cfg.server.domains.web, 'example.org');
   assert.equal(cfg.panels.xui.domain, 'xui.example.org');
+  assert.equal(cfg.panels.sui.domain, 'sui.example.org');
+  assert.equal(cfg.panels.sui.sub.domain, 'sub.example.org');
+  assert.ok(cfg.certs.domains.includes('xui.example.org'));
   assert.equal(cfg.server.publicIp, '203.0.113.7');
   assert.ok(cfg.ui.port >= 40000 && cfg.ui.port < 60000);
   assert.ok(cfg.subscription.port >= 40000 && cfg.subscription.port < 60000);

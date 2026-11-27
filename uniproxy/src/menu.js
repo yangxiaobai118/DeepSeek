@@ -115,8 +115,8 @@ export function box(title, lines) {
 function colorState(value) {
   let text = String(value || 'unknown');
   if (text === 'not-found') text = '未安装';
-  if (/^(active|enabled|running)/.test(text)) return GREEN + text + RESET;
-  if (/^(not installed|未安装|activating|deactivating|reloading|unknown|static|masked|indirect)/.test(text)) return YELLOW + text + RESET;
+  if (/^(active|activating|reloading|enabled|running)/.test(text)) return GREEN + text + RESET;
+  if (/^(not installed|未安装|deactivating|unknown|static|masked|indirect)/.test(text)) return YELLOW + text + RESET;
   if (/^(inactive|failed|disabled)/.test(text)) return RED + text + RESET;
   return text;
 }

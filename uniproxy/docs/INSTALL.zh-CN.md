@@ -54,6 +54,8 @@
 | `10.0.0.0/8`、`corp.example.org`、`ads.example.net` | 你的内网段 / 域名 | 只是配置示例，表示“可以这样写” | 不影响启动，但分流规则会按示例生效 |
 
 > **原则：命令可以照抄，但表里的值必须先换成自己的。** 尤其不要在未替换时执行涉及域名解析、证书签发、`apply` 的命令——会留下错误的中间状态，后面很难排查。
+>
+> 另外，代码块请**逐行执行**：整段粘贴可能因终端丢失换行被拼成一行而失败。
 
 ---
 
@@ -136,28 +138,52 @@ ufw allow 80/tcp && ufw allow 443/tcp   # Debian/Ubuntu
 
 **方式 A：单文件二进制（推荐）**
 
+以下 4 步在**同一个 shell** 里依次执行。每步都是一行命令，整行复制也不会被拼坏。
+
+第 1 步：进入目录并设定版本
+
 ```bash
-cd /tmp
-VERSION=0.3.3
-curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64"
-curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64.sha256"
-
-# must print OK before continuing
-sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
-
-install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy
-uniproxy --help
+cd /tmp && VERSION=0.3.3
 ```
 
-> **替换点**：`VERSION` 改成你要安装的 Release 版本号（示例里写的是当前版本）；`uniproxy-${VERSION}-linux-x64` 里的资产名必须和 `uname -m` 对应（x86_64→`linux-x64`，aarch64→`linux-arm64`，见 1.4 的表）。版本号或资产名不对会直接 404。
+> **替换点**：`VERSION` 改成你要安装的 Release 版本号（示例为当前版本）；资产名 `uniproxy-${VERSION}-linux-x64` 必须和 `uname -m` 对应（x86_64→`linux-x64`，aarch64→`linux-arm64`，见 1.4 的表）。版本号或资产名不对会直接 404。
+
+第 2 步：下载二进制与校验文件
+
+```bash
+curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64" && curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64.sha256"
+```
+
+第 3 步：校验完整性（必须看到 `OK` 再继续）
+
+```bash
+sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
+```
+
+第 4 步：安装并验证
+
+```bash
+install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy && uniproxy --help
+```
+
+> **复制提示**：每一步只有一行命令，逐行复制最稳。如果你把多行代码块整段粘贴后命令连成了一行、报 `cd: too many arguments`，那是终端没保留换行；另外 `#` 注释在连成一行时会把后面的命令一起吞掉，所以本手册把说明都写在正文，不夹在命令之间。
 
 **方式 B：JS 包（需要 Node.js ≥ 18）**
 
+复用第 1 步设置的 `VERSION`，在同一个 shell 里执行：
+
 ```bash
 curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}.tgz"
-npm install -g ./uniproxy-${VERSION}.tgz
-uniproxy --help
-# or without installing: tar -xzf uniproxy-${VERSION}.tgz && node uniproxy/src/index.js --help
+```
+
+```bash
+npm install -g ./uniproxy-${VERSION}.tgz && uniproxy --help
+```
+
+不想全局安装，可以解压后直接运行：
+
+```bash
+tar -xzf uniproxy-${VERSION}.tgz && node uniproxy/src/index.js --help
 ```
 
 **创建运行目录**

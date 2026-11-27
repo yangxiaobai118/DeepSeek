@@ -55,6 +55,8 @@ The values below are **not literals** — they are placeholders you must replace
 | `10.0.0.0/8`, `corp.example.org`, `ads.example.net` | your own networks and domains | configuration examples only | starts fine, but routing follows the example |
 
 > **Rule: commands are copy-pasteable, but the values above must be replaced first.** Do not run DNS, certificate or `apply` commands before replacing them — the half-configured state is hard to debug.
+>
+> Also run code blocks **line by line**: pasting a whole block may collapse the newlines into one line and fail.
 
 ---
 
@@ -133,28 +135,52 @@ Install the `uniproxy` command into `/usr/local/bin`; everything else is generat
 
 **Option A: standalone binary (recommended)**
 
+The four steps below run in the **same shell**. Each step is a single line, so copying a line always works.
+
+Step 1: enter a working directory and set the version
+
 ```bash
-cd /tmp
-VERSION=0.3.3
-curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64"
-curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64.sha256"
-
-# must print OK before continuing
-sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
-
-install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy
-uniproxy --help
+cd /tmp && VERSION=0.3.3
 ```
 
-> **What to replace**: set `VERSION` to the release you are installing (the example shows the current one), and make the asset name `uniproxy-${VERSION}-linux-x64` match `uname -m` (`linux-x64` for x86_64, `linux-arm64` for aarch64 — see the table in 1.4). A wrong version or asset name returns 404.
+> **What to replace**: set `VERSION` to the release you are installing (the example is the current one), and make the asset name `uniproxy-${VERSION}-linux-x64` match `uname -m` (`linux-x64` for x86_64, `linux-arm64` for aarch64 — see the table in 1.4). A wrong version or asset name returns 404.
+
+Step 2: download the binary and its checksum
+
+```bash
+curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64" && curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64.sha256"
+```
+
+Step 3: verify integrity (an `OK` line must appear before you continue)
+
+```bash
+sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
+```
+
+Step 4: install and check
+
+```bash
+install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy && uniproxy --help
+```
+
+> **Copying tip**: every step is one line, so line-by-line copying always works. If pasting a multi-line block collapses it into a single line and you get `cd: too many arguments`, your terminal lost the newlines; a `#` comment also swallows the rest of a collapsed line, which is why this guide keeps explanations in prose instead of between commands.
 
 **Option B: JS package (Node.js ≥ 18)**
 
+Reuses `VERSION` from step 1; run in the same shell:
+
 ```bash
 curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}.tgz"
-npm install -g ./uniproxy-${VERSION}.tgz
-uniproxy --help
-# or without installing: tar -xzf uniproxy-${VERSION}.tgz && node uniproxy/src/index.js --help
+```
+
+```bash
+npm install -g ./uniproxy-${VERSION}.tgz && uniproxy --help
+```
+
+To run it without a global install:
+
+```bash
+tar -xzf uniproxy-${VERSION}.tgz && node uniproxy/src/index.js --help
 ```
 
 **Create runtime directories**

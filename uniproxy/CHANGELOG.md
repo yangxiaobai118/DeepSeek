@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Installation steps are now one command per line, so pasting a whole block
+  no longer collapses into a single `cd: too many arguments` line. The
+  in-block `#` comment that swallowed the following commands when joined was
+  moved into prose, and both guides now state that code blocks should be run
+  line by line.
+
 ## 0.3.3
 
 ### Added

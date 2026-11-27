@@ -11,6 +11,27 @@
 # panel. Nothing is interactive.
 set -eu
 
+_use_color=0
+if [ -t 1 ]; then _use_color=1; fi
+if [ "${FORCE_COLOR:-}" = "1" ]; then _use_color=1; fi
+if [ -n "${NO_COLOR:-}" ]; then _use_color=0; fi
+
+if [ "$_use_color" = "1" ]; then
+  GREEN=$(printf '\0033[32m')
+  BRIGHT=$(printf '\0033[92m')
+  YELLOW=$(printf '\0033[33m')
+  RED=$(printf '\0033[31m')
+  DIM=$(printf '\0033[2m')
+  RESET=$(printf '\0033[0m')
+else
+  GREEN=''
+  BRIGHT=''
+  YELLOW=''
+  RED=''
+  DIM=''
+  RESET=''
+fi
+
 REPO="${UNIPROXY_REPO:-yangxiaobai118/DeepSeek}"
 PREFIX="${UNIPROXY_PREFIX:-/usr/local/uniproxy}"
 BIN_DIR="${UNIPROXY_BIN_DIR:-/usr/local/bin}"
@@ -21,14 +42,71 @@ SUB_PORT="${UNIPROXY_SUB_PORT:-8787}"
 DRY_RUN="${UNIPROXY_DRY_RUN:-0}"
 
 say() { printf '%s\n' "$*"; }
-die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+ok() { printf '%s%s%s\n' "$GREEN" "$*" "$RESET"; }
+warn() { printf '%s%s%s\n' "$YELLOW" "$*" "$RESET" >&2; }
+die() { printf '%serror: %s%s\n' "$RED" "$*" "$RESET" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-fetch_to() {
-  if have curl; then curl -fsSL "$1" -o "$2"
-  elif have wget; then wget -qO "$2" "$1"
-  else die 'need curl or wget'; fi
+human_mib() { awk -v n="$1" 'BEGIN { printf "%.1f", n / 1048576 }'; }
+
+draw_progress() {
+  _now=$1
+  _total=$2
+  [ -t 2 ] || return 0
+  [ "$_total" -gt 0 ] || return 0
+  _pct=$(( _now * 100 / _total ))
+  [ "$_pct" -gt 100 ] && _pct=100
+  _cols=30
+  _fill=$(( _pct * _cols / 100 ))
+  _empty=$(( _cols - _fill ))
+  _bar=$(printf '%*s' "$_fill" '' | tr ' ' '#')
+  _spaces=$(printf '%*s' "$_empty" '')
+  printf '\r\0033[32m  [%s%s] %3d%%  %s / %s MiB\0033[0m' \
+    "$_bar" "$_spaces" "$_pct" "$(human_mib "$_now")" "$(human_mib "$_total")"
 }
+
+fetch_to() {
+  _url=$1
+  _dest=$2
+  if have curl; then
+    _total=$(curl -fsIL "$_url" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { v = $2 } END { print v + 0 }')
+    if [ -t 2 ]; then
+      curl -fsSL "$_url" -o "$_dest" &
+      _pid=$!
+      while kill -0 "$_pid" 2>/dev/null; do
+        _now=$(wc -c < "$_dest" 2>/dev/null | tr -d ' ')
+        [ -n "$_now" ] || _now=0
+        if [ "$_total" -gt 0 ]; then
+          draw_progress "$_now" "$_total"
+        else
+          printf '\r\0033[32m  downloading ... %s MiB\0033[0m' "$(human_mib "$_now")"
+        fi
+        sleep 0.2
+      done
+      if wait "$_pid"; then
+        if [ "$_total" -gt 0 ]; then draw_progress "$_total" "$_total"; fi
+        printf '\n'
+        return 0
+      fi
+      printf '\n'
+      return 1
+    fi
+    curl -fsSL "$_url" -o "$_dest"
+  elif have wget; then
+    wget -qO "$_dest" "$_url"
+  else
+    die 'need curl or wget'
+  fi
+}
+
+if [ "${UNIPROXY_PROGRESS_TEST:-0}" = "1" ]; then
+  for _p in 0 25 50 75 100; do
+    draw_progress $(( _p * 10485760 / 100 )) 10485760
+    sleep 0.05
+  done
+  printf '\n'
+  exit 0
+fi
 
 fetch_stdout() {
   if have curl; then curl -fsSL "$1"
@@ -104,7 +182,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 say "downloading $ASSET"
-fetch_to "$ASSET" "$tmp/asset"
+fetch_to "$ASSET" "$tmp/asset" || die "download failed: $ASSET"
 
 mkdir -p "$PREFIX" "$BIN_DIR" "$ETC_DIR" "$UNIT_DIR"
 
@@ -154,11 +232,11 @@ write_unit uniproxy-sub.service 'uniproxy subscription server' "serve -c $ETC_DI
 if have systemctl; then
   systemctl daemon-reload || true
   systemctl enable uniproxy-ui.service >/dev/null 2>&1 || true
-  systemctl restart uniproxy-ui.service || say 'warning: could not start uniproxy-ui'
+  systemctl restart uniproxy-ui.service || warn 'warning: could not start uniproxy-ui (run the setup wizard from u-ui)'
 fi
 
 say ''
-say "installed uniproxy $VERSION ($MODE)"
+ok "installed uniproxy $VERSION ($MODE)"
 say "  panel:  http://127.0.0.1:$UI_PORT  (tunnel: ssh -L $UI_PORT:127.0.0.1:$UI_PORT root@this-host)"
 say "  config: $ETC_DIR/config.json  (edit it, then: u-ui -> 16 validate / 18 apply)"
 say "  menu:   u-ui"

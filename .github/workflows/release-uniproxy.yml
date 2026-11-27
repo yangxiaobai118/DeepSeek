@@ -34,6 +34,7 @@ jobs:
         run: |
           sh -n install.sh
           UNIPROXY_DRY_RUN=1 UNIPROXY_VERSION="$(node -p "require('./package.json').version")" sh install.sh
+          UNIPROXY_PROGRESS_TEST=1 sh install.sh
 
       - name: Resolve package version and tag
         id: meta

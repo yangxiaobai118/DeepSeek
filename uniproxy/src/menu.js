@@ -24,6 +24,13 @@ function unitDir() { return process.env.UNIPROXY_UNIT_DIR || '/etc/systemd/syste
 const CORE_UNITS = { xray: 'xray', singbox: 'sing-box', nginx: 'nginx' };
 const WIDTH = 46;
 
+const COLOR = (Boolean(process.stdout.isTTY) || process.env.FORCE_COLOR === '1') && !process.env.NO_COLOR;
+const GREEN = COLOR ? '\x1b[32m' : '';
+const BRIGHT = COLOR ? '\x1b[92m' : '';
+const YELLOW = COLOR ? '\x1b[33m' : '';
+const RED = COLOR ? '\x1b[31m' : '';
+const RESET = COLOR ? '\x1b[0m' : '';
+
 function run(command) {
   const res = spawnSync(command, { shell: true, timeout: 20000, encoding: 'utf8' });
   return { ok: res.status === 0, output: String((res.stdout || '') + (res.stderr || '')).trim(), error: res.error ? res.error.code : null };
@@ -62,13 +69,38 @@ function pad(text, width) {
   return s + ' '.repeat(width - w);
 }
 
+function colorMenuItem(text) {
+  const match = String(text).match(/^(\d+\.)\s/);
+  if (!match) return text;
+  return GREEN + match[1] + RESET + ' ' + String(text).slice(match[0].length);
+}
+
 export function box(title, lines) {
   const out = [];
-  const head = '┌─ ' + title + ' ';
-  out.push(head + '─'.repeat(Math.max(0, WIDTH - dispWidth(head) - 1)) + '┐');
-  for (const line of lines) out.push('│ ' + pad(line, WIDTH - 3) + '│');
-  out.push('└' + '─'.repeat(WIDTH - 1) + '┘');
+  const dashes = Math.max(0, WIDTH - 3 - dispWidth(title) - 2);
+  out.push(GREEN + '┌─ ' + RESET + BRIGHT + title + RESET + GREEN + ' ' + '─'.repeat(dashes) + '┐' + RESET);
+  for (const line of lines) {
+    out.push(GREEN + '│' + RESET + ' ' + colorMenuItem(pad(line, WIDTH - 3)) + GREEN + '│' + RESET);
+  }
+  out.push(GREEN + '└' + '─'.repeat(WIDTH - 2) + '┘' + RESET);
   return out.join('\n');
+}
+
+function colorState(value) {
+  const text = String(value || 'unknown');
+  if (/^(active|enabled|running)/.test(text)) return GREEN + text + RESET;
+  if (/^(inactive|failed|disabled|unknown)/.test(text)) return RED + text + RESET;
+  return text;
+}
+
+function paintLines(text) {
+  if (!COLOR) return String(text);
+  return String(text).split('\n').map(function (line) {
+    if (/^(ERROR|FAIL|错误|失败|执行失败|无效选项|无法读取|证书不可读)/.test(line)) return RED + line + RESET;
+    if (/^(WARN|警告)/.test(line)) return YELLOW + line + RESET;
+    if (/^(OK|成功|已)/.test(line)) return GREEN + line + RESET;
+    return line;
+  }).join('\n');
 }
 
 function readCfg(cfgPath) {
@@ -88,7 +120,7 @@ export function renderMenu(ctx) {
   const uiState = unitState(UI_UNIT);
   const coreLine = Object.keys(CORE_UNITS).map(function (k) { return CORE_UNITS[k] + ': ' + unitState(CORE_UNITS[k]); }).join('   ');
   const footer = [
-    '面板状态: ' + uiState + '   开机自启: ' + (run('systemctl is-enabled ' + UI_UNIT).output || 'unknown'),
+    '面板状态: ' + colorState(uiState) + '   开机自启: ' + colorState(run('systemctl is-enabled ' + UI_UNIT).output || 'unknown'),
     '配置文件: ' + (cfg ? ctx.configPath : '(读取失败)'),
     coreLine,
   ];
@@ -496,7 +528,7 @@ function defaultIO() {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return {
     question: function (q) { return new Promise(function (resolve) { rl.question(q, resolve); }); },
-    print: function (s) { process.stdout.write(String(s) + '\n'); },
+    print: function (s) { process.stdout.write(paintLines(String(s)) + '\n'); },
     close: function () { rl.close(); },
   };
 }
@@ -509,7 +541,7 @@ export async function runMenu(options = {}) {
   const items = buildMenu(ctx).reduce(function (acc, s) { return acc.concat(s.items); }, []);
   for (;;) {
     ctx.io.print(renderMenu(ctx));
-    const answer = String((await ctx.io.question('\n请选择 [0-28]: ')) || '').trim();
+    const answer = String((await ctx.io.question('\n' + GREEN + '请选择 [0-28]: ' + RESET)) || '').trim();
     if (answer === '0' || answer.toLowerCase() === 'q') { ctx.io.print('已退出'); break; }
     const item = items.find(function (i) { return i.key === answer; });
     if (!item) { ctx.io.print('无效选项: ' + answer); continue; }

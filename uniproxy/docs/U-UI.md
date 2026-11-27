@@ -43,6 +43,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 告警 | 汇总 doctor 发现、端口冲突、内核未运行；配置 webhook / 命令通道，按冷却时间推送（`uniproxy alerts --notify` 亦可） |
 | 证书 | 查看当前证书（subject/issuer/到期/SANs）；用 certbot 或 acme.sh 申请与续期，支持 webroot / standalone / DNS-01，可选 staging；命令以 argv 方式执行，不拼 shell |
 | 备份 | 列出自动备份（每次写配置都会生成 `.bak-<时间戳>`）与手动备份，可下载、恢复、删除；恢复前先校验并自动备份当前版本；支持粘贴 JSON 导入；**保留策略** `backups.keep`（默认 20，0 = 不清理）每次写入后自动裁剪 |
+| 账号 | 管理员增删改面板账号（管理员/只读）、重置密码；密码以 scrypt 哈希保存，删除/降级最后一个管理员会被拒绝 |
 | 用户 | 表格（状态/到期/配额/入站/订阅 token）+ 新增/编辑/删除 |
 | 配置 | `config.json` 原始文本编辑器，保存前跑 `validate`，写入前自动备份 |
 | 操作 | `validate` / `doctor` / `plan`（只预览）/ `apply`（需输入确认词） |
@@ -89,6 +90,8 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | GET | `/api/backups/:name/download` | 下载备份文件 |
 | POST | `/api/backups/:name/restore` | 校验后恢复（先自动备份当前版本） |
 | DELETE | `/api/backups/:name` | 删除备份 |
+| GET/POST | `/api/accounts` | 列出 / 新增账号（仅管理员） |
+| PUT/DELETE | `/api/accounts/:username` | 改密码或角色 / 删除账号 |
 | POST | `/api/actions/:action` | `validate` `doctor` `plan` `apply` |
 
 所有非 GET 请求必须带 `x-uui-csrf` 头，值与 `uui_csrf` Cookie 相同（双提交）。
@@ -99,7 +102,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 - 启动必须配置密码：环境变量 `UNIPROXY_UI_PASSWORD`，或 `config.json` 的 `ui.password`；没有密码直接拒绝启动。
 - 会话 = `exp` + HMAC-SHA256（密钥由密码与 `server.secret` 派生），HttpOnly + SameSite=Strict。
 - 登录失败按来源 IP 限速（简单内存计数）。
-- 两个角色：`ui.password` 为管理员，`ui.viewerPassword`（或 `UNIPROXY_UI_VIEWER_PASSWORD`）为只读；只读角色所有写操作返回 403，界面上按钮置灰。
+- 账号体系：`ui.users` 保存 `用户名 + scrypt 哈希 + 角色`。管理员可增删改账号、重置密码；只读账号所有写操作返回 403，界面按钮置灰。至少要保留一个管理员（删/降级最后一个管理员会被拒绝）。旧的 `ui.password` / `ui.viewerPassword` 仍兼容：没有 `ui.users` 时退化为单密码模式。
 - `apply` 必须显式输入确认词，避免误点。
 - 配置写入前先校验，写入时生成 `.bak-<时间戳>` 备份并原子替换。
 
@@ -171,4 +174,4 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | `server.secret` | ✅ 自动 | 随机 | 所有凭据都由它派生 |
 | VLESS UUID / Reality 密钥 / shortId / 用户 UUID | ✅ 自动 | 随机 | |
 
-非交互用法：`uniproxy setup --yes --domain example.com --email a@b.c`，密码自动随机并打印。
+初始化只创建**一个管理员账号**（用户名 + 密码），其他账号在面板「账号」页添加。非交互用法：`uniproxy setup --yes --domain example.com --username admin --password '...' --email a@b.c`。

@@ -46,6 +46,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <button data-tab="settings">设置</button>
 <button data-tab="certs">证书</button>
 <button data-tab="backups">备份</button>
+<button data-tab="accounts">账号</button>
 <button data-tab="audit">审计</button>
 <button data-tab="alerts">告警</button>
 </nav><span id="roleBadge" class="muted"></span><a href="/logout">退出</a></header>
@@ -155,6 +156,14 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   <div class="muted">粘贴一份 config.json 覆盖当前配置（会先自动备份当前版本并校验）。</div>
   <textarea id="importText" style="min-height:180px;margin-top:8px" placeholder="{ ... }"></textarea>
   <div class="row" style="margin-top:8px"><button class="act" id="importConfig">导入并校验</button><span id="importMsg" class="muted"></span></div></div>
+</section>
+<section id="tab-accounts">
+  <div class="card"><h2>面板账号（管理员可增删改；其他账号建议只给只读）</h2><div id="accountTable"></div>
+  <div class="row" style="margin-top:12px">
+  <label>用户名<input id="a_user" size="14" placeholder="3-32 位"></label>
+  <label>密码<input id="a_pass" type="password" size="14" placeholder="留空=随机"></label>
+  <label>角色<select id="a_role"><option value="viewer">只读</option><option value="admin">管理员</option></select></label>
+  <button class="act" id="addAccount">添加账号</button><span id="accMsg" class="muted"></span></div></div>
 </section>
 <section id="tab-audit">
   <div class="card"><h2>审计日志（最近 200 条）</h2><div id="auditTable"></div></div>
@@ -402,6 +411,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     if (btn.dataset.tab === 'certs') loadCerts();
     if (btn.dataset.tab === 'nodes') loadNodes();
     if (btn.dataset.tab === 'backups') loadBackups();
+    if (btn.dataset.tab === 'accounts') loadAccounts();
   };
 });
 async function openClients(kind, tag) {
@@ -798,6 +808,50 @@ document.getElementById('saveKeep').onclick = async function () {
   msg.textContent = r.status === 200 ? ('已保存：保留最近 ' + keep + ' 份（0 = 不清理）') : (r.data.error || '失败');
   msg.className = r.status === 200 ? 'ok' : 'err';
   await loadBackups();
+};
+
+async function loadAccounts() {
+  const r = await api('GET', '/api/accounts');
+  if (r.status !== 200) { document.getElementById('accountTable').innerHTML = '<div class="warn">' + h(r.data.error || '需要管理员权限') + '</div>'; return; }
+  const users = (r.data && r.data.users) || [];
+  document.getElementById('accountTable').innerHTML = '<table><thead><tr><th>用户名</th><th>角色</th><th>操作</th></tr></thead><tbody>' +
+    users.map(function (u) {
+      return '<tr><td>' + h(u.username) + '</td><td>' + (u.role === 'viewer' ? '只读' : '管理员') + '</td>' +
+        '<td><button class="ghost" data-acc="' + h(u.username) + '" data-aact="pass">改密</button> ' +
+        '<button class="ghost danger" data-acc="' + h(u.username) + '" data-aact="del">删除</button></td></tr>';
+    }).join('') + '</tbody></table>';
+  document.querySelectorAll('#accountTable [data-acc]').forEach(function (btn) {
+    btn.onclick = function () { accountAct(btn.dataset.acc, btn.dataset.aact); };
+  });
+}
+
+async function accountAct(username, action) {
+  const msg = document.getElementById('accMsg');
+  if (action === 'del') {
+    if (!confirm('删除账号 ' + username + ' ?')) return;
+    const r = await api('DELETE', '/api/accounts/' + encodeURIComponent(username));
+    if (r.status === 200) { msg.textContent = '已删除'; msg.className = 'ok'; await loadAccounts(); }
+    else { msg.textContent = r.data.error || '失败'; msg.className = 'err'; }
+    return;
+  }
+  const pw = prompt('给 ' + username + ' 设置新密码（留空 = 随机）');
+  if (pw === null) return;
+  const r = await api('PUT', '/api/accounts/' + encodeURIComponent(username), pw ? { password: pw } : {});
+  msg.textContent = r.status === 200 ? '已更新' : (r.data.error || '失败');
+  msg.className = r.status === 200 ? 'ok' : 'err';
+  await loadAccounts();
+}
+
+document.getElementById('addAccount').onclick = async function () {
+  const msg = document.getElementById('accMsg');
+  const r = await api('POST', '/api/accounts', {
+    username: document.getElementById('a_user').value,
+    password: document.getElementById('a_pass').value,
+    role: document.getElementById('a_role').value,
+  });
+  msg.textContent = r.status === 200 ? '已添加' : (r.data.error || '失败');
+  msg.className = r.status === 200 ? 'ok' : 'err';
+  if (r.status === 200) { document.getElementById('a_user').value = ''; document.getElementById('a_pass').value = ''; await loadAccounts(); }
 };
 
 refresh();

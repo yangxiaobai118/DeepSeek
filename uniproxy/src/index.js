@@ -420,6 +420,7 @@ async function cmdSetup(args) {
     else if (name === 'panel-port') flags.panelPort = value;
     else if (name === 'sub-port') flags.subPort = value;
     else if (name === 'password') flags.password = value;
+    else if (name === 'username') flags.username = value;
     else if (name === 'no-viewer') flags.viewer = false;
   }
   const result = await mod.runSetup({ configPath: args.config || 'config.json', yes: yes, flags: flags, detectIp: !yes });

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import { hashPassword, USERNAME_RE } from './auth.js';
 
 /**
  * First-run wizard.
@@ -101,7 +102,13 @@ export async function runSetup(opts = {}) {
   const subPort = flags.subPort != null ? String(flags.subPort) : await ask('订阅服务端口（r = 随机）', currentSubPort);
   cfg.subscription.port = subPort === 'r' ? randomPort() : Number(subPort) || 8787;
 
-  // 5. admin password: Enter = random
+  // 5. the only account created here: an admin. Others are added in the panel.
+  const existingAdmin = (cfg.ui.users || []).find(function (u) { return u.role !== 'viewer'; });
+  const username = flags.username != null ? flags.username : await ask('管理员用户名', existingAdmin ? existingAdmin.username : 'admin');
+  if (!USERNAME_RE.test(username)) {
+    io.print('用户名只能用 A-Z a-z 0-9 _ -，3-32 位');
+    return { ok: false, error: 'invalid username' };
+  }
   let adminPassword = flags.password || '';
   if (!adminPassword) {
     if (yes) adminPassword = randomPassword();
@@ -110,19 +117,10 @@ export async function runSetup(opts = {}) {
       adminPassword = pw && pw !== 'r' ? pw : randomPassword();
     }
   }
-  cfg.ui.password = adminPassword;
-
-  // 6. viewer password: Enter = not set
-  let viewerPassword = cfg.ui.viewerPassword || '';
-  if (flags.viewer === false) viewerPassword = '';
-  else if (!yes) {
-    const vp = await ask('只读密码（回车 = 不设置，r = 随机）', viewerPassword ? 'r' : '');
-    viewerPassword = vp === 'r' ? randomPassword() : vp;
-  } else if (viewerPassword) {
-    viewerPassword = viewerPassword || randomPassword();
-  }
-  if (viewerPassword) cfg.ui.viewerPassword = viewerPassword;
-  else delete cfg.ui.viewerPassword;
+  cfg.ui.users = (cfg.ui.users || []).filter(function (u) { return String(u.username) !== username; });
+  cfg.ui.users.unshift({ username: username, role: 'admin', hash: hashPassword(adminPassword), addedAt: new Date().toISOString() });
+  delete cfg.ui.password;
+  delete cfg.ui.viewerPassword;
 
   // 7. e-mail for ACME
   const email = flags.email != null ? flags.email : await ask('邮箱（申请证书用，回车 = 跳过）', cfg.server.email || '');
@@ -143,8 +141,9 @@ export async function runSetup(opts = {}) {
     '  公网 IP:    ' + cfg.server.publicIp,
     '  面板端口:   ' + cfg.ui.port,
     '  订阅端口:   ' + cfg.subscription.port,
-    '  管理员密码: ' + cfg.ui.password,
-    '  只读密码:   ' + (cfg.ui.viewerPassword || '(未设置)'),
+    '  管理员账号: ' + username,
+    '  管理员密码: ' + adminPassword,
+    '  其他账号:   稍后在面板「账号」页添加',
     '  邮箱:       ' + (cfg.server.email || '(未设置)'),
     '',
     '以下已自动随机生成，无需填写：server.secret、VLESS UUID、Reality 密钥对与 shortId、用户 UUID。',

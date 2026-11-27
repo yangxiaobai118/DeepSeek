@@ -13,6 +13,7 @@ import { collectAlerts, notify, loadState } from '../alerts.js';
 import { certStatus, normalizeCerts, buildCommand, issue, validDomain } from '../certs.js';
 import { normalizeNodes, probe, deploy, probeBatch, deployBatch } from '../nodes.js';
 import { protocolList } from '../protocols.js';
+import { hashPassword, verifyPassword, accountsOf, USERNAME_RE } from '../auth.js';
 import { listBackups, createBackup, readBackup, deleteBackup, restoreBackup, pruneBackups } from '../backups.js';
 import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
@@ -25,19 +26,25 @@ const SESSION_TTL = 8 * 3600 * 1000;
 
 export function startUi(cfgPath, port = 8788, options = {}) {
   const abs = path.resolve(cfgPath);
-  const password = options.password || process.env.UNIPROXY_UI_PASSWORD || readPassword(abs, 'password');
-  const viewerPassword = options.viewerPassword || process.env.UNIPROXY_UI_VIEWER_PASSWORD || readPassword(abs, 'viewerPassword');
-  if (!password) {
-    throw new Error(
-      'u-ui needs a password: set UNIPROXY_UI_PASSWORD or add "ui": { "password": "..." } to the config'
-    );
-  }
+  const legacy = {
+    admin: options.password || process.env.UNIPROXY_UI_PASSWORD || readPassword(abs, 'password'),
+    viewer: options.viewerPassword || process.env.UNIPROXY_UI_VIEWER_PASSWORD || readPassword(abs, 'viewerPassword'),
+  };
   const host = options.host || '127.0.0.1';
   const attempts = new Map();
 
+  function accounts() {
+    return accountsOf(JSON.parse(fs.readFileSync(abs, 'utf8')), legacy);
+  }
+
+  if (!accounts().length) {
+    throw new Error('u-ui has no account: set UNIPROXY_UI_PASSWORD, add "ui": { "password": "..." }, or run "uniproxy setup"');
+  }
+
   function secret() {
     const raw = JSON.parse(fs.readFileSync(abs, 'utf8'));
-    return crypto.createHash('sha256').update(password + '|' + (raw.server && raw.server.secret ? raw.server.secret : '')).digest();
+    const material = (raw.server && raw.server.secret) || legacy.admin || 'uniproxy';
+    return crypto.createHash('sha256').update('u-ui|' + material).digest();
   }
 
   const server = http.createServer(function (req, res) {
@@ -77,7 +84,7 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     }
     if (mutating && session.role !== 'admin') return json(res, 403, { error: 'read-only role: viewer cannot modify' });
 
-    if (url.pathname === '/api/state' && req.method === 'GET') return json(res, 200, state(abs, cookies[CSRF_COOKIE], session.role));
+    if (url.pathname === '/api/state' && req.method === 'GET') return json(res, 200, state(abs, cookies[CSRF_COOKIE], session.role, session.username));
     if (url.pathname === '/api/config') {
       if (req.method === 'GET') return json(res, 200, { json: fs.readFileSync(abs, 'utf8') });
       if (req.method === 'PUT') return saveConfig(req, res, abs);
@@ -124,6 +131,15 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     if (url.pathname === '/api/nginx/test' && req.method === 'POST') return nginxTest(res, abs);
     if (url.pathname === '/api/nginx/reload' && req.method === 'POST') return nginxReload(res, abs);
 
+    if (url.pathname === '/api/accounts' && req.method === 'GET') {
+      if (session.role !== 'admin') return json(res, 403, { error: 'admin only' });
+      return json(res, 200, accountsPayload(abs));
+    }
+    if (url.pathname === '/api/accounts' && req.method === 'POST') return saveAccount(req, res, abs, 'POST', '');
+    const accountMatch = url.pathname.match(/^\/api\/accounts\/([^/]+)$/);
+    if (accountMatch && req.method === 'PUT') return saveAccount(req, res, abs, 'PUT', decodeURIComponent(accountMatch[1]));
+    if (accountMatch && req.method === 'DELETE') return deleteAccount(res, abs, decodeURIComponent(accountMatch[1]));
+
     if (url.pathname === '/api/backups' && req.method === 'GET') return json(res, 200, { backups: listBackups(abs), keep: backupKeep(abs) });
     if (url.pathname === '/api/backups' && req.method === 'POST') return createBackupHandler(res, abs);
     const backupRestore = url.pathname.match(/^\/api\/backups\/([^/]+)\/restore$/);
@@ -168,7 +184,15 @@ export function startUi(cfgPath, port = 8788, options = {}) {
       if (gate.until > Date.now()) return send(res, 429, { 'content-type': 'text/plain' }, 'too many attempts, wait a minute');
       const form = new URLSearchParams(body);
       const supplied = form.get('password') || '';
-      const role = safeEqual(supplied, password) ? 'admin' : (viewerPassword && safeEqual(supplied, viewerPassword) ? 'viewer' : '');
+      const typedName = String(form.get('username') || '').trim();
+      let role = '';
+      let matched = '';
+      for (const acc of accounts()) {
+        const ok = acc.plain !== undefined
+          ? safeEqual(supplied, acc.plain)
+          : (verifyPassword(supplied, acc.hash) && (!typedName || typedName === acc.username));
+        if (ok) { role = acc.role; matched = acc.username; break; }
+      }
       if (!role) {
         gate.count += 1;
         if (gate.count >= 5) { gate.count = 0; gate.until = Date.now() + 60000; }
@@ -179,7 +203,7 @@ export function startUi(cfgPath, port = 8788, options = {}) {
       const exp = Date.now() + SESSION_TTL;
       const csrf = crypto.randomBytes(16).toString('hex');
       const cookie = [
-        SESSION_COOKIE + '=' + encodeURIComponent(sign(exp + '.' + role, secret())) + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=' + Math.floor(SESSION_TTL / 1000),
+        SESSION_COOKIE + '=' + encodeURIComponent(sign(exp + '.' + matched + '.' + role, secret())) + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=' + Math.floor(SESSION_TTL / 1000),
         CSRF_COOKIE + '=' + csrf + '; SameSite=Strict; Path=/; Max-Age=' + Math.floor(SESSION_TTL / 1000),
       ];
       return send(res, 303, { location: '/', 'set-cookie': cookie }, '');
@@ -204,7 +228,7 @@ function readPassword(cfgPath, key) {
   } catch (e) { return ''; }
 }
 
-function state(cfgPath, csrf, role) {
+function state(cfgPath, csrf, role, username) {
   const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
   const c = derive(raw);
   const report = analyzePorts(c);
@@ -228,6 +252,7 @@ function state(cfgPath, csrf, role) {
     subscriptions: subs.map(function (s) { return { name: s.name, token: s.token }; }),
     csrf: csrf || '',
     role: role || 'viewer',
+    user: username || 'admin',
     protocols: protocolList(),
     sni: sniRoutes(c),
   };
@@ -775,6 +800,54 @@ function backupKeep(cfgPath) {
   return raw && raw.backups && raw.backups.keep != null ? Number(raw.backups.keep) : 20;
 }
 
+function accountsPayload(cfgPath) {
+  const raw = readRaw(cfgPath);
+  return { users: accountsOf(raw, {}).map(function (u) { return { username: u.username, role: u.role }; }) };
+}
+
+function saveAccount(req, res, cfgPath, method, pathName) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    const raw = readRaw(cfgPath);
+    raw.ui = raw.ui || {};
+    if (!Array.isArray(raw.ui.users)) raw.ui.users = [];
+    const users = raw.ui.users;
+    const username = String(pathName || body.username || '').trim();
+    if (!USERNAME_RE.test(username)) return json(res, 400, { error: 'username must be 3-32 chars of A-Z a-z 0-9 _ -' });
+    const role = body.role === 'viewer' ? 'viewer' : 'admin';
+    const idx = users.findIndex(function (u) { return String(u.username) === username; });
+    if (method === 'POST') {
+      if (idx >= 0) return json(res, 400, { error: 'username already exists' });
+      if (!body.password) return json(res, 400, { error: 'password is required' });
+      users.push({ username: username, role: role, hash: hashPassword(String(body.password)), addedAt: new Date().toISOString() });
+    } else {
+      if (idx < 0) return json(res, 404, { error: 'account not found' });
+      const admins = users.filter(function (u) { return u.role !== 'viewer'; });
+      if (users[idx].role !== 'viewer' && role === 'viewer' && admins.length <= 1) {
+        return json(res, 400, { error: 'cannot demote the last admin' });
+      }
+      users[idx].role = role;
+      if (body.password) users[idx].hash = hashPassword(String(body.password));
+    }
+    record(cfgPath, 'account.' + (method === 'POST' ? 'add' : 'update'), username + ' role=' + role);
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, users: accountsPayload(cfgPath).users });
+  });
+}
+
+function deleteAccount(res, cfgPath, username) {
+  const raw = readRaw(cfgPath);
+  const users = raw.ui && Array.isArray(raw.ui.users) ? raw.ui.users : [];
+  const idx = users.findIndex(function (u) { return String(u.username) === username; });
+  if (idx < 0) return json(res, 404, { error: 'account not found' });
+  const admins = users.filter(function (u) { return u.role !== 'viewer'; });
+  if (users[idx].role !== 'viewer' && admins.length <= 1) return json(res, 400, { error: 'cannot delete the last admin' });
+  users.splice(idx, 1);
+  record(cfgPath, 'account.delete', username);
+  saveRaw(cfgPath, raw);
+  return json(res, 200, { ok: true, users: accountsPayload(cfgPath).users });
+}
+
 function createBackupHandler(res, cfgPath) {
   try {
     const name = createBackup(cfgPath, 'manual');
@@ -996,14 +1069,15 @@ function sign(exp, key) {
 function verifySession(value, key) {
   if (!value) return null;
   const parts = value.split('.');
-  if (parts.length < 3) return null;
-  const role = parts[1];
+  if (parts.length !== 4) return null;
   const exp = Number(parts[0]);
+  const username = parts[1];
+  const role = parts[2];
   if (!Number.isFinite(exp) || exp < Date.now()) return null;
   if (role !== 'admin' && role !== 'viewer') return null;
-  const payload = parts[0] + '.' + role;
-  const mac = parts.slice(2).join('.');
-  return safeEqual(mac, sign(payload, key).split('.').pop()) ? { role: role, exp: exp } : null;
+  if (!USERNAME_RE.test(username)) return null;
+  const payload = exp + '.' + username + '.' + role;
+  return safeEqual(parts[3], sign(payload, key).split('.').pop()) ? { role: role, username: username, exp: exp } : null;
 }
 
 function safeEqual(a, b) {
@@ -1030,6 +1104,7 @@ function loginPage(message) {
     'button{width:100%;padding:10px;border:0;border-radius:6px;background:#3b6cf6;color:#fff;font-size:14px;cursor:pointer}.err{color:#ff6b6b;font-size:12px;margin:0 0 12px}</style></head><body>' +
     '<form method="post" action="/login"><h1>u-ui</h1>' +
     (message ? '<p class="err">' + message + '</p>' : '') +
-    '<input type="password" name="password" placeholder="panel password" autofocus>' +
+    '<input type="text" name="username" placeholder="username" autofocus>' +
+    '<input type="password" name="password" placeholder="password">' +
     '<button type="submit">Sign in</button></form></body></html>';
 }

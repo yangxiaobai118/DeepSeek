@@ -12,6 +12,7 @@ import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
 import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup, pruneBackups } from '../src/backups.js';
 import { runMenu, renderMenu, box, buildMenu, unitFiles, installSystem, installPlan } from '../src/menu.js';
 import { randomPassword, randomPort, runSetup } from '../src/setup.js';
+import { verifyPassword } from '../src/auth.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -664,7 +665,7 @@ test('setup: asks for the domain, randomises the rest', async function () {
   raw.ui = {};
   fs.writeFileSync(ctx.cfgPath, JSON.stringify(raw, null, 2));
 
-  const answers = ['example.org', '203.0.113.7', 'r', 'r', '', 'r', 'ops@example.org'];
+  const answers = ['example.org', '203.0.113.7', 'r', 'r', 'admin', '', 'ops@example.org'];
   const printed = [];
   const io = {
     print: function (s) { printed.push(String(s)); },
@@ -679,9 +680,51 @@ test('setup: asks for the domain, randomises the rest', async function () {
   assert.equal(cfg.server.publicIp, '203.0.113.7');
   assert.ok(cfg.ui.port >= 40000 && cfg.ui.port < 60000);
   assert.ok(cfg.subscription.port >= 40000 && cfg.subscription.port < 60000);
-  assert.equal(cfg.ui.password.length, 16);
-  assert.equal(cfg.ui.viewerPassword.length, 16);
+  assert.equal(cfg.ui.users.length, 1);
+  assert.equal(cfg.ui.users[0].username, 'admin');
+  assert.equal(cfg.ui.users[0].role, 'admin');
+  assert.equal(cfg.ui.password, undefined);
   assert.equal(cfg.server.email, 'ops@example.org');
   assert.ok(printed.join('\n').includes('管理员密码'));
   fs.rmSync(ctx.dir, { recursive: true, force: true });
+});
+
+test('u-ui: accounts can be added, updated and deleted', async function () {
+  const ctx = setup();
+  const inst = await startUi(ctx.cfgPath, 0, { password: 'secret' });
+  try {
+    const auth = await login(inst);
+    const headers = { cookie: auth.cookie, 'x-uui-csrf': auth.csrf, 'content-type': 'application/json' };
+
+    const added = await fetch(inst.url + '/api/accounts', { method: 'POST', headers: headers, body: JSON.stringify({ username: 'boss', password: 'p1', role: 'admin' }) });
+    assert.equal(added.status, 200);
+    const raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
+    assert.equal(raw.ui.users.length, 1);
+    assert.equal(raw.ui.users[0].username, 'boss');
+    assert.ok(verifyPassword('p1', raw.ui.users[0].hash));
+    assert.equal(raw.ui.users[0].hash.indexOf('p1'), -1);
+
+    const list = await fetch(inst.url + '/api/accounts', { headers: { cookie: auth.cookie } });
+    assert.deepEqual((await list.json()).users, [{ username: 'boss', role: 'admin' }]);
+
+    const badName = await fetch(inst.url + '/api/accounts', { method: 'POST', headers: headers, body: JSON.stringify({ username: 'a b', password: 'x' }) });
+    assert.equal(badName.status, 400);
+
+    const dup = await fetch(inst.url + '/api/accounts', { method: 'POST', headers: headers, body: JSON.stringify({ username: 'boss', password: 'x' }) });
+    assert.equal(dup.status, 400);
+
+    const lastAdmin = await fetch(inst.url + '/api/accounts/boss', { method: 'DELETE', headers: headers });
+    assert.equal(lastAdmin.status, 400);
+
+    const viewer = await fetch(inst.url + '/api/accounts', { method: 'POST', headers: headers, body: JSON.stringify({ username: 'look', password: 'p2', role: 'viewer' }) });
+    assert.equal(viewer.status, 200);
+    assert.equal(JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8')).ui.users.length, 2);
+
+    const removed = await fetch(inst.url + '/api/accounts/look', { method: 'DELETE', headers: headers });
+    assert.equal(removed.status, 200);
+    assert.equal(JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8')).ui.users.length, 1);
+  } finally {
+    await inst.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
 });

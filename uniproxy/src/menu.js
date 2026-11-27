@@ -112,8 +112,8 @@ export function buildMenu(ctx) {
   const panel = [
     { key: '4', label: '查看当前设置', run: function () { return withCfg(showSettings(ctx)); } },
     { key: '5', label: '修改面板端口', run: function () { return withCfg(changePort(ctx)); } },
-    { key: '6', label: '重置管理员密码', run: function () { return withCfg(setPassword(ctx, 'password')); } },
-    { key: '7', label: '重置只读密码', run: function () { return withCfg(setPassword(ctx, 'viewerPassword')); } },
+    { key: '6', label: '重置账号密码', run: function () { return withCfg(resetPassword(ctx)); } },
+    { key: '7', label: '新增只读账号', run: function () { return withCfg(addViewer(ctx)); } },
   ];
 
   const service = [
@@ -341,6 +341,42 @@ function changePort(ctx) {
     raw.ui.port = port;
     fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n');
     ctx.io.print('已保存面板端口 ' + port + '，重启面板后生效（菜单 7）');
+  };
+}
+
+async function resetPassword(ctx) {
+  const { hashPassword, USERNAME_RE } = await import('./auth.js');
+  return async function (c, cfgPath) {
+    const first = (c.ui && c.ui.users && c.ui.users[0] && c.ui.users[0].username) || 'admin';
+    const username = (await ctx.io.question('用户名 [' + first + ']: ')).trim() || first;
+    if (!USERNAME_RE.test(username)) return ctx.io.print('用户名不合法');
+    const value = (await ctx.io.question('新密码（回车 = 随机）: ')).trim();
+    const password = value || (await import('./setup.js')).randomPassword();
+    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    raw.ui = raw.ui || {};
+    raw.ui.users = raw.ui.users || [];
+    const idx = raw.ui.users.findIndex(function (u) { return String(u.username) === username; });
+    if (idx < 0) return ctx.io.print('没有这个账号: ' + username);
+    raw.ui.users[idx].hash = hashPassword(password);
+    fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n');
+    ctx.io.print('已更新 ' + username + ' 的密码: ' + password);
+  };
+}
+
+async function addViewer(ctx) {
+  const { hashPassword, USERNAME_RE } = await import('./auth.js');
+  return async function (c, cfgPath) {
+    const username = String(await ctx.io.question('用户名: ')).trim();
+    if (!USERNAME_RE.test(username)) return ctx.io.print('用户名不合法');
+    const value = String(await ctx.io.question('密码（回车 = 随机）: ')).trim();
+    const password = value || (await import('./setup.js')).randomPassword();
+    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    raw.ui = raw.ui || {};
+    raw.ui.users = raw.ui.users || [];
+    if (raw.ui.users.some(function (u) { return String(u.username) === username; })) return ctx.io.print('账号已存在');
+    raw.ui.users.push({ username: username, role: 'viewer', hash: hashPassword(password), addedAt: new Date().toISOString() });
+    fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n');
+    ctx.io.print('已新增只读账号 ' + username + '，密码: ' + password);
   };
 }
 

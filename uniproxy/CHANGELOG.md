@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.6
+
+### Added
+
+- real accounts: `ui.users` stores a username, a scrypt hash and a role. The
+  setup wizard now creates exactly one admin (username + password, password
+  random on Enter); every other account is added from the new panel tab or the
+  menu. Passwords are never stored in plaintext.
+- `/api/accounts` (admin only) to list, add, rename-role or delete accounts;
+  deleting or demoting the last admin is refused.
+- the login form now takes a username and a password; the old single-password
+  config keeps working as a fallback when `ui.users` is empty.
+
 ## 0.4.5
 
 ### Added

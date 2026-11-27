@@ -18,19 +18,34 @@ function run(command, args, timeout = 600000) {
   };
 }
 
+function runLive(command, args, timeout = 900000) {
+  const res = spawnSync(command, args, { timeout, stdio: ['ignore', 'inherit', 'inherit'] });
+  return {
+    ok: res.status === 0,
+    status: res.status,
+    error: res.error ? res.error.message : '',
+  };
+}
+
 export function isRoot() {
   return typeof process.getuid === 'function' ? process.getuid() === 0 : true;
 }
 
-export function installXray() {
-  const res = run('bash', ['-lc', XRAY_INSTALL + 'install']);
+export function installXray(log) {
+  const say = typeof log === 'function' ? log : function () {};
+  say('1/2 下载并运行 Xray 官方安装脚本（下面是脚本的实时输出）…');
+  const res = runLive('bash', ['-lc', XRAY_INSTALL + 'install']);
+  if (!res.ok) return { ok: false, error: res.error || ('install script exit ' + res.status) };
+  say('2/2 检查已安装版本…');
   const version = run('xray', ['version'], 10000).output.split('\n')[0] || '';
-  return { ok: res.ok, output: res.output, error: res.error, version: version };
+  return { ok: true, version: version };
 }
 
-export function uninstallXray() {
-  const res = run('bash', ['-lc', XRAY_INSTALL + 'remove']);
-  return { ok: res.ok, output: res.output, error: res.error };
+export function uninstallXray(log) {
+  const say = typeof log === 'function' ? log : function () {};
+  say('下载并运行 Xray 官方卸载脚本…');
+  const res = runLive('bash', ['-lc', XRAY_INSTALL + 'remove']);
+  return { ok: res.ok, error: res.error || ('remove script exit ' + res.status) };
 }
 
 export function singboxAsset(version, arch) {
@@ -46,11 +61,12 @@ async function latestSingbox() {
   return JSON.parse(res.output);
 }
 
-function download(url, dest) {
+function downloadWithProgress(url, dest) {
   const mirror = process.env.UNIPROXY_MIRROR || '';
   const full = mirror + url;
-  const res = run('curl', ['-fsSL', '--retry', '3', '--retry-delay', '3', '--http1.1', full, '-o', dest], 900000);
-  if (!res.ok) throw new Error(res.error || res.output || 'download failed');
+  const res = runLive('curl', ['-fL', '--retry', '3', '--retry-delay', '3', '--http1.1', '--progress-bar', full, '-o', dest], 900000);
+  try { process.stderr.write('\n'); } catch (e) { /* no tty */ }
+  if (!res.ok) throw new Error(res.error || ('download failed, curl exit ' + res.status));
 }
 
 function findBinary(dir, name) {
@@ -66,7 +82,9 @@ function findBinary(dir, name) {
   return '';
 }
 
-export async function installSingbox() {
+export async function installSingbox(log) {
+  const say = typeof log === 'function' ? log : function () {};
+  say('1/5 查询 sing-box 最新版本…');
   const release = await latestSingbox();
   const version = release.tag_name;
   const asset = singboxAsset(version, process.arch);
@@ -76,8 +94,11 @@ export async function installSingbox() {
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'uniproxy-singbox-'));
   try {
+    say('2/5 下载 ' + asset + '（下方是 curl 进度）…');
     const archive = path.join(tmp, 'sing-box.tar.gz');
-    download(entry.browser_download_url, archive);
+    downloadWithProgress(entry.browser_download_url, archive);
+
+    say('3/5 解压并检查二进制…');
     const extracted = path.join(tmp, 'extract');
     fs.mkdirSync(extracted);
     const untar = run('tar', ['-xzf', archive, '-C', extracted], 120000);
@@ -85,6 +106,7 @@ export async function installSingbox() {
     const binary = findBinary(extracted, 'sing-box');
     if (!binary) throw new Error('sing-box binary not found in archive');
 
+    say('4/5 安装到 ' + path.join(BIN_DIR, 'sing-box') + ' …');
     fs.mkdirSync(BIN_DIR, { recursive: true });
     const target = path.join(BIN_DIR, 'sing-box');
     const staging = target + '.new';
@@ -92,6 +114,7 @@ export async function installSingbox() {
     fs.chmodSync(staging, 0o755);
     fs.renameSync(staging, target);
 
+    say('5/5 写入 systemd 单元并启用…');
     fs.mkdirSync(UNIT_DIR, { recursive: true });
     const unit = path.join(UNIT_DIR, 'sing-box.service');
     if (!fs.existsSync(unit)) {
@@ -122,8 +145,11 @@ export async function installSingbox() {
   }
 }
 
-export function uninstallSingbox() {
+export function uninstallSingbox(log) {
+  const say = typeof log === 'function' ? log : function () {};
+  say('停止并禁用 sing-box 服务…');
   run('systemctl', ['disable', '--now', 'sing-box'], 30000);
+  say('删除 systemd 单元与二进制（配置保留）…');
   try {
     fs.rmSync(path.join(UNIT_DIR, 'sing-box.service'), { force: true });
   } catch (e) { /* missing */ }

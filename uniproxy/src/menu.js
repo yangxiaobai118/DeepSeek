@@ -649,8 +649,9 @@ async function coreInstall(ctx, kind) {
   if (answer === 'n' || answer === 'no') return ctx.io.print('已取消');
   if (!isRoot()) return ctx.io.print('失败: 需要 root 权限');
   ctx.io.print('正在安装/升级 ' + label + '，请稍候…');
+  const log = function (s) { ctx.io.print(s); };
   try {
-    const res = kind === 'xray' ? installXray() : await installSingbox();
+    const res = kind === 'xray' ? installXray(log) : await installSingbox(log);
     if (res.ok) {
       ctx.io.print('成功: ' + label + ' 已安装/升级' + (res.version ? ' (' + res.version + ')' : ''));
     } else {
@@ -667,7 +668,8 @@ async function coreUninstall(ctx, kind) {
   if (answer !== 'y' && answer !== 'yes') return ctx.io.print('已取消');
   if (!isRoot()) return ctx.io.print('失败: 需要 root 权限');
   try {
-    const res = kind === 'xray' ? uninstallXray() : uninstallSingbox();
+    const log = function (s) { ctx.io.print(s); };
+    const res = kind === 'xray' ? uninstallXray(log) : uninstallSingbox(log);
     ctx.io.print(res.ok ? '成功: ' + label + ' 已卸载' : '失败: ' + label + ' 卸载失败: ' + (res.error || res.output || 'unknown'));
   } catch (e) {
     ctx.io.print('失败: ' + e.message);

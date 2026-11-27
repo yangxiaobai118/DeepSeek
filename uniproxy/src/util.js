@@ -61,6 +61,18 @@ export function genShortId() {
   return crypto.randomBytes(8).toString('hex');
 }
 
+/** Normalise a u-ui path prefix: "/", "/uui", "uui/" -> "/" or "/uui/". */
+export function normalizeBasePath(value) {
+  let s = String(value || '').trim();
+  if (!s || s === '/') return '/';
+  if (s[0] !== '/') s = '/' + s;
+  if (!s.endsWith('/')) s += '/';
+  s = s.replace(/\/+$/, '/');
+  if (!/^\/[A-Za-z0-9._~!$&'()*+,;=:@%\/-]+\/$/.test(s)) return '/';
+  if (/^\/(api|login|logout)\//.test(s)) return '/';
+  return s;
+}
+
 /** Placeholder IPs from documentation ranges, or every unset value. */
 export function isPlaceholderAddress(value) {
   if (!value) return true;

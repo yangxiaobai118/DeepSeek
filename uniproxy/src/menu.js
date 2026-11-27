@@ -462,9 +462,9 @@ function showSettings(ctx) {
     ctx.io.print([
       '配置: ' + ctx.configPath,
       '数据存储: JSON 配置文件（u-ui 无数据库）',
-      '面板地址: ' + (ui.domain ? ('https://' + ui.domain + '/') : ('http://127.0.0.1:' + uiPort + '/')) + (ui.domain ? '（nginx 反代 -> 127.0.0.1:' + uiPort + '）' : '（仅本机；建议 SSH 隧道）'),
+      '面板地址: ' + (ui.domain ? ('https://' + ui.domain) : ('http://127.0.0.1:' + uiPort)) + ((ui.basePath && ui.basePath !== '/') ? ui.basePath : '/') + (ui.domain ? '（nginx 反代 -> 127.0.0.1:' + uiPort + '）' : '（仅本机；建议 SSH 隧道）'),
       '面板监听: 127.0.0.1:' + uiPort + '  HTTPS: 否（对外由 nginx 终止）',
-      '访问路径: /（固定根路径；u-ui 不支持自定义 basePath）',
+      '访问路径: ' + ((ui.basePath && ui.basePath !== '/') ? ui.basePath : '/（根路径）'),
       '管理员: ' + (adminName ? (adminName + '（' + admins.length + ' 个管理员）') : '未初始化（运行 3 初始化向导）'),
       '只读账号: ' + viewers + ' 个',
       '管理员密码: ' + (admins.some(function (u) { return u.hash; }) ? '已设置（scrypt 哈希）' : ((ui.password || ui.viewerPassword) ? '使用旧版明文密码，建议重置' : '未设置')),

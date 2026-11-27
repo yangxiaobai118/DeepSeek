@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { hashPassword, USERNAME_RE } from './auth.js';
 import { syncUnitPorts } from './units.js';
 import { validDomain } from './certs.js';
+import { normalizeBasePath } from './util.js';
 
 /**
  * First-run wizard.
@@ -109,6 +110,14 @@ export async function runSetup(opts = {}) {
     }
     cfg.ui.domain = uiDomain;
 
+    const baseFallback = (cfg.ui.basePath && cfg.ui.basePath !== '/') ? cfg.ui.basePath : '/';
+    let basePath = normalizeBasePath(cfg.ui.basePath);
+    if (!yes) {
+      const value = String(await ask('u-ui 访问路径（如 /uui/；回车=/）', baseFallback)).trim();
+      basePath = normalizeBasePath(value);
+    }
+    cfg.ui.basePath = basePath;
+
     const hosts = [domain];
     if (uiDomain) hosts.push(uiDomain);
     for (const ib of (cfg.singbox && cfg.singbox.inbounds) || []) {
@@ -180,6 +189,7 @@ export async function runSetup(opts = {}) {
     '  公网 IP:    ' + cfg.server.publicIp,
     '  面板端口:   ' + cfg.ui.port,
     '  订阅端口:   ' + cfg.subscription.port,
+    '  访问路径:   ' + (cfg.ui.basePath || '/'),
     '  管理员账号: ' + username,
     '  管理员密码: ' + adminPassword,
     '  其他账号:   稍后在面板「账号」页添加',

@@ -18,6 +18,7 @@ import { listBackups, createBackup, readBackup, deleteBackup, restoreBackup, pru
 import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
 import { buildPlan, formatPlan, applyPlan } from '../apply.js';
+import { normalizeBasePath } from '../util.js';
 
 const PAGE = new URL('./page.html', import.meta.url);
 const SESSION_COOKIE = 'uui_session';
@@ -32,6 +33,22 @@ export function startUi(cfgPath, port = 8788, options = {}) {
   };
   const host = options.host || '127.0.0.1';
   const attempts = new Map();
+  let basePath = '/';
+  try {
+    const raw = JSON.parse(fs.readFileSync(abs, 'utf8'));
+    basePath = normalizeBasePath(raw.ui && raw.ui.basePath);
+  } catch (e) { /* config unreadable: root path */ }
+  const BASE = basePath === '/' ? '' : basePath.replace(/\/$/, '');
+  const cookiePath = BASE ? BASE + '/' : '/';
+
+  function pageHtml() {
+    const html = fs.readFileSync(PAGE, 'utf8');
+    if (!BASE) return html;
+    return html
+      .replace(/(["'])\/api/g, '$1api')
+      .replace(/(["'])\/login/g, '$1login')
+      .replace(/(["'])\/logout/g, '$1logout');
+  }
 
   function accounts() {
     return accountsOf(JSON.parse(fs.readFileSync(abs, 'utf8')), legacy);
@@ -57,25 +74,34 @@ export function startUi(cfgPath, port = 8788, options = {}) {
 
   async function handle(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1');
+    if (BASE) {
+      if (url.pathname === '/' || url.pathname === BASE) {
+        return send(res, 303, { location: BASE + '/' }, '');
+      }
+      if (!url.pathname.startsWith(BASE + '/')) {
+        return send(res, 404, { 'content-type': 'text/plain' }, 'not found');
+      }
+      url.pathname = url.pathname.slice(BASE.length);
+    }
     const cookies = parseCookies(req.headers.cookie || '');
 
     if (url.pathname === '/login') {
       if (req.method === 'POST') return doLogin(req, res, cookies);
-      return send(res, 200, { 'content-type': 'text/html; charset=utf-8' }, loginPage(''));
+      return send(res, 200, { 'content-type': 'text/html; charset=utf-8' }, loginPage('', BASE ? BASE + '/login' : '/login'));
     }
     if (url.pathname === '/logout') {
-      return send(res, 303, { location: '/login', 'set-cookie': clearCookies() }, '');
+      return send(res, 303, { location: BASE + '/login', 'set-cookie': clearCookies(cookiePath) }, '');
     }
 
     const session = verifySession(cookies[SESSION_COOKIE], secret());
     const authed = Boolean(session);
     if (!authed && url.pathname !== '/login') {
       if (url.pathname.startsWith('/api/')) return json(res, 401, { error: 'unauthorized' });
-      return send(res, 303, { location: '/login' }, '');
+      return send(res, 303, { location: BASE + '/login' }, '');
     }
 
     if (url.pathname === '/') {
-      return send(res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, fs.readFileSync(PAGE, 'utf8'));
+      return send(res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, pageHtml());
     }
 
     const mutating = req.method !== 'GET' && req.method !== 'HEAD';
@@ -203,10 +229,10 @@ export function startUi(cfgPath, port = 8788, options = {}) {
       const exp = Date.now() + SESSION_TTL;
       const csrf = crypto.randomBytes(16).toString('hex');
       const cookie = [
-        SESSION_COOKIE + '=' + encodeURIComponent(sign(exp + '.' + matched + '.' + role, secret())) + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=' + Math.floor(SESSION_TTL / 1000),
-        CSRF_COOKIE + '=' + csrf + '; SameSite=Strict; Path=/; Max-Age=' + Math.floor(SESSION_TTL / 1000),
+        SESSION_COOKIE + '=' + encodeURIComponent(sign(exp + '.' + matched + '.' + role, secret())) + '; HttpOnly; SameSite=Strict; Path=' + cookiePath + '; Max-Age=' + Math.floor(SESSION_TTL / 1000),
+        CSRF_COOKIE + '=' + csrf + '; SameSite=Strict; Path=' + cookiePath + '; Max-Age=' + Math.floor(SESSION_TTL / 1000),
       ];
-      return send(res, 303, { location: '/', 'set-cookie': cookie }, '');
+      return send(res, 303, { location: BASE + '/', 'set-cookie': cookie }, '');
     });
   }
 
@@ -1086,8 +1112,9 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(x, y);
 }
 
-function clearCookies() {
-  return [SESSION_COOKIE + '=; Max-Age=0; Path=/', CSRF_COOKIE + '=; Max-Age=0; Path=/'];
+function clearCookies(cookiePath) {
+  const p = cookiePath || '/';
+  return [SESSION_COOKIE + '=; Max-Age=0; Path=' + p, CSRF_COOKIE + '=; Max-Age=0; Path=' + p];
 }
 
 function stamp() {
@@ -1096,13 +1123,13 @@ function stamp() {
   return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
 }
 
-function loginPage(message) {
+function loginPage(message, action) {
   return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>u-ui login</title>' +
     '<style>body{font-family:system-ui,Segoe UI,sans-serif;background:#0f1115;color:#e6e6e6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}' +
     'form{background:#171a21;border:1px solid #2a2f3a;border-radius:10px;padding:28px;width:300px}' +
     'h1{font-size:16px;margin:0 0 16px}input{width:100%;padding:10px;margin:0 0 12px;border-radius:6px;border:1px solid #2a2f3a;background:#0b0d12;color:#e6e6e6;box-sizing:border-box}' +
     'button{width:100%;padding:10px;border:0;border-radius:6px;background:#3b6cf6;color:#fff;font-size:14px;cursor:pointer}.err{color:#ff6b6b;font-size:12px;margin:0 0 12px}</style></head><body>' +
-    '<form method="post" action="/login"><h1>u-ui</h1>' +
+    '<form method="post" action="' + (action || '/login') + '"><h1>u-ui</h1>' +
     (message ? '<p class="err">' + message + '</p>' : '') +
     '<input type="text" name="username" placeholder="username" autofocus>' +
     '<input type="password" name="password" placeholder="password">' +

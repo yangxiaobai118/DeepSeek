@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.3
+
+### Added
+
+- `docs/INSTALL.md` / `docs/INSTALL.zh-CN.md`: a "placeholder conventions"
+  table covering every value that must be replaced (domains, server IP,
+  version, service names, tokens), with why it matters and what breaks when an
+  example is copied verbatim.
+- Replacement notes under the DNS check, certificate, subscription token,
+  client-link and per-command examples, so every copy-paste block states
+  exactly what to change.
+
+### Fixed
+
+- Code blocks in the Chinese manual are English again (they had been
+  translated together with the prose), keeping commands and placeholders
+  copy-pasteable.
+
 ## 0.3.2
 
 ### Fixed

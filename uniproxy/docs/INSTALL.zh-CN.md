@@ -1,6 +1,6 @@
 # uniproxy 安装与部署手册
 
-> 适用版本：**0.3.2**　|　目标系统：Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+（glibc ≥ 2.28）
+> 适用版本：**0.3.3**　|　目标系统：Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+（glibc ≥ 2.28）
 > 读者：负责在一台 Linux 服务器上完成部署的运维/开发人员
 > 示例约定：域名 `example.com`，面板 `xui.example.com` / `sui.example.com`，订阅 `sub.example.com`，Reality SNI `www.bing.com`，服务器公网 IP 记为 `<server-ip>`
 
@@ -47,7 +47,7 @@
 | `www` / `xui` / `sui` / `sub`（例如 `for d in www xui sui sub`） | 你规划的子域名前缀，可增可减 | 循环会把前缀拼成 `$d.example.com` 去查解析 | 查到的是示例域名，你的域名没配好也可能“看到 IP” |
 | `<server-ip>` | 服务器公网 IP | 客户端链接、`server.publicIp`、验收命令都用它 | 链接指向占位符，客户端连不上 |
 | `203.0.113.10` | 真实公网 IP | 它是 RFC 5737 的示例保留地址，不是你的 IP | `validate` 直接报 `server.publicIp still a placeholder` |
-| `<version>`、`0.3.2` | 实际版本号 | 下载 URL、资产名、安装路径都带版本 | 下载 404 |
+| `<version>`、`0.3.3` | 实际版本号 | 下载 URL、资产名、安装路径都带版本 | 下载 404 |
 | `<service>` | 真实服务名：`xray` / `sing-box` / `nginx` / `uniproxy-sub` | `journalctl -u` 按服务名过滤 | 查不到日志，误以为“没报错” |
 | `<target>`、`<timestamp>` | 被备份的文件、备份时间 | `apply` 生成的 `.bak-<timestamp>` | 找不到备份，无法回滚 |
 | `<uuid>`、`TOKEN=xxxx...` | `uniproxy users` 的 UUID、订阅 token | 客户端凭据与订阅鉴权 | 认证失败、订阅 403 |
@@ -138,7 +138,7 @@ ufw allow 80/tcp && ufw allow 443/tcp   # Debian/Ubuntu
 
 ```bash
 cd /tmp
-VERSION=0.3.2
+VERSION=0.3.3
 curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64"
 curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64.sha256"
 
@@ -148,6 +148,8 @@ sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
 install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy
 uniproxy --help
 ```
+
+> **替换点**：`VERSION` 改成你要安装的 Release 版本号（示例里写的是当前版本）；`uniproxy-${VERSION}-linux-x64` 里的资产名必须和 `uname -m` 对应（x86_64→`linux-x64`，aarch64→`linux-arm64`，见 1.4 的表）。版本号或资产名不对会直接 404。
 
 **方式 B：JS 包（需要 Node.js ≥ 18）**
 
@@ -166,7 +168,7 @@ mkdir -p /etc/uniproxy/certs /var/lib/uniproxy /var/log/uniproxy
 
 ### 预期结果
 
-- `sha256sum -c` 输出 `uniproxy-0.3.2-linux-x64: OK`
+- `sha256sum -c` 输出 `uniproxy-0.3.3-linux-x64: OK`
 - `uniproxy --help` 输出：
 
 ```
@@ -187,7 +189,7 @@ Usage:
 
 ### 不符合时
 
-- `404 Not Found`：版本号或资产名不对。打开 Releases 页面确认 `uniproxy-v0.3.2` 下的资产名，再替换 URL。
+- `404 Not Found`：版本号或资产名不对。打开 Releases 页面确认 `uniproxy-v0.3.3` 下的资产名，再替换 URL。
 - `sha256sum: no properly formatted checksum lines found`：`.sha256` 文件没下载全，重新下载。
 - `Permission denied`：加 `sudo`，或确认写入了 `/usr/local/bin`。
 - 二进制报 `GLIBC_2.28 not found`：系统太旧，改用 JS 包并安装新版 Node。
@@ -302,6 +304,8 @@ install -m 0644 /etc/letsencrypt/live/example.com/fullchain.pem /etc/uniproxy/ce
 install -m 0600 /etc/letsencrypt/live/example.com/privkey.pem  /etc/uniproxy/certs/privkey.pem
 ```
 
+> **替换点**：两处 `example.com` 换成你的域名；`-d '*.example.com'` 申请通配符证书，覆盖 `www` / `xui` / `sui` / `sub` 等所有子域名。执行时 certbot 会要求你在 DNS 添加一条 TXT 记录——**真的加上并等它生效**再回车，否则签发失败；后面 `install` 命令里的路径也要按实际域名改。
+
 > 自动续期不在本手册范围内。生产环境建议用 DNS 插件 + `--deploy-hook` 复制证书并 `systemctl reload nginx`。
 
 ### 方案 C：Let's Encrypt（HTTP-01，80 端口空闲时）
@@ -312,12 +316,16 @@ certbot certonly --standalone -d www.example.com -d xui.example.com -d sui.examp
 systemctl start nginx
 ```
 
+> **替换点**：四个 `-d` 都换成你的真实域名（网站 + 两个面板 + 订阅）。HTTP-01 要求 80 端口对公网可达，所以先停 nginx、签完再启动；`example.com` 不要保留。
+
 ### 预期结果
 
 ```
 subject=CN = example.com
 notBefore=... notAfter=... (in the future)
 ```
+
+> 说明：这是**示例输出**。`subject=CN` 会显示你自己的域名，`notAfter` 是证书实际到期时间。
 
 ### 不符合时
 
@@ -388,6 +396,8 @@ next: edit server.publicIp / domains / cert paths, then run "uniproxy validate"
 ]
 ```
 
+> **替换点**：`alice` 换成你的用户名；`inbounds` 填你实际要下发的入站 `tag`（见 `config.json` 里的 `xray.inbounds` / `singbox.inbounds`）；`expireAt`、`dataLimitBytes` 按需改或删掉（删掉即不限）。这一段是**粘进** `config.json` 的 `users` 数组，不是命令。
+
 > `inbounds` 里列出的入站会自动获得 alice 的凭据（VLESS/VMess 为 UUID，Trojan 为密码），由 `server.secret` 确定性派生，重复生成不会变。
 
 ### 预期结果
@@ -454,6 +464,8 @@ OK    binary nginx       nginx version: nginx/1.24.x
 0 failure(s), 0 warning(s)
 ```
 
+> 说明：这是**示例输出**。`203.0.113.10` 是示例 IP，实际会显示你填的 `server.publicIp`；如果看到 `FAIL ... still a placeholder`，说明还没换成真实 IP。
+
 > `doctor` 有 FAIL 时退出码为 1；只有 WARN 时退出码 0，可以继续。
 
 ### 不符合时
@@ -494,6 +506,8 @@ generated:
   /var/lib/uniproxy/out/sub/alice-<token>.clash.yaml
   /var/lib/uniproxy/out/SUMMARY.md
 ```
+
+> 说明：这是**示例输出**。`alice` 是用户名、`<token>` 是实际生成的订阅 token，都会随你的配置变化。
 
 检查产物：
 
@@ -628,6 +642,8 @@ curl -fsS http://127.0.0.1:8787/api/state | head -c 300; echo
 }
 ```
 
+> **替换点**：`sub.example.com` 换成你的订阅域名；`127.0.0.1:8787` 是 `serve` 的默认监听地址，如果你改过 `serve` 端口要同步改。这一段是**合并进** `config.json` 的 `nginx` 段，不是命令。
+
 重新下发一次：
 
 ```bash
@@ -672,6 +688,8 @@ openssl s_client -connect www.example.com:443 -servername www.example.com </dev/
   | openssl x509 -noout -subject -dates
 ```
 
+> **替换点**：三处 `www.example.com` 都换成你的网站域名。`%{http_code}` 期望 `200` 或 `301/302`；`openssl s_client` 的 `-servername` 必须和域名一致，否则 SNI 分流会走到别的后端。
+
 预期：HTTP 200/301；证书 subject 为你的域名且未过期。
 
 ### 3）面板
@@ -680,6 +698,8 @@ openssl s_client -connect www.example.com:443 -servername www.example.com </dev/
 curl -sS -o /dev/null -w 'xui=%{http_code}\n' https://xui.example.com
 curl -sS -o /dev/null -w 'sui=%{http_code}\n' https://sui.example.com
 ```
+
+> **替换点**：`xui.example.com` / `sui.example.com` 换成你的面板域名。`200/302` 正常；`502` 说明面板进程没起或反代上游端口不对。
 
 预期：200/302。未安装面板请确认 `config.json` 中已 `enabled: false`，否则会 502。
 
@@ -746,12 +766,16 @@ curl -sSI "https://sub.example.com/sub/${TOKEN}" | grep -iE 'subscription-userin
 { "name": "bob", "inbounds": ["xray-vless-reality", "sb-vless-ws-tls"], "expireAt": "2027-06-01T00:00:00Z" }
 ```
 
+> **替换点**：`bob` 换成新用户名；`inbounds` 填要下发的入站 `tag`；`expireAt` 按需改。这是**追加**到 `config.json` 的 `users` 数组里的对象。
+
 ```bash
 uniproxy users     -c /etc/uniproxy/config.json   # bob should be active
 uniproxy validate  -c /etc/uniproxy/config.json
 uniproxy generate  -c /etc/uniproxy/config.json -o /var/lib/uniproxy/out
 uniproxy apply     -c /etc/uniproxy/config.json --yes
 ```
+
+> **替换点**：`bob`（在注释里）换成你上一步新增的用户名；后面 `validate` / `generate` / `apply` 用的是同一个 `config.json`，路径不同要一起改。
 
 预期：`users` 表格出现 bob；apply 后 bob 的订阅 URL 生效。
 
@@ -776,6 +800,8 @@ uniproxy doctor  -c /etc/uniproxy/config.json
 uniproxy apply   -c /etc/uniproxy/config.json --yes
 systemctl start uniproxy-sub
 ```
+
+> **替换点**：`<new-version>` 换成目标版本号；URL 里的 `...` 是省略，实际要填完整的 Release 资产地址（版本和架构都要对）。先停 `uniproxy-sub`、升级后跑 `doctor` + `apply`，是为了避免新二进制配旧配置。
 
 预期：服务恢复；apply 自动保留旧配置备份。
 

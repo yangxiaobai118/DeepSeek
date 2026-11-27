@@ -1,6 +1,6 @@
 # uniproxy Installation & Deployment Guide
 
-> Version: **0.3.2**　|　Target OS: Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+ (glibc ≥ 2.28)
+> Version: **0.3.3**　|　Target OS: Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+ (glibc ≥ 2.28)
 > Audience: operators deploying on a single Linux server
 > Examples: domain `example.com`, panels `xui.example.com` / `sui.example.com`, subscriptions `sub.example.com`, Reality SNI `www.bing.com`, server IP written as `<server-ip>`
 
@@ -48,7 +48,7 @@ The values below are **not literals** — they are placeholders you must replace
 | `www` / `xui` / `sui` / `sub` (e.g. `for d in www xui sui sub`) | the subdomain prefixes you planned; add or remove as needed | the loop builds `$d.example.com` to check DNS | you resolve the example domains, so an IP in the output proves nothing about your own DNS |
 | `<server-ip>` | the server public IP | client links, `server.publicIp` and acceptance commands use it | links point at a placeholder and clients cannot connect |
 | `203.0.113.10` | the real public IP | it is an RFC 5737 example range, not your IP | `validate` fails with `server.publicIp still a placeholder` |
-| `<version>`, `0.3.2` | the actual release version | download URLs, asset names and install paths include it | download 404 |
+| `<version>`, `0.3.3` | the actual release version | download URLs, asset names and install paths include it | download 404 |
 | `<service>` | the real unit name: `xray` / `sing-box` / `nginx` / `uniproxy-sub` | `journalctl -u` filters by unit name | no logs, and you may think there were no errors |
 | `<target>`, `<timestamp>` | the backed-up file and its timestamp | `apply` writes `.bak-<timestamp>` | you cannot find the backup to roll back |
 | `<uuid>`, `TOKEN=xxxx...` | the UUID from `uniproxy users`, the subscription token | client credentials and subscription auth | auth fails, subscription 403 |
@@ -135,7 +135,7 @@ Install the `uniproxy` command into `/usr/local/bin`; everything else is generat
 
 ```bash
 cd /tmp
-VERSION=0.3.2
+VERSION=0.3.3
 curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64"
 curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64.sha256"
 
@@ -145,6 +145,8 @@ sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
 install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy
 uniproxy --help
 ```
+
+> **What to replace**: set `VERSION` to the release you are installing (the example shows the current one), and make the asset name `uniproxy-${VERSION}-linux-x64` match `uname -m` (`linux-x64` for x86_64, `linux-arm64` for aarch64 — see the table in 1.4). A wrong version or asset name returns 404.
 
 **Option B: JS package (Node.js ≥ 18)**
 
@@ -163,7 +165,7 @@ mkdir -p /etc/uniproxy/certs /var/lib/uniproxy /var/log/uniproxy
 
 ### Expected result
 
-- `sha256sum -c` prints `uniproxy-0.3.2-linux-x64: OK`
+- `sha256sum -c` prints `uniproxy-0.3.3-linux-x64: OK`
 - `uniproxy --help` prints:
 
 ```
@@ -299,6 +301,8 @@ install -m 0644 /etc/letsencrypt/live/example.com/fullchain.pem /etc/uniproxy/ce
 install -m 0600 /etc/letsencrypt/live/example.com/privkey.pem  /etc/uniproxy/certs/privkey.pem
 ```
 
+> **What to replace**: both `example.com` occurrences with your domain. `-d '*.example.com'` requests a wildcard covering `www` / `xui` / `sui` / `sub` and any other subdomain. certbot will ask for a TXT record — add it and wait for propagation before pressing enter, or issuance fails. The `install` paths below must use your real domain too.
+
 > Automatic renewal is out of scope here. For production, use a DNS plugin plus a deploy hook that copies the files and reloads nginx.
 
 ### Option C: Let's Encrypt HTTP-01 (port 80 free)
@@ -309,12 +313,16 @@ certbot certonly --standalone -d www.example.com -d xui.example.com -d sui.examp
 systemctl start nginx
 ```
 
+> **What to replace**: all four `-d` values with your real domains (site + two panels + subscription). HTTP-01 needs port 80 reachable from the internet, hence stopping nginx around it. Do not keep `example.com`.
+
 ### Expected result
 
 ```
 subject=CN = example.com
 notBefore=... notAfter=... (in the future)
 ```
+
+> Note: **sample output**. `subject=CN` shows your own domain and `notAfter` is the real expiry.
 
 ### If it differs
 
@@ -385,6 +393,8 @@ Edit `/etc/uniproxy/config.json`:
 ]
 ```
 
+> **What to replace**: `alice` with your user name, `inbounds` with the inbound `tag`s you want to provision (see `xray.inbounds` / `singbox.inbounds` in `config.json`), and adjust or drop `expireAt` / `dataLimitBytes` (dropping means unlimited). Paste this into the `users` array of `config.json`; it is not a command.
+
 > Listing `inbounds` provisions alice into those inbounds; credentials are derived deterministically from `server.secret` (UUID for VLESS/VMess, password for Trojan), so regenerating never rotates them.
 
 ### Expected result
@@ -451,6 +461,8 @@ OK    binary nginx       nginx version: nginx/1.24.x
 0 failure(s), 0 warning(s)
 ```
 
+> Note: **sample output**. `203.0.113.10` is the example IP; your run prints the real `server.publicIp`. A `FAIL ... still a placeholder` line means it is not replaced yet.
+
 > `doctor` exits 1 on FAIL and 0 with warnings only.
 
 ### If it differs
@@ -491,6 +503,8 @@ generated:
   /var/lib/uniproxy/out/sub/alice-<token>.clash.yaml
   /var/lib/uniproxy/out/SUMMARY.md
 ```
+
+> Note: **sample output**. `alice` is the user name and `<token>` is the generated subscription token; both follow your own config.
 
 ```bash
 ls -R /var/lib/uniproxy/out
@@ -623,6 +637,8 @@ Add the public entry in `config.json`:
 }
 ```
 
+> **What to replace**: `sub.example.com` with your subscription domain, and keep `127.0.0.1:8787` in sync if you changed the `serve` port. Merge this into the `nginx` section of `config.json`; it is not a command.
+
 ```bash
 uniproxy apply -c /etc/uniproxy/config.json --yes
 ```
@@ -665,6 +681,8 @@ openssl s_client -connect www.example.com:443 -servername www.example.com </dev/
   | openssl x509 -noout -subject -dates
 ```
 
+> **What to replace**: all three `www.example.com` occurrences with your site domain. Expect `200` or `301/302` from `%{http_code}`; `-servername` must match the domain or SNI routing picks another backend.
+
 Expected: HTTP 200/301; certificate subject matches and is valid.
 
 ### 3) Panels
@@ -673,6 +691,8 @@ Expected: HTTP 200/301; certificate subject matches and is valid.
 curl -sS -o /dev/null -w 'xui=%{http_code}\n' https://xui.example.com
 curl -sS -o /dev/null -w 'sui=%{http_code}\n' https://sui.example.com
 ```
+
+> **What to replace**: `xui.example.com` / `sui.example.com` with your panel domains. `200/302` is healthy; `502` means the panel is down or the upstream port is wrong.
 
 Expected: 200/302. If a panel is not installed, set `enabled: false`, otherwise nginx returns 502.
 
@@ -739,12 +759,16 @@ Edit the `users` array in `/etc/uniproxy/config.json`:
 { "name": "bob", "inbounds": ["xray-vless-reality", "sb-vless-ws-tls"], "expireAt": "2027-06-01T00:00:00Z" }
 ```
 
+> **What to replace**: `bob` with the new user name, `inbounds` with the inbound `tag`s to provision, and adjust `expireAt`. Append this object to the `users` array in `config.json`.
+
 ```bash
 uniproxy users     -c /etc/uniproxy/config.json   # bob should be active
 uniproxy validate  -c /etc/uniproxy/config.json
 uniproxy generate  -c /etc/uniproxy/config.json -o /var/lib/uniproxy/out
 uniproxy apply     -c /etc/uniproxy/config.json --yes
 ```
+
+> **What to replace**: `bob` in the comment with the user you just added; the following `validate` / `generate` / `apply` use the same `config.json`, so change the path consistently if yours differs.
 
 Expected: bob appears in the table; his subscription works after apply.
 
@@ -769,6 +793,8 @@ uniproxy doctor  -c /etc/uniproxy/config.json
 uniproxy apply   -c /etc/uniproxy/config.json --yes
 systemctl start uniproxy-sub
 ```
+
+> **What to replace**: `<new-version>` with the target version, and `...` with the full release asset URL (version and architecture must match). Stopping `uniproxy-sub` first and running `doctor` + `apply` afterwards avoids new binaries running against old config.
 
 Expected: services back; apply keeps timestamped backups.
 

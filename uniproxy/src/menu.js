@@ -209,13 +209,17 @@ export function buildMenu(ctx) {
     { key: '28', label: '启动 xray (Start Xray)', run: function () { return coreAction(ctx, 'xray', 'start'); } },
     { key: '29', label: '启动 sing-box (Start Sing-box)', run: function () { return coreAction(ctx, 'singbox', 'start'); } },
     { key: '30', label: '启动 nginx (Start Nginx)', run: function () { return coreAction(ctx, 'nginx', 'start'); } },
+    { key: '31', label: '安装/升级 xray (Install / Upgrade Xray)', run: function () { return coreInstall(ctx, 'xray'); } },
+    { key: '32', label: '卸载 xray (Uninstall Xray)', run: function () { return coreUninstall(ctx, 'xray'); } },
+    { key: '33', label: '安装/升级 sing-box (Install/Upgrade)', run: function () { return coreInstall(ctx, 'singbox'); } },
+    { key: '34', label: '卸载 sing-box (Uninstall Sing-box)', run: function () { return coreUninstall(ctx, 'singbox'); } },
   ];
 
   const extra = [
-    { key: '31', label: '证书状态 (Certificate Status)', run: function () { return withCfg(showCert(ctx)); } },
-    { key: '32', label: '申请 / 续期证书 (Issue / Renew Cert)', run: function () { return withCfg(issueCert(ctx)); } },
-    { key: '33', label: '查看告警 (Check Alerts)', run: function () { return withCfg(showAlerts(ctx)); } },
-    { key: '34', label: '节点列表 (List Nodes)', run: function () { return withCfg(showNodes(ctx)); } },
+    { key: '35', label: '证书状态 (Certificate Status)', run: function () { return withCfg(showCert(ctx)); } },
+    { key: '36', label: '申请 / 续期证书 (Issue / Renew Cert)', run: function () { return withCfg(issueCert(ctx)); } },
+    { key: '37', label: '查看告警 (Check Alerts)', run: function () { return withCfg(showAlerts(ctx)); } },
+    { key: '38', label: '节点列表 (List Nodes)', run: function () { return withCfg(showNodes(ctx)); } },
   ];
 
   return [
@@ -632,6 +636,37 @@ function restorePicker(ctx) {
   };
 }
 
+async function coreInstall(ctx, kind) {
+  const label = kind === 'xray' ? 'Xray' : 'sing-box';
+  const answer = String((await ctx.io.question('安装/升级 ' + label + ' 到最新版? [Y/n]: ')) || '').trim().toLowerCase();
+  if (answer === 'n' || answer === 'no') return ctx.io.print('已取消');
+  if (!isRoot()) return ctx.io.print('失败: 需要 root 权限');
+  ctx.io.print('正在安装/升级 ' + label + '，请稍候…');
+  try {
+    const res = kind === 'xray' ? installXray() : await installSingbox();
+    if (res.ok) {
+      ctx.io.print('成功: ' + label + ' 已安装/升级' + (res.version ? ' (' + res.version + ')' : ''));
+    } else {
+      ctx.io.print('失败: ' + label + ' 安装/升级失败: ' + (res.error || res.output || 'unknown'));
+    }
+  } catch (e) {
+    ctx.io.print('失败: ' + e.message);
+  }
+}
+
+async function coreUninstall(ctx, kind) {
+  const label = kind === 'xray' ? 'Xray' : 'sing-box';
+  const answer = String((await ctx.io.question('卸载 ' + label + '? 会删除程序和 systemd 单元 [y/N]: ')) || '').trim().toLowerCase();
+  if (answer !== 'y' && answer !== 'yes') return ctx.io.print('已取消');
+  if (!isRoot()) return ctx.io.print('失败: 需要 root 权限');
+  try {
+    const res = kind === 'xray' ? uninstallXray() : uninstallSingbox();
+    ctx.io.print(res.ok ? '成功: ' + label + ' 已卸载' : '失败: ' + label + ' 卸载失败: ' + (res.error || res.output || 'unknown'));
+  } catch (e) {
+    ctx.io.print('失败: ' + e.message);
+  }
+}
+
 function coreAction(ctx, kind, action) {
   const unit = CORE_UNITS[kind];
   const verb = action === 'start' ? '启动' : (action === 'stop' ? '停止' : '重启');
@@ -693,7 +728,7 @@ export async function runMenu(options = {}) {
   const items = buildMenu(ctx).reduce(function (acc, s) { return acc.concat(s.items); }, []);
   for (;;) {
     ctx.io.print(renderMenu(ctx));
-    const answer = String((await ctx.io.question('\n' + GREEN + '请选择 [0-34/B/U]: ' + RESET)) || '').trim();
+    const answer = String((await ctx.io.question('\n' + GREEN + '请选择 [0-38/B/U]: ' + RESET)) || '').trim();
     if (answer === '0' || answer.toLowerCase() === 'q') { ctx.io.print('已退出'); break; }
     const item = items.find(function (i) { return i.key === answer; });
     if (!item) { ctx.io.print('无效选项: ' + answer); continue; }

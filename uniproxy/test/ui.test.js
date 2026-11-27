@@ -16,6 +16,7 @@ import { generateNginx } from '../src/generators/nginx.js';
 import { verifyPassword } from '../src/auth.js';
 import { version } from '../src/version.js';
 import { syncUnitPorts } from '../src/units.js';
+import { singboxAsset } from '../src/cores.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -598,7 +599,8 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
   assert.ok(text.includes('U. 更新到最新版本'));
   assert.ok(text.includes('0. 退出菜单'));
   assert.ok(text.includes('17. 校验配置 (Validate Config)'));
-  assert.ok(text.includes('32. 申请 / 续期证书 (Issue / Renew Cert)'));
+  assert.ok(text.includes('31. 安装/升级 xray (Install / Upgrade Xray)'));
+  assert.ok(text.includes('36. 申请 / 续期证书 (Issue / Renew Cert)'));
   assert.ok(text.includes('25. 停止 xray (Stop Xray)'));
   assert.ok(text.includes('28. 启动 xray (Start Xray)'));
   assert.ok(text.includes('无效选项: 99'));
@@ -625,11 +627,20 @@ test('menu: box helper and section count', function () {
   const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
   const sections = buildMenu(ctx);
   assert.equal(sections.length, 6);
-  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 36);
+  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 40);
   const rendered = box('面板', ['0. 退出菜单']);
   assert.ok(rendered.startsWith('┌─ 面板'));
   assert.ok(rendered.includes('│ 0. 退出菜单'));
   assert.ok(rendered.trimEnd().endsWith('┘'));
+});
+
+test('cores: sing-box asset names follow the release layout', function () {
+  assert.equal(singboxAsset('v1.14.5', 'x64'), 'sing-box-1.14.5-linux-amd64.tar.gz');
+  assert.equal(singboxAsset('v1.14.5', 'arm64'), 'sing-box-1.14.5-linux-arm64.tar.gz');
+  assert.equal(singboxAsset('v1.14.5', 'ia32'), 'sing-box-1.14.5-linux-386.tar.gz');
+  assert.equal(singboxAsset('v1.14.5', 'arm'), 'sing-box-1.14.5-linux-armv7.tar.gz');
+  assert.equal(singboxAsset('v1.14.5', 'ppc64'), 'sing-box-1.14.5-linux-ppc64le.tar.gz');
+  assert.equal(singboxAsset('v1.14.5', 'mips'), '');
 });
 
 test('menu: service unit files point at the right command', function () {

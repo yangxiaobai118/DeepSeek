@@ -31,27 +31,28 @@ export function isRoot() {
   return typeof process.getuid === 'function' ? process.getuid() === 0 : true;
 }
 
-function curlConfigDir() {
+function curlWrapperDir() {
+  const probe = run('bash', ['-lc', 'command -v curl'], 10000);
+  const real = probe.output.split('\n')[0].trim();
+  if (!real) return '';
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uniproxy-curl-'));
-  fs.writeFileSync(path.join(dir, '.curlrc'), [
-    'http1.1',
-    'retry = 5',
-    'retry-delay = 3',
-    'connect-timeout = 15',
-    '',
-  ].join('\n'));
+  const bin = path.join(dir, 'curl');
+  fs.writeFileSync(bin, '#!/bin/sh\nexec "' + real + '" --http1.1 --retry 5 --retry-delay 3 "$@"\n');
+  fs.chmodSync(bin, 0o755);
   return dir;
 }
 
 export function installXray(log) {
   const say = typeof log === 'function' ? log : function () {};
   say('1/2 下载并运行 Xray 官方安装脚本（下面是脚本的实时输出）…');
-  const curlHome = curlConfigDir();
+  const curlDir = curlWrapperDir();
+  const env = Object.assign({}, process.env);
+  if (curlDir) env.PATH = curlDir + ':' + (env.PATH || '');
   let res;
   try {
-    res = runLive('bash', ['-lc', XRAY_INSTALL + 'install'], 900000, Object.assign({}, process.env, { CURL_HOME: curlHome }));
+    res = runLive('bash', ['-lc', XRAY_INSTALL + 'install'], 900000, env);
   } finally {
-    fs.rmSync(curlHome, { recursive: true, force: true });
+    if (curlDir) fs.rmSync(curlDir, { recursive: true, force: true });
   }
   if (!res.ok) return { ok: false, error: res.error || ('install script exit ' + res.status) };
   say('2/2 检查已安装版本…');
@@ -62,12 +63,14 @@ export function installXray(log) {
 export function uninstallXray(log) {
   const say = typeof log === 'function' ? log : function () {};
   say('下载并运行 Xray 官方卸载脚本…');
-  const curlHome = curlConfigDir();
+  const curlDir = curlWrapperDir();
+  const env = Object.assign({}, process.env);
+  if (curlDir) env.PATH = curlDir + ':' + (env.PATH || '');
   let res;
   try {
-    res = runLive('bash', ['-lc', XRAY_INSTALL + 'remove'], 900000, Object.assign({}, process.env, { CURL_HOME: curlHome }));
+    res = runLive('bash', ['-lc', XRAY_INSTALL + 'remove'], 900000, env);
   } finally {
-    fs.rmSync(curlHome, { recursive: true, force: true });
+    if (curlDir) fs.rmSync(curlDir, { recursive: true, force: true });
   }
   return { ok: res.ok, error: res.error || ('remove script exit ' + res.status) };
 }

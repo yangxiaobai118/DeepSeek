@@ -579,15 +579,32 @@ function systemctl(ctx, action) {
 }
 
 function showStatus(ctx) {
-  const lines = ['面板(' + UI_UNIT + '): ' + unitState(UI_UNIT), '开机自启: ' + (run('systemctl is-enabled ' + UI_UNIT).output || 'unknown')];
-  for (const name of Object.keys(CORE_UNITS)) lines.push(CORE_UNITS[name] + ': ' + unitState(CORE_UNITS[name]));
+  const lines = [
+    '面板(' + UI_UNIT + '): ' + colorState(unitState(UI_UNIT)),
+    '开机自启: ' + colorState(unitEnabled(UI_UNIT)),
+  ];
+  for (const name of Object.keys(CORE_UNITS)) lines.push(CORE_UNITS[name] + ': ' + colorState(unitState(CORE_UNITS[name])));
   ctx.io.print(lines.join('\n'));
   const res = run('systemctl status ' + UI_UNIT + ' --no-pager');
   ctx.io.print('');
-  ctx.io.print(res.output || '(无输出)');
+  ctx.io.print(paintSystemctl(res.output || '(无输出)'));
   if (/status=1\/FAILURE|failed/i.test(res.output)) {
     ctx.io.print('提示: 查看详细日志请按 16（journalctl -u ' + UI_UNIT + ' -n 60）');
   }
+}
+
+function paintSystemctl(text) {
+  if (!COLOR) return String(text);
+  return String(text).split('\n').map(function (line) {
+    let out = line;
+    out = out.replace(/Active: (active \(running\)|active[^\n]*)/, function (m, state) { return 'Active: ' + GREEN + state + RESET; });
+    out = out.replace(/Active: (activating|reloading|deactivating)[^\n]*/, function (m, state) { return 'Active: ' + YELLOW + m.slice(8) + RESET; });
+    out = out.replace(/Active: (failed|inactive|dead)[^\n]*/, function (m, state) { return 'Active: ' + RED + m.slice(8) + RESET; });
+    out = out.replace(/\b(enabled)\b/, GREEN + '$1' + RESET);
+    out = out.replace(/\b(disabled)\b/, RED + '$1' + RESET);
+    out = out.replace(/\(code=exited,[^)]*\)/, RED + '$&' + RESET);
+    return out;
+  }).join('\n');
 }
 
 function showLogs(ctx) {

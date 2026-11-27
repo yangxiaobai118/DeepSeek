@@ -242,12 +242,9 @@ uniproxy 只负责“生成配置并下发”，实际代理流量由 Xray / sin
 
 ### 3.0 已经装过？先自检（可整节跳过）
 
-如果服务器上已经有 Xray / sing-box / nginx，**不用重装，也不要把它们放进 `/tmp`**。uniproxy 从不读取 `/tmp` 里的二进制：
+uniproxy 不读取 `/tmp` 里的二进制，它按 **PATH** 调用 `xray` / `sing-box` / `nginx`，按 **systemd 单元名**重启/重载服务。所以已经装好的内核会被直接接管——但你要先确认它们**装没装、跑没跑**。
 
-- 按 **PATH** 调用 `xray` / `sing-box` / `nginx`（`xray run -test`、`sing-box check`、`nginx -t`）；
-- 按 **systemd 单元名**重启/重载服务（`xray` / `sing-box` / `nginx`）。
-
-所以只要这三个命令在当前 shell 里能执行、三个服务是 active，uniproxy 就会直接接管，不需要你改任何东西。先确认：
+先跑这两条：
 
 ```bash
 xray version; sing-box version; nginx -v
@@ -257,14 +254,36 @@ xray version; sing-box version; nginx -v
 systemctl is-active xray sing-box nginx
 ```
 
-- 三条版本都打印、服务都是 `active` → **跳过 3.1–3.3，直接做步骤 4**。
-- 某个命令 `command not found` → 把二进制放进 `/usr/local/bin`，或建软链（把 `/opt/xray/xray` 换成你的实际路径）：
+**看输出，对号入座：**
+
+| 你看到的情况 | 说明 | 你要做什么 |
+|---|---|---|
+| 三个版本号都打印，三条都是 `active` | 都装好且在跑 | **跳过 3.1–3.3，直接做步骤 4** |
+| 某个命令 `command not found`，对应服务 `inactive` | 这个没装 | 只装缺的：Xray 做 3.1，sing-box 做 3.2，nginx 做 3.3 |
+| 版本号能打印，但服务 `inactive` | 装了但没启动 | `systemctl enable --now xray`（sing-box 同理；nginx 用 `nginx`） |
+| nginx 是 `active`，xray / sing-box 都是 `command not found` | 最常见：只装了 nginx | **只做 3.1 和 3.2，3.3 跳过** |
+| 版本号能打印但报 `GLIBC_2.28 not found` 之类 | 系统太旧 | 改用 JS 包 + 新版 Node（见 1.4） |
+
+> 例如输出里有 `nginx version: nginx/1.30.8`，而 `xray`、`sing-box` 都是 `command not found`、服务 `inactive`：说明 **nginx 已就绪，Xray 和 sing-box 还没装** → 做 3.1、3.2，3.3 不用做。
+
+**「把二进制放进 `/usr/local/bin`」是什么意思？**
+
+就是把**可执行文件**（比如 `xray`、`sing-box`）复制到 `/usr/local/bin` 目录——系统会自动在这个目录里找命令，放进去后直接敲 `xray` 就能用。
+
+**这一步不需要你手动做**：
+
+- 3.1 的官方安装脚本会自动装到 `/usr/local/bin` 并创建服务；
+- 3.2 里的 `install -m 0755 ... /usr/local/bin/sing-box` 就是在「把二进制放进去」。
+
+只有当你**从别处拿到一个现成的可执行文件**（别人给的、或已经解压到 `/opt` 的）时，才需要手动处理。最省事的是建一个「快捷方式」（软链）：
 
 ```bash
 ln -s /opt/xray/xray /usr/local/bin/xray
 ```
 
-- 服务名不是默认的（比如叫 `my-xray`）→ 在 `config.json` 里覆盖命令：
+（把 `/opt/xray/xray` 换成那个文件的实际路径；执行后 `xray` 就等于它。软链就是「快捷方式」。）
+
+**服务名不是默认的**（比如叫 `my-xray`）时，`systemctl restart xray` 会失败，这时在 `config.json` 里覆盖：
 
 ```json
 "apply": {

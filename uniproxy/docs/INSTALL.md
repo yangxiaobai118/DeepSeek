@@ -239,12 +239,9 @@ uniproxy only generates and installs configuration; Xray and sing-box carry prox
 
 ### 3.0 Already installed? Check first (this whole section can be skipped)
 
-If Xray / sing-box / nginx are already on the server, **do not reinstall them and do not move them into `/tmp`**. uniproxy never reads binaries from `/tmp`:
+uniproxy never reads binaries from `/tmp`: it calls `xray` / `sing-box` / `nginx` through **PATH** and restarts/reloads units by **systemd unit name**. Installed cores are taken over as they are - but first confirm **whether they are installed and running**.
 
-- it calls `xray` / `sing-box` / `nginx` through **PATH** (`xray run -test`, `sing-box check`, `nginx -t`);
-- it restarts/reloads services by **systemd unit name** (`xray` / `sing-box` / `nginx`).
-
-So as long as the three commands run in your shell and the three units are active, uniproxy takes them over with no extra configuration. Check first:
+Run these two:
 
 ```bash
 xray version; sing-box version; nginx -v
@@ -254,14 +251,36 @@ xray version; sing-box version; nginx -v
 systemctl is-active xray sing-box nginx
 ```
 
-- All three versions print and all units are `active` → **skip 3.1-3.3 and go straight to step 4**.
-- A command is `command not found` → put the binary in `/usr/local/bin`, or link it (replace `/opt/xray/xray` with your real path):
+**Read your output and pick the matching row:**
+
+| What you see | Meaning | What to do |
+|---|---|---|
+| all three versions print and all units are `active` | installed and running | **skip 3.1-3.3 and go to step 4** |
+| a command is `command not found` and its unit is `inactive` | not installed | install only what is missing: 3.1 for Xray, 3.2 for sing-box, 3.3 for nginx |
+| the version prints but the unit is `inactive` | installed but not started | `systemctl enable --now xray` (same for sing-box; use `nginx` for nginx) |
+| nginx `active`, xray and sing-box both `command not found` | most common: only nginx installed | **do 3.1 and 3.2 only, skip 3.3** |
+| the version prints but fails with `GLIBC_2.28 not found` | OS too old | use the JS package with a newer Node (see 1.4) |
+
+> For example, `nginx version: nginx/1.30.8` prints while `xray` and `sing-box` are `command not found` and their units are `inactive`: **nginx is ready, Xray and sing-box are not installed** -> do 3.1 and 3.2, skip 3.3.
+
+**What does "put the binary in `/usr/local/bin`" mean?**
+
+It means copying the **executable file** (for example `xray` or `sing-box`) into the `/usr/local/bin` directory - the shell looks for commands there automatically, so after copying you can just type `xray`.
+
+**You do not need to do this by hand**:
+
+- the official installer in 3.1 already installs to `/usr/local/bin` and creates the unit;
+- `install -m 0755 ... /usr/local/bin/sing-box` in 3.2 is exactly "putting the binary there".
+
+You only need to do it manually when you **already have an executable from somewhere else** (a file you were given, or something extracted into `/opt`). The easiest way is a shortcut (symlink):
 
 ```bash
 ln -s /opt/xray/xray /usr/local/bin/xray
 ```
 
-- The unit name differs from the default (for example `my-xray`) → override the commands in `config.json`:
+(Replace `/opt/xray/xray` with the real path; after that `xray` points to it. A symlink is just a shortcut.)
+
+**If the unit name is not the default** (for example `my-xray`), `systemctl restart xray` will fail; override it in `config.json`:
 
 ```json
 "apply": {

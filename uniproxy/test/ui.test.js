@@ -191,3 +191,50 @@ test('u-ui: clients, settings, stats and logs endpoints', async function () {
     fs.rmSync(ctx.dir, { recursive: true, force: true });
   }
 });
+
+test('u-ui: nginx management and viewer role', async function () {
+  const ctx = setup();
+  const inst = await startUi(ctx.cfgPath, 0, { password: 'secret', viewerPassword: 'look' });
+  try {
+    const base = inst.url;
+
+    const viewerLogin = await fetch(base + '/login', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'password=look', redirect: 'manual' });
+    assert.equal(viewerLogin.status, 303);
+    const viewerCookie = cookieHeader(viewerLogin);
+    const viewerState = await fetch(base + '/api/state', { headers: { cookie: viewerCookie } });
+    assert.equal((await viewerState.json()).role, 'viewer');
+    const viewerWrite = await fetch(base + '/api/users', { method: 'POST', headers: { cookie: viewerCookie, 'x-uui-csrf': /uui_csrf=([^;]+)/.exec(viewerCookie)[1], 'content-type': 'application/json' }, body: JSON.stringify({ name: 'x' }) });
+    assert.equal(viewerWrite.status, 403);
+
+    const auth = await login(inst);
+    const adminState = await fetch(base + '/api/state', { headers: { cookie: auth.cookie } });
+    assert.equal((await adminState.json()).role, 'admin');
+
+    const nginx = await fetch(base + '/api/nginx', { headers: { cookie: auth.cookie } });
+    assert.equal(nginx.status, 200);
+    const nginxJson = await nginx.json();
+    assert.ok(nginxJson.preview.includes('server {') || nginxJson.preview.includes('server{'));
+
+    const headers = { cookie: auth.cookie, 'x-uui-csrf': auth.csrf, 'content-type': 'application/json' };
+    const saved = await fetch(base + '/api/nginx', { method: 'PUT', headers: headers, body: JSON.stringify({ mode: 'http', sites: [{ serverName: 'a.example.com', root: '/srv/www' }], extraSites: [{ serverName: 'b.example.com', upstream: '127.0.0.1:8787' }] }) });
+    assert.equal(saved.status, 200);
+    const raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
+    assert.equal(raw.nginx.mode, 'http');
+    assert.equal(raw.nginx.sites[0].serverName, 'a.example.com');
+    assert.equal(raw.nginx.extraSites[0].upstream, '127.0.0.1:8787');
+
+    const tested = await fetch(base + '/api/nginx/test', { method: 'POST', headers: headers });
+    assert.ok([200, 500].includes(tested.status));
+    const reloaded = await fetch(base + '/api/nginx/reload', { method: 'POST', headers: headers });
+    assert.ok([200, 500].includes(reloaded.status));
+
+    const audit = await fetch(base + '/api/audit?limit=50', { headers: { cookie: auth.cookie } });
+    assert.equal(audit.status, 200);
+    const auditJson = await audit.json();
+    assert.ok(auditJson.entries.length > 0);
+    assert.ok(auditJson.entries.some(function (e) { return e.action === 'nginx.update'; }));
+  } finally {
+    await inst.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});

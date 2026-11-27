@@ -23,6 +23,13 @@
   derived from `server.secret` when left blank.
 - u-ui settings: edit public IP, domains, certificate paths, ports, nginx mode
   and the two panel domains/ports from a form.
+- u-ui nginx: manage static sites and reverse proxies, preview the generated
+  nginx.conf and SNI routing, run `nginx -t` and reload from the panel.
+- u-ui topology: show how :443 fans out by SNI and list every listener.
+- u-ui audit log: append every config write, apply, core action and nginx
+  test/reload to `config.json.audit.log` and show the tail in the panel.
+- u-ui roles: `ui.password` is admin and `ui.viewerPassword` is read-only;
+  viewer sessions get 403 on every mutation.
 
 ### Fixed
 

@@ -8,6 +8,7 @@ import { analyzePorts } from '../ports.js';
 import { resolveUsers, deriveUuid, derivePassword } from '../users.js';
 import { collectStats, combineStats, mergeUsage } from '../stats.js';
 import { collectLogs, logSources } from '../logs.js';
+import { generateNginx } from '../generators/nginx.js';
 import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
 import { buildPlan, formatPlan, applyPlan } from '../apply.js';
@@ -19,7 +20,8 @@ const SESSION_TTL = 8 * 3600 * 1000;
 
 export function startUi(cfgPath, port = 8788, options = {}) {
   const abs = path.resolve(cfgPath);
-  const password = options.password || process.env.UNIPROXY_UI_PASSWORD || readPassword(abs);
+  const password = options.password || process.env.UNIPROXY_UI_PASSWORD || readPassword(abs, 'password');
+  const viewerPassword = options.viewerPassword || process.env.UNIPROXY_UI_VIEWER_PASSWORD || readPassword(abs, 'viewerPassword');
   if (!password) {
     throw new Error(
       'u-ui needs a password: set UNIPROXY_UI_PASSWORD or add "ui": { "password": "..." } to the config'
@@ -53,7 +55,8 @@ export function startUi(cfgPath, port = 8788, options = {}) {
       return send(res, 303, { location: '/login', 'set-cookie': clearCookies() }, '');
     }
 
-    const authed = verifySession(cookies[SESSION_COOKIE], secret());
+    const session = verifySession(cookies[SESSION_COOKIE], secret());
+    const authed = Boolean(session);
     if (!authed && url.pathname !== '/login') {
       if (url.pathname.startsWith('/api/')) return json(res, 401, { error: 'unauthorized' });
       return send(res, 303, { location: '/login' }, '');
@@ -67,8 +70,9 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     if (mutating && cookies[CSRF_COOKIE]) {
       if (req.headers['x-uui-csrf'] !== cookies[CSRF_COOKIE]) return json(res, 403, { error: 'bad csrf token' });
     }
+    if (mutating && session.role !== 'admin') return json(res, 403, { error: 'read-only role: viewer cannot modify' });
 
-    if (url.pathname === '/api/state' && req.method === 'GET') return json(res, 200, state(abs, cookies[CSRF_COOKIE]));
+    if (url.pathname === '/api/state' && req.method === 'GET') return json(res, 200, state(abs, cookies[CSRF_COOKIE], session.role));
     if (url.pathname === '/api/config') {
       if (req.method === 'GET') return json(res, 200, { json: fs.readFileSync(abs, 'utf8') });
       if (req.method === 'PUT') return saveConfig(req, res, abs);
@@ -96,7 +100,7 @@ export function startUi(cfgPath, port = 8788, options = {}) {
 
     if (url.pathname === '/api/cores' && req.method === 'GET') return listCores(res, abs);
     const coreMatch = url.pathname.match(/^\/api\/cores\/([a-z]+)\/(start|stop|restart)$/);
-    if (coreMatch && req.method === 'POST') return coreAction(res, coreMatch[1], coreMatch[2]);
+    if (coreMatch && req.method === 'POST') return coreAction(res, abs, coreMatch[1], coreMatch[2]);
     const corePut = url.pathname.match(/^\/api\/cores\/([a-z]+)$/);
     if (corePut && req.method === 'PUT') return setCoreEnabled(req, res, abs, corePut[1]);
 
@@ -106,6 +110,17 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     if (url.pathname === '/api/settings') {
       if (req.method === 'GET') return getSettings(res, abs);
       if (req.method === 'PUT') return putSettings(req, res, abs);
+    }
+
+    if (url.pathname === '/api/nginx') {
+      if (req.method === 'GET') return getNginx(res, abs);
+      if (req.method === 'PUT') return putNginx(req, res, abs);
+    }
+    if (url.pathname === '/api/nginx/test' && req.method === 'POST') return nginxTest(res, abs);
+    if (url.pathname === '/api/nginx/reload' && req.method === 'POST') return nginxReload(res, abs);
+
+    if (url.pathname === '/api/audit' && req.method === 'GET') {
+      return json(res, 200, { entries: readAudit(abs, Number(url.searchParams.get('limit') || 200)) });
     }
 
     return json(res, 404, { error: 'not found' });
@@ -118,7 +133,9 @@ export function startUi(cfgPath, port = 8788, options = {}) {
       const gate = attempts.get(ip) || { count: 0, until: 0 };
       if (gate.until > Date.now()) return send(res, 429, { 'content-type': 'text/plain' }, 'too many attempts, wait a minute');
       const form = new URLSearchParams(body);
-      if (!safeEqual(form.get('password') || '', password)) {
+      const supplied = form.get('password') || '';
+      const role = safeEqual(supplied, password) ? 'admin' : (viewerPassword && safeEqual(supplied, viewerPassword) ? 'viewer' : '');
+      if (!role) {
         gate.count += 1;
         if (gate.count >= 5) { gate.count = 0; gate.until = Date.now() + 60000; }
         attempts.set(ip, gate);
@@ -128,7 +145,7 @@ export function startUi(cfgPath, port = 8788, options = {}) {
       const exp = Date.now() + SESSION_TTL;
       const csrf = crypto.randomBytes(16).toString('hex');
       const cookie = [
-        SESSION_COOKIE + '=' + encodeURIComponent(sign(exp, secret())) + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=' + Math.floor(SESSION_TTL / 1000),
+        SESSION_COOKIE + '=' + encodeURIComponent(sign(exp + '.' + role, secret())) + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=' + Math.floor(SESSION_TTL / 1000),
         CSRF_COOKIE + '=' + csrf + '; SameSite=Strict; Path=/; Max-Age=' + Math.floor(SESSION_TTL / 1000),
       ];
       return send(res, 303, { location: '/', 'set-cookie': cookie }, '');
@@ -146,14 +163,14 @@ export function startUi(cfgPath, port = 8788, options = {}) {
   });
 }
 
-function readPassword(cfgPath) {
+function readPassword(cfgPath, key) {
   try {
     const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    return raw.ui && raw.ui.password ? String(raw.ui.password) : '';
+    return raw.ui && raw.ui[key] ? String(raw.ui[key]) : '';
   } catch (e) { return ''; }
 }
 
-function state(cfgPath, csrf) {
+function state(cfgPath, csrf, role) {
   const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
   const c = derive(raw);
   const report = analyzePorts(c);
@@ -176,6 +193,8 @@ function state(cfgPath, csrf) {
     inbounds: allInbounds(c),
     subscriptions: subs.map(function (s) { return { name: s.name, token: s.token }; }),
     csrf: csrf || '',
+    role: role || 'viewer',
+    sni: sniRoutes(c),
   };
 }
 
@@ -210,6 +229,7 @@ function saveRaw(cfgPath, raw) {
   const tmp = cfgPath + '.tmp-' + process.pid;
   fs.writeFileSync(tmp, text);
   fs.renameSync(tmp, cfgPath);
+  record(cfgPath, 'config.write', 'config.json updated');
 }
 
 function saveConfig(req, res, cfgPath) {
@@ -293,6 +313,7 @@ function runAction(req, res, cfgPath, action) {
       if (!c.apply) return json(res, 400, { error: 'no apply block in config' });
       const targets = buildPlan(c);
       const result = applyPlan(c, targets, {});
+      record(cfgPath, 'apply', result.failed ? 'failed' : 'ok');
       return json(res, 200, { ok: !result.failed, output: result.actions.map(function (a) { return a.level.toUpperCase() + '  ' + a.text; }).join('\n') });
     }
     return json(res, 404, { error: 'unknown action' });
@@ -446,10 +467,11 @@ function listCores(res, cfgPath) {
   return json(res, 200, { cores: cores });
 }
 
-function coreAction(res, kind, action) {
+function coreAction(res, cfgPath, kind, action) {
   const unit = UNITS[kind];
   if (!unit) return json(res, 400, { error: 'unknown core' });
   const result = runCmd('systemctl ' + action + ' ' + unit);
+  record(cfgPath, 'core.' + action, unit);
   return json(res, result.ok ? 200 : 500, { ok: result.ok, unit: unit, action: action, output: result.output, error: result.error });
 }
 
@@ -603,6 +625,96 @@ function removeClient(res, cfgPath, kind, tag, name) {
   return json(res, 200, { ok: true });
 }
 
+function sniRoutes(c) {
+  const routes = [];
+  if (c.nginx.mode !== 'stream') return routes;
+  const internal = '127.0.0.1:' + (c.ports.nginxInternalTls || 8443);
+  for (const s of c.nginx.sites || []) routes.push({ sni: s.serverName, backend: internal, kind: 'site' });
+  for (const key of ['xui', 'sui']) {
+    const p = c.panels[key];
+    if (p && p.enabled && p.domain) routes.push({ sni: p.domain, backend: internal, kind: 'panel' });
+  }
+  for (const kind of ['xray', 'singbox']) {
+    for (const ib of c[kind].inbounds || []) {
+      if (!ib.sni) continue;
+      const host = ib.listen && ib.listen !== '0.0.0.0' ? ib.listen : '127.0.0.1';
+      routes.push({ sni: ib.sni, backend: host + ':' + ib.port, kind: kind });
+    }
+  }
+  return routes;
+}
+
+function getNginx(res, cfgPath) {
+  const c = derive(readRaw(cfgPath));
+  return json(res, 200, {
+    mode: c.nginx.mode,
+    sites: c.nginx.sites || [],
+    extraSites: c.nginx.extraSites || [],
+    preview: generateNginx(c),
+    sni: sniRoutes(c),
+  });
+}
+
+function putNginx(req, res, cfgPath) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    const raw = readRaw(cfgPath);
+    raw.nginx = raw.nginx || {};
+    if (body.mode) raw.nginx.mode = String(body.mode);
+    if (Array.isArray(body.sites)) {
+      raw.nginx.sites = body.sites.map(function (s) {
+        return { serverName: String(s.serverName || '').trim(), root: String(s.root || '/var/www/html'), index: String(s.index || 'index.html') };
+      }).filter(function (s) { return s.serverName; });
+    }
+    if (Array.isArray(body.extraSites)) {
+      raw.nginx.extraSites = body.extraSites.map(function (s) {
+        return { serverName: String(s.serverName || '').trim(), upstream: String(s.upstream || '').trim() };
+      }).filter(function (s) { return s.serverName && s.upstream; });
+    }
+    const check = validateConfig(derive(raw));
+    if (check.errors.length) return json(res, 400, { error: 'validation failed', errors: check.errors });
+    record(cfgPath, 'nginx.update', 'mode=' + raw.nginx.mode);
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, warnings: check.warnings });
+  });
+}
+
+function nginxTest(res, cfgPath) {
+  const c = derive(readRaw(cfgPath));
+  const cmd = (c.apply && c.apply.validate && c.apply.validate.nginx) || 'nginx -t -c {file}';
+  const tmp = cfgPath + '.nginx-test-' + process.pid + '.conf';
+  try {
+    fs.writeFileSync(tmp, generateNginx(c));
+    const result = runCmd(cmd.split('{file}').join(tmp));
+    record(cfgPath, 'nginx.test', result.ok ? 'ok' : 'failed');
+    return json(res, result.ok ? 200 : 500, { ok: result.ok, output: result.output, error: result.error });
+  } finally {
+    try { fs.unlinkSync(tmp); } catch (e) { /* ignore */ }
+  }
+}
+
+function nginxReload(res, cfgPath) {
+  const c = derive(readRaw(cfgPath));
+  const cmd = (c.apply && c.apply.reload && c.apply.reload.nginx) || 'systemctl reload nginx';
+  const result = runCmd(cmd);
+  record(cfgPath, 'nginx.reload', result.ok ? 'ok' : 'failed');
+  return json(res, result.ok ? 200 : 500, { ok: result.ok, output: result.output, error: result.error });
+}
+
+function record(cfgPath, action, detail) {
+  const line = JSON.stringify({ ts: new Date().toISOString(), action: action, detail: detail || '' }) + '\n';
+  try { fs.appendFileSync(cfgPath + '.audit.log', line); } catch (e) { /* audit is best effort */ }
+}
+
+function readAudit(cfgPath, limit) {
+  try {
+    const text = fs.readFileSync(cfgPath + '.audit.log', 'utf8').trim();
+    if (!text) return [];
+    const lines = text.split('\n').slice(-Math.min(Math.max(limit, 1), 500));
+    return lines.map(function (l) { try { return JSON.parse(l); } catch (e) { return { raw: l }; } });
+  } catch (e) { return []; }
+}
+
 function send(res, status, headers, body) {
   res.writeHead(status, headers);
   res.end(res.req && res.req.method === 'HEAD' ? undefined : body);
@@ -628,12 +740,16 @@ function sign(exp, key) {
 }
 
 function verifySession(value, key) {
-  if (!value) return false;
-  const dot = value.lastIndexOf('.');
-  if (dot < 0) return false;
-  const exp = Number(value.slice(0, dot));
-  if (!Number.isFinite(exp) || exp < Date.now()) return false;
-  return safeEqual(value, sign(exp, key));
+  if (!value) return null;
+  const parts = value.split('.');
+  if (parts.length < 3) return null;
+  const role = parts[1];
+  const exp = Number(parts[0]);
+  if (!Number.isFinite(exp) || exp < Date.now()) return null;
+  if (role !== 'admin' && role !== 'viewer') return null;
+  const payload = parts[0] + '.' + role;
+  const mac = parts.slice(2).join('.');
+  return safeEqual(mac, sign(payload, key).split('.').pop()) ? { role: role, exp: exp } : null;
 }
 
 function safeEqual(a, b) {

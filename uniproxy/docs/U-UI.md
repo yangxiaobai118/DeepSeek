@@ -36,6 +36,9 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 流量 | 从 Xray stats API 与 sing-box（Clash API）采集按用户的上行/下行，支持一键同步到 `users[].usage`（订阅的 `subscription-userinfo` 随之变化）。生成配置时会**自动开启**统计端点：Xray `stats` + `api`（`xray.apiPort`，默认 10085）、sing-box `experimental.clash_api`（`singbox.clashPort`，默认 9090）；两者都进端口表，可用 `xray.stats: false` / `singbox.clashApi: false` 关闭 |
 | 日志 | `journalctl` 查看 xray / sing-box / nginx / uniproxy-sub，可选行数 |
 | 设置 | 公网 IP、邮箱、网站域名、证书/私钥路径、80/443/内部 TLS 端口、nginx 模式、两个面板的域名与端口 |
+| nginx | 模式切换（stream/http）、静态站点与反向代理（extraSites）增删、SNI 路由预览、生成配置预览、`nginx -t` 与 reload |
+| 拓扑 | 从 443 入口按 SNI 到各后端的流向，以及全部监听端口 |
+| 审计 | 每次配置写入、apply、内核操作、nginx 测试/重载的时间与动作 |
 | 用户 | 表格（状态/到期/配额/入站/订阅 token）+ 新增/编辑/删除 |
 | 配置 | `config.json` 原始文本编辑器，保存前跑 `validate`，写入前自动备份 |
 | 操作 | `validate` / `doctor` / `plan`（只预览）/ `apply`（需输入确认词） |
@@ -63,6 +66,10 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | POST | `/api/stats/sync` | 把流量写回 `users[].usage` |
 | GET | `/api/logs?unit=&lines=` | journalctl 日志 |
 | GET/PUT | `/api/settings` | 读取 / 保存常用设置 |
+| GET/PUT | `/api/nginx` | 读取（含生成预览与 SNI 路由）/ 保存站点与反代 |
+| POST | `/api/nginx/test` | 用 `apply.validate.nginx` 跑 `nginx -t` |
+| POST | `/api/nginx/reload` | 用 `apply.reload.nginx` 重载 |
+| GET | `/api/audit?limit=` | 审计日志（JSONL 尾读） |
 | POST | `/api/actions/:action` | `validate` `doctor` `plan` `apply` |
 
 所有非 GET 请求必须带 `x-uui-csrf` 头，值与 `uui_csrf` Cookie 相同（双提交）。
@@ -73,6 +80,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 - 启动必须配置密码：环境变量 `UNIPROXY_UI_PASSWORD`，或 `config.json` 的 `ui.password`；没有密码直接拒绝启动。
 - 会话 = `exp` + HMAC-SHA256（密钥由密码与 `server.secret` 派生），HttpOnly + SameSite=Strict。
 - 登录失败按来源 IP 限速（简单内存计数）。
+- 两个角色：`ui.password` 为管理员，`ui.viewerPassword`（或 `UNIPROXY_UI_VIEWER_PASSWORD`）为只读；只读角色所有写操作返回 403，界面上按钮置灰。
 - `apply` 必须显式输入确认词，避免误点。
 - 配置写入前先校验，写入时生成 `.bak-<时间戳>` 备份并原子替换。
 
@@ -95,6 +103,6 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 ## 7. 阶段
 
-- **已完成**：登录、概览、入站 CRUD（xray + sing-box）、**入站级客户端管理**、用户 CRUD、内核启停与开关、**流量采集与同步**、**日志查看**、**设置表单**、原始配置编辑、四个操作按钮。
-- 后续：内核拓扑图、审计日志、多用户角色。
+- **已完成**：登录与双角色、概览、入站 CRUD（xray + sing-box）、入站级客户端、用户 CRUD、内核启停与开关、流量采集与同步、日志查看、**nginx 站点/反代管理与测试重载**、**拓扑视图**、**审计日志**、设置表单、原始配置编辑、四个操作按钮。
+- 后续：更细的权限矩阵、告警与通知。
   

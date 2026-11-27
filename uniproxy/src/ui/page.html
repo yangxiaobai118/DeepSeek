@@ -28,6 +28,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 .muted{color:#8b93a3;font-size:12px}
 .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid #2a2f3a}
 .pill.on{color:#3ddc84;border-color:#1f6f43}.pill.off{color:#ff6b6b;border-color:#7f1d1d}
+.ro .act{opacity:.45;pointer-events:none}
 </style></head><body>
 <header><h1>u-ui</h1>
 <nav>
@@ -37,10 +38,13 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <button data-tab="cores">内核</button>
 <button data-tab="stats">流量</button>
 <button data-tab="logs">日志</button>
+<button data-tab="nginx">nginx</button>
+<button data-tab="topology">拓扑</button>
 <button data-tab="config">配置</button>
 <button data-tab="actions">操作</button>
 <button data-tab="settings">设置</button>
-</nav><a href="/logout">退出</a></header>
+<button data-tab="audit">审计</button>
+</nav><span id="roleBadge" class="muted"></span><a href="/logout">退出</a></header>
 <main>
 <section id="tab-overview" class="on">
   <div class="card"><h2>状态</h2><div id="overview"></div></div>
@@ -71,6 +75,21 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   <button class="ghost" id="loadLogsBtn">刷新</button></div>
   <pre id="logOut" style="margin-top:12px">(idle)</pre></div>
 </section>
+<section id="tab-nginx">
+  <div class="card"><h2>nginx 站点</h2>
+  <div class="row"><label>模式<select id="nginxMode"><option value="stream">stream（443 按 SNI 分流）</option><option value="http">http（nginx 直接占 443）</option></select></label>
+  <button class="ghost" id="addSite">添加站点</button><button class="ghost" id="addExtra">添加反代</button>
+  <button class="act" id="saveNginx">保存 nginx 配置</button>
+  <button class="ghost" id="testNginx">nginx -t</button><button class="ghost" id="reloadNginx">reload</button></div>
+  <div class="muted" style="margin:12px 0 6px">静态站点</div><div id="nginxSites"></div>
+  <div class="muted" style="margin:12px 0 6px">反向代理（extraSites）</div><div id="nginxExtra"></div>
+  <pre id="nginxOut" style="margin-top:12px">(idle)</pre></div>
+  <div class="card"><h2>SNI 路由</h2><div id="nginxSni"></div></div>
+  <div class="card"><h2>生成的 nginx.conf</h2><pre id="nginxPreview">(loading)</pre></div>
+</section>
+<section id="tab-topology">
+  <div class="card"><h2>流量拓扑</h2><div id="topology"></div></div>
+</section>
 <section id="tab-config">
   <div class="card"><h2>config.json（保存前会跑 validate，并自动备份）</h2>
   <textarea id="configText"></textarea>
@@ -90,11 +109,15 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <section id="tab-settings">
   <div class="card"><h2>设置（写入 config.json，保存前校验）</h2><div id="settingsForm"><div class="muted">载入中…</div></div></div>
 </section>
+<section id="tab-audit">
+  <div class="card"><h2>审计日志（最近 200 条）</h2><div id="auditTable"></div></div>
+</section>
 </main>
 <script>
 const csrf = () => { const m = document.cookie.match(/(?:^|; )uui_csrf=([^;]+)/); return m ? m[1] : ''; };
 let state = null; let cores = []; let editingUser = null; let editingInbound = null; let currentInbound = null;
 async function api(method, path, body) {
+  if (method !== 'GET' && state && state.role !== 'admin') return { status: 403, data: { error: 'read-only role' } };
   const opts = { method, headers: { 'x-uui-csrf': csrf() } };
   if (body !== undefined) { opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
   const res = await fetch(path, opts);
@@ -108,7 +131,10 @@ async function refresh() {
   state = a.data;
   const b = await api('GET', '/api/cores');
   cores = (b.data && b.data.cores) || [];
-  renderOverview(); renderPorts(); renderInbounds(); renderUsers(); renderCores();
+  renderOverview(); renderPorts(); renderInbounds(); renderUsers(); renderCores(); renderTopology();
+  const ro = state.role !== 'admin';
+  document.getElementById('roleBadge').textContent = ro ? '只读' : '管理员';
+  document.body.classList.toggle('ro', ro);
 }
 function h(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function gb(n) { return n ? (n / 1073741824).toFixed(1) + ' GB' : '-'; }
@@ -304,6 +330,9 @@ document.querySelectorAll('nav button').forEach(btn => {
     if (btn.dataset.tab === 'stats') loadStats();
     if (btn.dataset.tab === 'logs') loadLogs();
     if (btn.dataset.tab === 'settings') loadSettings();
+    if (btn.dataset.tab === 'nginx') loadNginx();
+    if (btn.dataset.tab === 'topology') renderTopology();
+    if (btn.dataset.tab === 'audit') loadAudit();
   };
 });
 async function openClients(kind, tag) {
@@ -416,6 +445,93 @@ async function saveSettings() {
   const r = await api('PUT', '/api/settings', body);
   if (r.status === 200) { msg.textContent = '已保存'; msg.className = 'ok'; await refresh(); }
   else { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'err'; }
+}
+
+function nginxSiteRow(name, root) {
+  return '<div class="row nginx-row" style="margin-bottom:6px"><label>域名<input class="n_site" value="' + h(name) + '"></label>' +
+    '<label>站点根目录<input class="n_root" value="' + h(root || '/var/www/html') + '"></label>' +
+    '<button class="ghost danger n_del">删除</button></div>';
+}
+function nginxExtraRow(name, up) {
+  return '<div class="row nginx-row" style="margin-bottom:6px"><label>域名<input class="n_site" value="' + h(name) + '"></label>' +
+    '<label>上游<input class="n_up" value="' + h(up) + '" placeholder="127.0.0.1:8787"></label>' +
+    '<button class="ghost danger n_del">删除</button></div>';
+}
+async function loadNginx() {
+  const r = await api('GET', '/api/nginx');
+  const d = r.data || {};
+  document.getElementById('nginxMode').value = d.mode || 'http';
+  document.getElementById('nginxSites').innerHTML = (d.sites || []).map(function (s) { return nginxSiteRow(s.serverName, s.root); }).join('');
+  document.getElementById('nginxExtra').innerHTML = (d.extraSites || []).map(function (s) { return nginxExtraRow(s.serverName, s.upstream); }).join('');
+  document.getElementById('nginxPreview').textContent = d.preview || '';
+  const sni = d.sni || [];
+  document.getElementById('nginxSni').innerHTML = sni.length
+    ? '<table><thead><tr><th>SNI</th><th>后端</th><th>类型</th></tr></thead><tbody>' + sni.map(function (x) { return '<tr><td><code>' + h(x.sni) + '</code></td><td><code>' + h(x.backend) + '</code></td><td>' + h(x.kind) + '</td></tr>'; }).join('') + '</tbody></table>'
+    : '<div class="muted">当前不是 stream 模式，或还没有 SNI 路由</div>';
+}
+function collectNginxSites() {
+  return Array.from(document.querySelectorAll('#nginxSites .nginx-row')).map(function (row) {
+    return { serverName: row.querySelector('.n_site').value.trim(), root: row.querySelector('.n_root').value.trim() || '/var/www/html' };
+  }).filter(function (s) { return s.serverName; });
+}
+function collectNginxExtra() {
+  return Array.from(document.querySelectorAll('#nginxExtra .nginx-row')).map(function (row) {
+    return { serverName: row.querySelector('.n_site').value.trim(), upstream: row.querySelector('.n_up').value.trim() };
+  }).filter(function (s) { return s.serverName && s.upstream; });
+}
+document.getElementById('addSite').onclick = function () {
+  document.getElementById('nginxSites').insertAdjacentHTML('beforeend', nginxSiteRow('', '/var/www/html'));
+};
+document.getElementById('addExtra').onclick = function () {
+  document.getElementById('nginxExtra').insertAdjacentHTML('beforeend', nginxExtraRow('', '127.0.0.1:8787'));
+};
+document.getElementById('nginxSites').addEventListener('click', function (e) {
+  if (e.target.classList.contains('n_del')) e.target.closest('.nginx-row').remove();
+});
+document.getElementById('nginxExtra').addEventListener('click', function (e) {
+  if (e.target.classList.contains('n_del')) e.target.closest('.nginx-row').remove();
+});
+document.getElementById('saveNginx').onclick = async function () {
+  const out = document.getElementById('nginxOut');
+  const r = await api('PUT', '/api/nginx', {
+    mode: document.getElementById('nginxMode').value,
+    sites: collectNginxSites(),
+    extraSites: collectNginxExtra(),
+  });
+  out.textContent = r.status === 200 ? '已保存（记得 nginx -t 再 reload）' : ('error: ' + (r.data.error || r.status) + (r.data.errors ? '\n' + r.data.errors.join('\n') : ''));
+  await refresh(); await loadNginx();
+};
+document.getElementById('testNginx').onclick = async function () {
+  const out = document.getElementById('nginxOut');
+  out.textContent = 'running nginx -t ...';
+  const r = await api('POST', '/api/nginx/test');
+  out.textContent = (r.data.output || '') + (r.data.ok ? '\nOK' : '\nFAILED');
+};
+document.getElementById('reloadNginx').onclick = async function () {
+  const out = document.getElementById('nginxOut');
+  out.textContent = 'reloading ...';
+  const r = await api('POST', '/api/nginx/reload');
+  out.textContent = (r.data.output || '') || (r.data.ok ? 'OK' : 'FAILED');
+  await refresh();
+};
+function renderTopology() {
+  if (!state) return;
+  const sni = state.sni || [];
+  const lines = sni.map(function (x) {
+    return '<div style="margin:4px 0"><code>:443</code> —SNI <code>' + h(x.sni) + '</code>→ <code>' + h(x.backend) + '</code> <span class="muted">(' + h(x.kind) + ')</span></div>';
+  }).join('');
+  document.getElementById('topology').innerHTML =
+    '<div class="muted">入口 :443（nginx ' + h(state.nginxMode) + ' 模式）</div>' +
+    (lines || '<div class="muted">http 模式下 443 由 nginx 直接服务，没有 SNI 分流</div>') +
+    '<div class="muted" style="margin-top:14px">全部监听端口</div><div class="row">' +
+    state.ports.map(function (p) { return '<span class="pill">' + h(p.port) + ' · ' + h(p.label) + '</span>'; }).join('') + '</div>';
+}
+async function loadAudit() {
+  const r = await api('GET', '/api/audit?limit=200');
+  const rows = (r.data && r.data.entries) || [];
+  document.getElementById('auditTable').innerHTML = rows.length
+    ? '<table><thead><tr><th>时间</th><th>动作</th><th>详情</th></tr></thead><tbody>' + rows.slice().reverse().map(function (x) { return '<tr><td>' + h(x.ts) + '</td><td>' + h(x.action) + '</td><td>' + h(x.detail) + '</td></tr>'; }).join('') + '</tbody></table>'
+    : '<div class="muted">还没有记录</div>';
 }
 
 refresh();

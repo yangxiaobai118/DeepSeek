@@ -398,7 +398,17 @@ export function unitFiles(opts) {
 }
 
 async function installService(ctx) {
-  const files = unitFiles({ configPath: cfgPathOf(ctx) });
+  let config = {};
+  try {
+    config = readCfg(ctx.configPath).config;
+  } catch (e) {
+    ctx.io.print('无法读取配置，使用默认端口: ' + e.message);
+  }
+  const files = unitFiles({
+    configPath: cfgPathOf(ctx),
+    uiPort: (config.ui && config.ui.port) || 8788,
+    subPort: (config.subscription && config.subscription.port) || 8787,
+  });
   try { fs.mkdirSync(unitDir(), { recursive: true }); } catch (e) { /* exists */ }
   for (const name of Object.keys(files)) {
     const file = path.join(unitDir(), name);

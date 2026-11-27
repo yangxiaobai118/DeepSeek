@@ -41,6 +41,18 @@ UNIPROXY_UI_PORT=9000 UNIPROXY_SUB_PORT=9001 UNIPROXY_PREFIX=/opt/uniproxy \
 
 Other overrides: `UNIPROXY_VERSION`, `UNIPROXY_BIN_DIR`, `UNIPROXY_ETC_DIR`, `UNIPROXY_REPO`.
 
+**Faster installs.** Releases publish the self-contained binary gzip-compressed (`*.gz`, roughly a third of the raw size) and the installer picks it automatically. If the server already has Node.js >= 18, download the ~50 KiB JS bundle instead of the runtime:
+
+```bash
+UNIPROXY_MODE=js bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
+```
+
+If GitHub is slow from your network, prefix a mirror (the URL is simply prepended):
+
+```bash
+UNIPROXY_MIRROR=https://ghfast.top/ bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
+```
+
 ### After install
 
 | Item | Value |
@@ -159,6 +171,8 @@ UNIPROXY_DRY_RUN=1 bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai
 ```
 
 装完执行 `u-ui` 打开菜单，选「初始化向导」填入域名/端口/管理员密码，再依次 validate、apply；面板地址 `http://127.0.0.1:8788`（建议 SSH 隧道）。详见 [中文安装手册](uniproxy/docs/INSTALL.zh-CN.md)。
+
+下载加速：发布资产提供 gzip 压缩的二进制（约为原始体积的 1/3），安装器会自动优先使用；已有 Node.js 18+ 的机器可改用 ~50 KiB 的 JS 包：`UNIPROXY_MODE=js`。GitHub 慢时可加镜像前缀：`UNIPROXY_MIRROR=https://ghfast.top/`。
 
 ## License
 

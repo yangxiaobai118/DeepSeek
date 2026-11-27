@@ -4,6 +4,8 @@
 #   bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
 #   bash <(curl -Ls .../install.sh) 0.4.6          # pin a release
 #   UNIPROXY_DRY_RUN=1 bash <(curl -Ls .../install.sh)   # print the plan only
+#   UNIPROXY_MODE=js bash <(curl -Ls .../install.sh)      # JS bundle, needs Node >= 18
+#   UNIPROXY_MIRROR=https://ghfast.top/ bash <(curl -Ls .../install.sh)
 #
 # Detects the architecture, downloads the matching release asset (the
 # self-contained binary when available, otherwise the Node bundle), installs
@@ -70,9 +72,9 @@ fetch_to() {
   _url=$1
   _dest=$2
   if have curl; then
-    _total=$(curl -fsIL "$_url" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { v = $2 } END { print v + 0 }')
+    _total=$(curl -fsIL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 "$_url" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { v = $2 } END { print v + 0 }')
     if [ -t 2 ]; then
-      curl -fsSL "$_url" -o "$_dest" &
+      curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 "$_url" -o "$_dest" &
       _pid=$!
       while kill -0 "$_pid" 2>/dev/null; do
         if [ -f "$_dest" ]; then _now=$(wc -c < "$_dest" | tr -d ' '); else _now=0; fi
@@ -92,7 +94,7 @@ fetch_to() {
       printf '\n'
       return 1
     fi
-    curl -fsSL "$_url" -o "$_dest"
+    curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 "$_url" -o "$_dest"
   elif have wget; then
     wget -qO "$_dest" "$_url"
   else
@@ -110,13 +112,13 @@ if [ "${UNIPROXY_PROGRESS_TEST:-0}" = "1" ]; then
 fi
 
 fetch_stdout() {
-  if have curl; then curl -fsSL "$1"
+  if have curl; then curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 "$1"
   elif have wget; then wget -qO- "$1"
   else die 'need curl or wget'; fi
 }
 
 url_exists() {
-  if have curl; then curl -fsIL "$1" >/dev/null 2>&1
+  if have curl; then curl -fsIL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 "$1" >/dev/null 2>&1
   elif have wget; then wget --spider -q "$1" >/dev/null 2>&1
   else return 1; fi
 }
@@ -148,17 +150,32 @@ else
   fi
 fi
 
-BASE="https://github.com/$REPO/releases/download/uniproxy-v$VERSION"
+MIRROR="${UNIPROXY_MIRROR:-}"
+BASE="${MIRROR}https://github.com/$REPO/releases/download/uniproxy-v$VERSION"
 SEA_NAME="uniproxy-$VERSION-$NODE_ARCH"
+GZ_NAME="$SEA_NAME.gz"
 TAR_NAME="uniproxy-$VERSION-linux-$TAR_ARCH.tar.gz"
 
-MODE=sea
-if url_exists "$BASE/$SEA_NAME"; then
-  MODE=sea
-  ASSET="$BASE/$SEA_NAME"
-else
-  MODE=tar
-  ASSET="$BASE/$TAR_NAME"
+MODE=auto
+ASSET=
+case "${UNIPROXY_MODE:-auto}" in
+  js) MODE=tar; ASSET="$BASE/$TAR_NAME" ;;
+  sea) MODE=sea ;;
+  *) MODE=auto ;;
+esac
+if [ -z "$ASSET" ]; then
+  if [ "$MODE" != "tar" ] && url_exists "$BASE/$GZ_NAME"; then
+    MODE=sea-gz
+    ASSET="$BASE/$GZ_NAME"
+  elif [ "$MODE" != "tar" ] && url_exists "$BASE/$SEA_NAME"; then
+    MODE=sea
+    ASSET="$BASE/$SEA_NAME"
+  elif [ "$MODE" != "sea" ]; then
+    MODE=tar
+    ASSET="$BASE/$TAR_NAME"
+  else
+    die "no self-contained binary found for $NODE_ARCH in $VERSION"
+  fi
 fi
 
 if [ "$DRY_RUN" = "1" ]; then
@@ -187,16 +204,27 @@ fetch_to "$ASSET" "$tmp/asset" || die "download failed: $ASSET"
 
 mkdir -p "$PREFIX" "$BIN_DIR" "$ETC_DIR" "$UNIT_DIR"
 
-if [ "$MODE" = "sea" ]; then
+if [ "$MODE" = "sea-gz" ]; then
+  if have gzip; then
+    gzip -dc "$tmp/asset" > "$tmp/uniproxy"
+  elif have gunzip; then
+    gunzip -c "$tmp/asset" > "$tmp/uniproxy"
+  else
+    die 'gzip is required to unpack this build'
+  fi
+fi
+
+if [ "$MODE" = "sea" ] || [ "$MODE" = "sea-gz" ]; then
+  if [ "$MODE" = "sea" ]; then SRC="$tmp/asset"; else SRC="$tmp/uniproxy"; fi
   # atomic replace: the binary may be running (menu update) and cannot be truncated in place
-  install -m 755 "$tmp/asset" "$PREFIX/.uniproxy.new"
+  install -m 755 "$SRC" "$PREFIX/.uniproxy.new"
   mv -f "$PREFIX/.uniproxy.new" "$PREFIX/uniproxy"
 else
   tar -xzf "$tmp/asset" -C "$(dirname "$PREFIX")"
   [ -f "$PREFIX/src/index.js" ] || die "unexpected archive layout (expected $PREFIX/src/index.js)"
 fi
 
-if [ "$MODE" = "sea" ]; then
+if [ "$MODE" = "sea" ] || [ "$MODE" = "sea-gz" ]; then
   printf '#!/bin/sh\nexec "%s/uniproxy" "$@"\n' "$PREFIX" > "$BIN_DIR/uniproxy"
   printf '#!/bin/sh\nexec "%s/uniproxy" menu "$@"\n' "$PREFIX" > "$BIN_DIR/u-ui"
 else

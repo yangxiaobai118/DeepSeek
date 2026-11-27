@@ -11,6 +11,7 @@
  * codesign, so they must be built on a macOS runner.
  */
 import crypto from 'node:crypto';
+import zlib from 'node:zlib';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -181,11 +182,19 @@ async function main() {
     const digest = sha256(outFile);
     fs.writeFileSync(outFile + '.sha256', digest + '  ' + asset + '\n');
     built.push({ name, asset, digest, size: fs.statSync(outFile).size });
+
+    const gzAsset = asset + '.gz';
+    const gzFile = path.join(outDir, gzAsset);
+    fs.writeFileSync(gzFile, zlib.gzipSync(fs.readFileSync(outFile), { level: 6 }));
+    const gzDigest = sha256(gzFile);
+    fs.writeFileSync(gzFile + '.sha256', gzDigest + '  ' + gzAsset + '\n');
+    built.push({ name, asset: gzAsset, digest: gzDigest, size: fs.statSync(gzFile).size, compressed: true });
     console.log('built ' + asset + '  ' + digest.slice(0, 16) + '...');
+    console.log('built ' + gzAsset + '  ' + gzDigest.slice(0, 16) + '...');
   }
 
   const rows = built.map(
-    (item) => '| `' + item.asset + '` | ' + item.name + ' | ' + item.size + ' | `' + item.digest + '` |',
+    (item) => '| `' + item.asset + '` | ' + item.name + (item.compressed ? ' (gzip)' : '') + ' | ' + item.size + ' | `' + item.digest + '` |',
   );
   fs.writeFileSync(
     path.join(outDir, 'BINARIES.md'),

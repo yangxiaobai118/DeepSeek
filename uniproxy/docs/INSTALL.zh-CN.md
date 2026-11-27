@@ -35,6 +35,11 @@ UNIPROXY_UI_PORT=9000 UNIPROXY_SUB_PORT=9001 UNIPROXY_PREFIX=/opt/uniproxy \
 
 装完会自动打开菜单；若没有，执行 `u-ui` 后选择初始化向导，按提示填域名、端口和管理员密码。其他可用变量：`UNIPROXY_VERSION`、`UNIPROXY_BIN_DIR`、`UNIPROXY_ETC_DIR`。
 
+### 下载加速
+
+发布资产同时提供原始二进制和 gzip 压缩版（`*.gz`，体积约为原来的 1/3），安装器会优先选择压缩版。机器已有 Node.js 18+ 时可用 `UNIPROXY_MODE=js` 只下载约 50 KiB 的 JS 包，不再下载运行时。GitHub 本身较慢时，可用 `UNIPROXY_MIRROR` 加镜像前缀（例如 `UNIPROXY_MIRROR=https://ghfast.top/`）。
+
+
 本手册按**实际操作顺序**编写。每一步都包含四部分：
 
 - **目的**：这一步在做什么、为什么需要

@@ -35,6 +35,11 @@ UNIPROXY_UI_PORT=9000 UNIPROXY_SUB_PORT=9001 UNIPROXY_PREFIX=/opt/uniproxy \
 
 The menu opens automatically after install; if not, run `u-ui` and choose the setup wizard to fill in the domain, ports and admin password. Other overrides: `UNIPROXY_VERSION`, `UNIPROXY_BIN_DIR`, `UNIPROXY_ETC_DIR`.
 
+### Faster downloads
+
+Release binaries are published raw and gzip-compressed (`*.gz`); the installer prefers the compressed asset, which is roughly a third of the size. On a host that already has Node.js >= 18, `UNIPROXY_MODE=js` downloads the ~50 KiB JS bundle instead of a runtime. When GitHub itself is slow, prefix the URLs with a mirror using `UNIPROXY_MIRROR` (for example `UNIPROXY_MIRROR=https://ghfast.top/`).
+
+
 This guide follows the **real order of operations**. Every step has four parts:
 
 - **Goal** — what this step does and why it matters

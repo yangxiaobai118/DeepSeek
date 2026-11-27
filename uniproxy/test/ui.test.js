@@ -625,7 +625,7 @@ test('menu: box helper and section count', function () {
   const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
   const sections = buildMenu(ctx);
   assert.equal(sections.length, 6);
-  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 35);
+  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 36);
   const rendered = box('面板', ['0. 退出菜单']);
   assert.ok(rendered.startsWith('┌─ 面板'));
   assert.ok(rendered.includes('│ 0. 退出菜单'));
@@ -663,6 +663,21 @@ test('menu: installPlan describes a 3x-ui style layout', function () {
   assert.ok(plan.launchers['/usr/local/bin/uniproxy'].includes('/usr/local/uniproxy/src/index.js'));
   assert.ok(plan.launchers['/usr/local/bin/u-ui'].includes('/usr/local/uniproxy/src/u-ui.js'));
   assert.ok(plan.units['uniproxy-ui.service'].includes('ExecStart=node /usr/local/uniproxy/src/index.js ui -c /etc/uniproxy/config.json'));
+});
+
+test('menu: changes the u-ui base path', async function () {
+  const ctx = setup();
+  const answers = ['B', '/panel/', '', '0'];
+  const printed = [];
+  const io = {
+    print: function (s) { printed.push(String(s)); },
+    question: async function () { return answers.length ? answers.shift() : '0'; },
+  };
+  await runMenu({ configPath: ctx.cfgPath, io: io, pause: false });
+  const cfg = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
+  assert.equal(cfg.ui.basePath, '/panel/');
+  assert.ok(printed.join('\n').includes('已保存访问路径 /panel/'));
+  fs.rmSync(ctx.dir, { recursive: true, force: true });
 });
 
 test('menu: pauses after an action until Enter', async function () {

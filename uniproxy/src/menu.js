@@ -1,4 +1,5 @@
 import readline from 'node:readline';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +14,7 @@ import { listBackups, createBackup, restoreBackup } from './backups.js';
 import { collectAlerts } from './alerts.js';
 import { normalizeNodes } from './nodes.js';
 import { syncUnitPorts } from './units.js';
-import { isPlaceholderAddress } from './util.js';
+import { isPlaceholderAddress, normalizeBasePath } from './util.js';
 import { version } from './version.js';
 
 /**
@@ -175,6 +176,7 @@ export function buildMenu(ctx) {
     { key: '5', label: '修改面板端口 (Change Panel Port)', run: function () { return withCfg(changePort(ctx)); } },
     { key: '6', label: '重置账号密码 (Reset Password)', run: function () { return withCfg(resetPassword(ctx)); } },
     { key: '7', label: '新增只读账号 (Add Viewer)', run: function () { return withCfg(addViewer(ctx)); } },
+    { key: 'B', label: '修改访问路径 (Change Base Path)', run: function () { return withCfg(changeBasePath(ctx)); } },
   ];
 
   const service = [
@@ -481,6 +483,26 @@ function showSettings(ctx) {
   };
 }
 
+function changeBasePath(ctx) {
+  return async function (c, cfgPath) {
+    const current = (c.ui && c.ui.basePath && c.ui.basePath !== '/') ? c.ui.basePath : '/';
+    const answer = String((await ctx.io.question('新访问路径（如 /uui/；回车取消；r = 随机） [' + current + ']: ')) || '').trim();
+    if (!answer) return ctx.io.print('已取消');
+    let next;
+    if (answer.toLowerCase() === 'r') {
+      next = normalizeBasePath('/uui-' + crypto.randomBytes(2).toString('hex') + '/');
+    } else {
+      next = normalizeBasePath(answer);
+      if (next === '/' && answer !== '/') return ctx.io.print('路径不合法（需 / 开头和结尾，且不能是 /api/、/login/、/logout/）');
+    }
+    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    raw.ui = raw.ui || {};
+    raw.ui.basePath = next;
+    fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n');
+    ctx.io.print('已保存访问路径 ' + next + '，重启面板后生效（菜单 12）');
+  };
+}
+
 function changePort(ctx) {
   return async function (c, cfgPath) {
     const answer = (await ctx.io.question('新面板端口 [1-65535]: ')).trim();
@@ -671,7 +693,7 @@ export async function runMenu(options = {}) {
   const items = buildMenu(ctx).reduce(function (acc, s) { return acc.concat(s.items); }, []);
   for (;;) {
     ctx.io.print(renderMenu(ctx));
-    const answer = String((await ctx.io.question('\n' + GREEN + '请选择 [0-34/U]: ' + RESET)) || '').trim();
+    const answer = String((await ctx.io.question('\n' + GREEN + '请选择 [0-34/B/U]: ' + RESET)) || '').trim();
     if (answer === '0' || answer.toLowerCase() === 'q') { ctx.io.print('已退出'); break; }
     const item = items.find(function (i) { return i.key === answer; });
     if (!item) { ctx.io.print('无效选项: ' + answer); continue; }

@@ -609,6 +609,8 @@ test('menu: settings flags a placeholder public IP', async function () {
   };
   await runMenu({ configPath: ctx.cfgPath, io: io });
   assert.ok(printed.join('\n').includes('占位符'));
+  assert.ok(printed.join('\n').includes('数据存储'));
+  assert.ok(printed.join('\n').includes('面板地址'));
   fs.rmSync(ctx.dir, { recursive: true, force: true });
 });
 

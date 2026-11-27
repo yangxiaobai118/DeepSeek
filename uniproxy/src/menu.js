@@ -426,14 +426,41 @@ function showSettings(ctx) {
     const ports = analyzePorts(c);
     const users = resolveUsers(c);
     const cert = certStatus(c);
+    const ui = c.ui || {};
+    const sub = c.subscription || {};
+    const accounts = ui.users || [];
+    const admins = accounts.filter(function (u) { return u.role !== 'viewer'; });
+    const viewers = accounts.length - admins.length;
+    const adminName = admins.length ? admins[0].username : '';
+    const uiPort = ui.port || 8788;
+    const subPort = sub.port || 8787;
+    const subBase = sub.publicBase ? String(sub.publicBase).replace(/\/+$/, '') : ('http://' + (c.server.publicIp || '<server-ip>') + ':' + subPort);
+    const siteNames = (c.nginx.sites || []).map(function (s) { return s.serverName; }).filter(Boolean).join(', ') || '(未设置)';
+    const panelNames = [c.panels.xui && c.panels.xui.domain, c.panels.sui && c.panels.sui.domain, c.panels.sui && c.panels.sui.sub && c.panels.sui.sub.domain].filter(Boolean).join(', ') || '(未设置)';
+    const apply = c.apply || {};
+    const certLine = cert.ok
+      ? (cert.file + '（剩余 ' + cert.daysLeft + ' 天；SAN: ' + (cert.sans || '-') + '）')
+      : ('不可读 (' + (cert.error || '') + ')');
+    const ipLine = isPlaceholderAddress(c.server.publicIp)
+      ? (YELLOW + (c.server.publicIp || '(未设置)') + '（占位符，请先运行 3. 初始化向导）' + RESET)
+      : c.server.publicIp;
     ctx.io.print([
       '配置: ' + ctx.configPath,
-      'nginx 模式: ' + c.nginx.mode,
-      '公网 IP: ' + (isPlaceholderAddress(c.server.publicIp) ? (YELLOW + (c.server.publicIp || '(未设置)') + '（占位符，请先运行 3. 初始化向导）' + RESET) : c.server.publicIp),
-      '面板端口: ' + ((c.ui && c.ui.port) || 8788),
+      '数据存储: JSON 配置文件（u-ui 无数据库）',
+      '面板地址: http://127.0.0.1:' + uiPort + '（仅本机；建议 SSH 隧道）',
+      '面板监听: 127.0.0.1:' + uiPort + '  HTTPS: 否（对外由 nginx 终止）',
+      '访问路径: /',
+      '管理员: ' + (adminName ? (adminName + '（' + admins.length + ' 个管理员）') : '未初始化（运行 3 初始化向导）'),
+      '只读账号: ' + viewers + ' 个',
+      '管理员密码: ' + (admins.some(function (u) { return u.hash; }) ? '已设置（scrypt 哈希）' : ((ui.password || ui.viewerPassword) ? '使用旧版明文密码，建议重置' : '未设置')),
+      '公网 IP: ' + ipLine,
+      '域名: ' + ((c.server.domains && c.server.domains.web) || '(未设置)'),
+      '证书: ' + certLine,
+      '订阅服务: ' + (sub.enabled ? (subBase + (sub.basePath || '/sub/') + '（' + users.length + ' 个用户）') : '未启用'),
+      'nginx: ' + c.nginx.mode + '，站点: ' + siteNames + '；面板: ' + panelNames,
+      '内核: xray ' + (c.xray.enabled ? '启用' : '关闭') + '（' + ((c.xray.inbounds || []).length) + ' 入站）；sing-box ' + (c.singbox.enabled ? '启用' : '关闭') + '（' + ((c.singbox.inbounds || []).length) + ' 入站）',
       '监听端口: ' + ports.entries.length + ' 个',
-      '用户: ' + users.length + ' 个',
-      '证书: ' + (cert.ok ? (cert.daysLeft + ' 天后到期') : ('不可读 (' + (cert.error || '') + ')')),
+      'apply: xray=' + (apply.xrayConfig || '-') + '；sing-box=' + (apply.singboxConfig || '-') + '；nginx=' + (apply.nginxConfig || '-'),
     ].join('\n'));
   };
 }

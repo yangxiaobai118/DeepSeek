@@ -166,6 +166,7 @@ out/
 | `doctor` | pre-flight diagnostics (`--json`, `--no-probe`) |
 | `apply` | dry-run by default; `--yes` installs and reloads |
 | `serve` | start the dashboard and subscription endpoints |
+| `ui` | start the u-ui management panel (login, users, config, actions) |
 
 ### Subscriptions
 
@@ -391,7 +392,8 @@ uniproxy stays dependency-free and file-based: no database, no embedded core.
 - [x] Xray fallbacks (several services on one inbound port).
 - [ ] ACME certificate issuance and renewal.
 - [ ] x-ui / s-ui API drivers for true one-console control.
-- [ ] Editable dashboard.
+- [x] u-ui management panel (login, user CRUD, config editing, actions).
+- [ ] Form-based inbound editing.
 - [ ] Subscription traffic statistics (needs core stats plumbing).
 
 ### License
@@ -436,7 +438,8 @@ MIT. See [LICENSE](LICENSE).
 - **flow 合法性**：`xtls-rprx-vision` 只在 VLESS + TCP + TLS/Reality 下输出，其它组合自动丢弃，避免生成被内核整体拒绝的配置；
 - **`doctor`**：预检占位符、证书、Reality 密钥、重复 SNI、端口和内核二进制；
 - **`apply`**：先校验（`xray run -test`、`sing-box check`、`nginx -t`），再备份、下发、reload；reload 失败自动回滚；
-- 只读 Web 仪表盘：端口地图、体检、链接、订阅地址与配置预览；
+- 只读 Web 仪表盘（`serve`）：端口地图、体检、链接、订阅地址与配置预览；
+- **u-ui 管理面板**（`ui`）：密码登录、用户增删改、配置编辑、validate / doctor / plan / apply；
 - 订阅接口带 `no-store`、profile 头与按客户端的 token；
 - 零运行时依赖（Node.js >= 18）。
 
@@ -583,7 +586,8 @@ uniproxy 依然保持零依赖、纯文件配置，不引入数据库或内嵌�
 - [x] Xray fallbacks（单入站端口承载多服务）；
 - [ ] ACME 证书自动签发与续期；
 - [ ] 接 x-ui / s-ui API，实现单控制台；
-- [ ] 仪表盘可编辑；
+- [x] u-ui 管理面板（登录、用户增删改、配置编辑、操作按钮）；
+- [ ] 入站表单化编辑；
 - [ ] 订阅流量统计（需要内核统计链路）。
 
 ### 许可证

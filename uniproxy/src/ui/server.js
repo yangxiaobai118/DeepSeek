@@ -1,0 +1,346 @@
+import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { applyDefaults, validateConfig } from '../config.js';
+import { analyzePorts } from '../ports.js';
+import { resolveUsers } from '../users.js';
+import { buildSubscriptions } from '../subscribe.js';
+import { runDoctor, formatDoctor } from '../doctor.js';
+import { buildPlan, formatPlan, applyPlan } from '../apply.js';
+
+const PAGE = new URL('./page.html', import.meta.url);
+const SESSION_COOKIE = 'uui_session';
+const CSRF_COOKIE = 'uui_csrf';
+const SESSION_TTL = 8 * 3600 * 1000;
+
+export function startUi(cfgPath, port = 8788, options = {}) {
+  const abs = path.resolve(cfgPath);
+  const password = options.password || process.env.UNIPROXY_UI_PASSWORD || readPassword(abs);
+  if (!password) {
+    throw new Error(
+      'u-ui needs a password: set UNIPROXY_UI_PASSWORD or add "ui": { "password": "..." } to the config'
+    );
+  }
+  const host = options.host || '127.0.0.1';
+  const attempts = new Map();
+
+  function secret() {
+    const raw = JSON.parse(fs.readFileSync(abs, 'utf8'));
+    return crypto.createHash('sha256').update(password + '|' + (raw.server && raw.server.secret ? raw.server.secret : '')).digest();
+  }
+
+  const server = http.createServer(function (req, res) {
+    try { handle(req, res); } catch (e) { send(res, 500, { 'content-type': 'text/plain' }, 'error: ' + e.message); }
+  });
+
+  function handle(req, res) {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const cookies = parseCookies(req.headers.cookie || '');
+
+    if (url.pathname === '/login') {
+      if (req.method === 'POST') return doLogin(req, res, cookies);
+      return send(res, 200, { 'content-type': 'text/html; charset=utf-8' }, loginPage(''));
+    }
+    if (url.pathname === '/logout') {
+      return send(res, 303, { location: '/login', 'set-cookie': clearCookies() }, '');
+    }
+
+    const authed = verifySession(cookies[SESSION_COOKIE], secret());
+    if (!authed && url.pathname !== '/login') {
+      if (url.pathname.startsWith('/api/')) return json(res, 401, { error: 'unauthorized' });
+      return send(res, 303, { location: '/login' }, '');
+    }
+
+    if (url.pathname === '/') {
+      return send(res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, fs.readFileSync(PAGE, 'utf8'));
+    }
+
+    const mutating = req.method !== 'GET' && req.method !== 'HEAD';
+    if (mutating && cookies[CSRF_COOKIE]) {
+      if (req.headers['x-uui-csrf'] !== cookies[CSRF_COOKIE]) return json(res, 403, { error: 'bad csrf token' });
+    }
+
+    if (url.pathname === '/api/state' && req.method === 'GET') return json(res, 200, state(abs, cookies[CSRF_COOKIE]));
+    if (url.pathname === '/api/config') {
+      if (req.method === 'GET') return json(res, 200, { json: fs.readFileSync(abs, 'utf8') });
+      if (req.method === 'PUT') return saveConfig(req, res, abs);
+    }
+    if (url.pathname === '/api/users' && req.method === 'POST') return createUser(req, res, abs);
+    const userMatch = url.pathname.match(/^\/api\/users\/(.+)$/);
+    if (userMatch && req.method === 'PUT') return updateUser(req, res, abs, decodeURIComponent(userMatch[1]));
+    if (userMatch && req.method === 'DELETE') return deleteUser(res, abs, decodeURIComponent(userMatch[1]));
+    const actionMatch = url.pathname.match(/^\/api\/actions\/([a-z]+)$/);
+    if (actionMatch && req.method === 'POST') return runAction(req, res, abs, actionMatch[1]);
+
+    return json(res, 404, { error: 'not found' });
+  }
+
+  function doLogin(req, res, cookies) {
+    readBody(req, function (err, body) {
+      if (err) return json(res, 400, { error: err.message });
+      const ip = req.socket.remoteAddress || 'unknown';
+      const gate = attempts.get(ip) || { count: 0, until: 0 };
+      if (gate.until > Date.now()) return send(res, 429, { 'content-type': 'text/plain' }, 'too many attempts, wait a minute');
+      const form = new URLSearchParams(body);
+      if (!safeEqual(form.get('password') || '', password)) {
+        gate.count += 1;
+        if (gate.count >= 5) { gate.count = 0; gate.until = Date.now() + 60000; }
+        attempts.set(ip, gate);
+        return send(res, 401, { 'content-type': 'text/html; charset=utf-8' }, loginPage('wrong password'));
+      }
+      attempts.delete(ip);
+      const exp = Date.now() + SESSION_TTL;
+      const csrf = crypto.randomBytes(16).toString('hex');
+      const cookie = [
+        SESSION_COOKIE + '=' + encodeURIComponent(sign(exp, secret())) + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=' + Math.floor(SESSION_TTL / 1000),
+        CSRF_COOKIE + '=' + csrf + '; SameSite=Strict; Path=/; Max-Age=' + Math.floor(SESSION_TTL / 1000),
+      ];
+      return send(res, 303, { location: '/', 'set-cookie': cookie }, '');
+    });
+  }
+
+  return new Promise(function (resolve) {
+    server.listen(port, host, function () {
+      resolve({
+        server,
+        url: 'http://' + host + ':' + server.address().port,
+        close: function () { return new Promise(function (done) { server.close(done); }); },
+      });
+    });
+  });
+}
+
+function readPassword(cfgPath) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    return raw.ui && raw.ui.password ? String(raw.ui.password) : '';
+  } catch (e) { return ''; }
+}
+
+function state(cfgPath, csrf) {
+  const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  const c = derive(raw);
+  const report = analyzePorts(c);
+  const users = resolveUsers(c);
+  const subs = c.subscription.enabled ? buildSubscriptions(c) : [];
+  return {
+    configPath: cfgPath,
+    nginxMode: c.nginx.mode,
+    publicIp: c.server.publicIp || '',
+    domains: c.server.domains || {},
+    ports: report.entries,
+    errors: report.errors,
+    warnings: report.warnings,
+    users: users.map(function (u) {
+      return { name: u.name, status: u.status, enabled: u.enabled, note: u.note, token: u.token,
+        expireAt: u.expireAt ? u.expireAt.toISOString().slice(0, 10) : '',
+        dataLimitBytes: u.dataLimitBytes, usedBytes: u.usedBytes,
+        inbounds: u.inbounds.map(function (i) { return i.tag; }) };
+    }),
+    inbounds: allInbounds(c),
+    subscriptions: subs.map(function (s) { return { name: s.name, token: s.token }; }),
+    csrf: csrf || '',
+  };
+}
+
+function allInbounds(c) {
+  const out = [];
+  for (const kind of ['xray', 'singbox']) {
+    for (const ib of c[kind].inbounds || []) {
+      out.push({ kind: kind, tag: ib.tag, protocol: ib.protocol, listen: ib.listen, port: ib.port, security: ib.security || 'none' });
+    }
+  }
+  return out;
+}
+
+function derive(raw) {
+  return applyDefaults(JSON.parse(JSON.stringify(raw)));
+}
+
+function saveRaw(cfgPath, raw) {
+  const text = JSON.stringify(raw, null, 2) + '\n';
+  if (fs.existsSync(cfgPath)) fs.copyFileSync(cfgPath, cfgPath + '.bak-' + stamp());
+  const tmp = cfgPath + '.tmp-' + process.pid;
+  fs.writeFileSync(tmp, text);
+  fs.renameSync(tmp, cfgPath);
+}
+
+function saveConfig(req, res, cfgPath) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    let raw;
+    try { raw = JSON.parse(body.json); } catch (e) { return json(res, 400, { error: 'invalid JSON: ' + e.message }); }
+    const check = validateConfig(derive(raw));
+    if (check.errors.length) return json(res, 400, { error: 'validation failed', errors: check.errors });
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, warnings: check.warnings });
+  });
+}
+
+function createUser(req, res, cfgPath) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    const users = Array.isArray(raw.users) ? raw.users : (raw.users = []);
+    const user = normalizeUser(body);
+    if (!user.name) return json(res, 400, { error: 'name is required' });
+    if (users.some(function (u) { return u.name === user.name; })) return json(res, 409, { error: 'user already exists' });
+    users.push(user);
+    const check = validateConfig(derive(raw));
+    if (check.errors.length) return json(res, 400, { error: 'validation failed', errors: check.errors });
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, user: user, warnings: check.warnings });
+  });
+}
+
+function updateUser(req, res, cfgPath, name) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    const users = Array.isArray(raw.users) ? raw.users : [];
+    const idx = users.findIndex(function (u) { return u.name === name; });
+    if (idx < 0) return json(res, 404, { error: 'user not found' });
+    const merged = normalizeUser(Object.assign({}, users[idx], body));
+    if (merged.name !== name && users.some(function (u) { return u.name === merged.name; })) {
+      return json(res, 409, { error: 'target name already exists' });
+    }
+    users[idx] = merged;
+    const check = validateConfig(derive(raw));
+    if (check.errors.length) return json(res, 400, { error: 'validation failed', errors: check.errors });
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, user: merged, warnings: check.warnings });
+  });
+}
+
+function deleteUser(res, cfgPath, name) {
+  const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  const users = Array.isArray(raw.users) ? raw.users : [];
+  const next = users.filter(function (u) { return u.name !== name; });
+  if (next.length === users.length) return json(res, 404, { error: 'user not found' });
+  raw.users = next;
+  saveRaw(cfgPath, raw);
+  return json(res, 200, { ok: true });
+}
+
+function runAction(req, res, cfgPath, action) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    const c = derive(raw);
+    if (action === 'validate') {
+      const check = validateConfig(c);
+      const ports = analyzePorts(c);
+      return json(res, 200, { ok: check.errors.length === 0 && ports.errors.length === 0, errors: check.errors.concat(ports.errors), warnings: check.warnings.concat(ports.warnings) });
+    }
+    if (action === 'doctor') {
+      const report = runDoctor(c, cfgPath);
+      return json(res, 200, { ok: report.failed === 0, failed: report.failed, warned: report.warned, output: formatDoctor(report) });
+    }
+    if (action === 'plan') {
+      if (!c.apply) return json(res, 400, { error: 'no apply block in config' });
+      const targets = buildPlan(c);
+      return json(res, 200, { ok: true, output: formatPlan(targets), targets: targets.map(function (t) { return { kind: t.kind, file: t.file, changed: t.changed }; }) });
+    }
+    if (action === 'apply') {
+      if (!body || body.confirm !== 'APPLY') return json(res, 400, { error: 'send {"confirm":"APPLY"} to apply' });
+      if (!c.apply) return json(res, 400, { error: 'no apply block in config' });
+      const targets = buildPlan(c);
+      const result = applyPlan(c, targets, {});
+      return json(res, 200, { ok: !result.failed, output: result.actions.map(function (a) { return a.level.toUpperCase() + '  ' + a.text; }).join('\n') });
+    }
+    return json(res, 404, { error: 'unknown action' });
+  });
+}
+
+function normalizeUser(input) {
+  const out = { name: String(input.name || '').trim() };
+  if (Array.isArray(input.inbounds)) out.inbounds = input.inbounds.map(String);
+  if (input.expireAt) out.expireAt = String(input.expireAt);
+  const limit = Number(input.dataLimitBytes || 0);
+  if (limit > 0) out.dataLimitBytes = limit; else delete out.dataLimitBytes;
+  out.enabled = input.enabled !== false;
+  if (input.note) out.note = String(input.note);
+  return out;
+}
+
+function readBody(req, cb) {
+  const chunks = [];
+  let size = 0;
+  req.on('data', function (chunk) {
+    size += chunk.length;
+    if (size > 1024 * 1024) { cb(new Error('body too large')); req.destroy(); return; }
+    chunks.push(chunk);
+  });
+  req.on('end', function () { cb(null, Buffer.concat(chunks).toString('utf8')); });
+  req.on('error', cb);
+}
+
+function readJson(req, cb) {
+  readBody(req, function (err, text) {
+    if (err) return cb(err);
+    if (!text) return cb(null, {});
+    try { cb(null, JSON.parse(text)); } catch (e) { cb(new Error('invalid JSON body')); }
+  });
+}
+
+function send(res, status, headers, body) {
+  res.writeHead(status, headers);
+  res.end(res.req && res.req.method === 'HEAD' ? undefined : body);
+}
+
+function json(res, status, obj) {
+  send(res, status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }, JSON.stringify(obj, null, 2));
+}
+
+function parseCookies(header) {
+  const out = {};
+  header.split(';').forEach(function (part) {
+    const i = part.indexOf('=');
+    if (i < 0) return;
+    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  });
+  return out;
+}
+
+function sign(exp, key) {
+  const mac = crypto.createHmac('sha256', key).update(String(exp)).digest('base64url');
+  return exp + '.' + mac;
+}
+
+function verifySession(value, key) {
+  if (!value) return false;
+  const dot = value.lastIndexOf('.');
+  if (dot < 0) return false;
+  const exp = Number(value.slice(0, dot));
+  if (!Number.isFinite(exp) || exp < Date.now()) return false;
+  return safeEqual(value, sign(exp, key));
+}
+
+function safeEqual(a, b) {
+  const x = crypto.createHash('sha256').update(String(a)).digest();
+  const y = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(x, y);
+}
+
+function clearCookies() {
+  return [SESSION_COOKIE + '=; Max-Age=0; Path=/', CSRF_COOKIE + '=; Max-Age=0; Path=/'];
+}
+
+function stamp() {
+  const d = new Date();
+  const p = function (n) { return String(n).padStart(2, '0'); };
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+
+function loginPage(message) {
+  return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>u-ui login</title>' +
+    '<style>body{font-family:system-ui,Segoe UI,sans-serif;background:#0f1115;color:#e6e6e6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}' +
+    'form{background:#171a21;border:1px solid #2a2f3a;border-radius:10px;padding:28px;width:300px}' +
+    'h1{font-size:16px;margin:0 0 16px}input{width:100%;padding:10px;margin:0 0 12px;border-radius:6px;border:1px solid #2a2f3a;background:#0b0d12;color:#e6e6e6;box-sizing:border-box}' +
+    'button{width:100%;padding:10px;border:0;border-radius:6px;background:#3b6cf6;color:#fff;font-size:14px;cursor:pointer}.err{color:#ff6b6b;font-size:12px;margin:0 0 12px}</style></head><body>' +
+    '<form method="post" action="/login"><h1>u-ui</h1>' +
+    (message ? '<p class="err">' + message + '</p>' : '') +
+    '<input type="password" name="password" placeholder="panel password" autofocus>' +
+    '<button type="submit">Sign in</button></form></body></html>';
+}

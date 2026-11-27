@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><title>u-ui</title>
+<style>
+body{font-family:system-ui,Segoe UI,sans-serif;margin:0;background:#0f1115;color:#e6e6e6}
+header{display:flex;align-items:center;gap:16px;padding:14px 22px;background:#171a21;border-bottom:1px solid #2a2f3a}
+header h1{margin:0;font-size:16px}
+nav{display:flex;gap:8px;flex:1}
+nav button{background:#0b0d12;border:1px solid #2a2f3a;color:#c9d1d9;padding:6px 12px;border-radius:6px;cursor:pointer}
+nav button.on{background:#3b6cf6;border-color:#3b6cf6;color:#fff}
+header a{color:#8b93a3;text-decoration:none;font-size:13px}
+main{padding:22px;display:grid;gap:16px}
+section{display:none}section.on{display:grid;gap:16px}
+.card{background:#171a21;border:1px solid #2a2f3a;border-radius:8px;padding:16px}
+.card h2{margin:0 0 12px;font-size:13px;color:#9fb3ff}
+table{border-collapse:collapse;width:100%;font-size:13px}
+td,th{padding:6px 8px;border-bottom:1px solid #2a2f3a;text-align:left}
+th{color:#8b93a3;font-weight:500}
+code,pre{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+pre{background:#0b0d12;padding:12px;border-radius:6px;overflow:auto;max-height:340px;white-space:pre-wrap}
+input,textarea,select{background:#0b0d12;border:1px solid #2a2f3a;color:#e6e6e6;border-radius:6px;padding:8px;font-size:13px;box-sizing:border-box}
+textarea{width:100%;min-height:320px;font-family:ui-monospace,Consolas,monospace}
+button.act{background:#3b6cf6;border:0;color:#fff;padding:8px 14px;border-radius:6px;cursor:pointer;font-size:13px}
+button.ghost{background:#0b0d12;border:1px solid #2a2f3a;color:#c9d1d9;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px}
+button.danger{border-color:#7f1d1d;color:#ff6b6b}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+.row label{display:grid;gap:4px;font-size:12px;color:#8b93a3}
+.err{color:#ff6b6b}.warn{color:#ffd166}.ok{color:#3ddc84}
+.muted{color:#8b93a3;font-size:12px}
+</style></head><body>
+<header><h1>u-ui</h1>
+<nav>
+<button data-tab="overview" class="on">概览</button>
+<button data-tab="users">用户</button>
+<button data-tab="config">配置</button>
+<button data-tab="actions">操作</button>
+</nav><a href="/logout">退出</a></header>
+<main>
+<section id="tab-overview" class="on">
+  <div class="card"><h2>状态</h2><div id="overview"></div></div>
+  <div class="card"><h2>端口</h2><div id="ports"></div></div>
+  <div class="card"><h2>用户</h2><div id="usersPreview"></div></div>
+</section>
+<section id="tab-users">
+  <div class="card"><h2>用户注册表</h2><div id="userTable"></div></div>
+  <div class="card"><h2 id="userFormTitle">新增用户</h2><div id="userForm"></div></div>
+</section>
+<section id="tab-config">
+  <div class="card"><h2>config.json（保存前会跑 validate，并自动备份）</h2>
+  <textarea id="configText"></textarea>
+  <div class="row" style="margin-top:10px"><button class="act" id="saveConfig">保存配置</button>
+  <button class="ghost" id="reloadConfig">重新载入</button><span id="configMsg" class="muted"></span></div></div>
+</section>
+<section id="tab-actions">
+  <div class="card"><h2>操作</h2>
+  <div class="row">
+  <button class="ghost" data-action="validate">validate</button>
+  <button class="ghost" data-action="doctor">doctor</button>
+  <button class="ghost" data-action="plan">plan（只预览）</button>
+  <label>输入 APPLY 确认 <input id="applyConfirm" size="10" placeholder="APPLY"></label>
+  <button class="act" data-action="apply">apply</button>
+  </div><pre id="actionOut" style="margin-top:12px">(idle)</pre></div>
+</section>
+</main>
+<script>
+const csrf = () => { const m = document.cookie.match(/(?:^|; )uui_csrf=([^;]+)/); return m ? m[1] : ''; };
+let state = null; let editing = null;
+async function api(method, path, body) {
+  const opts = { method, headers: { 'x-uui-csrf': csrf() } };
+  if (body !== undefined) { opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
+  const res = await fetch(path, opts);
+  const text = await res.text();
+  let data; try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text }; }
+  return { status: res.status, data };
+}
+async function refresh() {
+  const r = await api('GET', '/api/state');
+  if (r.status === 401) { location.href = '/login'; return; }
+  state = r.data; renderOverview(); renderUsers(); renderPorts();
+}
+function h(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function gb(n) { return n ? (n / 1073741824).toFixed(1) + ' GB' : '-'; }
+function renderOverview() {
+  document.getElementById('overview').innerHTML =
+    '<div class="muted">配置：' + h(state.configPath) + '　模式：' + h(state.nginxMode) + '　公网 IP：' + h(state.publicIp || '未设置') + '</div>' +
+    '<div style="margin-top:8px">用户 ' + state.users.length + ' 个，订阅 ' + state.subscriptions.length + ' 个</div>' +
+    (state.errors.length ? '<div class="err">' + state.errors.map(e => '- ' + h(e)).join('<br>') + '</div>' : '<div class="ok">校验通过</div>') +
+    (state.warnings.length ? '<div class="warn">' + state.warnings.map(e => '- ' + h(e)).join('<br>') + '</div>' : '');
+  document.getElementById('usersPreview').innerHTML = state.users.length
+    ? '<table><thead><tr><th>用户</th><th>状态</th><th>到期</th><th>配额</th><th>订阅 token</th></tr></thead><tbody>' +
+      state.users.map(u => '<tr><td>' + h(u.name) + '</td><td>' + h(u.status) + '</td><td>' + h(u.expireAt || '-') + '</td><td>' + gb(u.dataLimitBytes) + '</td><td><code>' + h(u.token || '-') + '</code></td></tr>').join('') + '</tbody></table>'
+    : '<div class="muted">还没有用户</div>';
+}
+function renderPorts() {
+  document.getElementById('ports').innerHTML = '<table><thead><tr><th>端口</th><th>组件</th><th>监听</th></tr></thead><tbody>' +
+    state.ports.map(p => '<tr><td>' + h(p.port) + '</td><td>' + h(p.label) + '</td><td>' + h(p.listen || '0.0.0.0') + '</td></tr>').join('') + '</tbody></table>';
+}
+function renderUsers() {
+  const t = document.getElementById('userTable');
+  t.innerHTML = state.users.length
+    ? '<table><thead><tr><th>用户</th><th>状态</th><th>到期</th><th>用量/配额</th><th>入站</th><th>操作</th></tr></thead><tbody>' +
+      state.users.map(u => '<tr><td>' + h(u.name) + '</td><td>' + h(u.status) + '</td><td>' + h(u.expireAt || '-') + '</td><td>' + gb(u.usedBytes) + ' / ' + gb(u.dataLimitBytes) + '</td><td>' + h(u.inbounds.join(', ') || '-') + '</td>' +
+      '<td><button class="ghost" onclick="editUser(\'' + h(u.name) + '\')">编辑</button> <button class="ghost danger" onclick="delUser(\'' + h(u.name) + '\')">删除</button></td></tr>').join('') + '</tbody></table>'
+    : '<div class="muted">还没有用户，用下面的表单新增</div>';
+  renderUserForm(editing);
+}
+function renderUserForm(user) {
+  const u = user || { name: '', inbounds: [], expireAt: '', dataLimitBytes: 0, enabled: true, note: '' };
+  document.getElementById('userFormTitle').textContent = user ? ('编辑用户：' + user.name) : '新增用户';
+  document.getElementById('userForm').innerHTML =
+    '<div class="row">' +
+    '<label>用户名<input id="f_name" value="' + h(u.name) + '"></label>' +
+    '<label>到期日期<input id="f_expire" type="date" value="' + h(u.expireAt) + '"></label>' +
+    '<label>流量配额 (GB)<input id="f_quota" type="number" min="0" step="1" value="' + (u.dataLimitBytes ? (u.dataLimitBytes / 1073741824).toFixed(0) : 0) + '"></label>' +
+    '<label>备注<input id="f_note" value="' + h(u.note || '') + '"></label>' +
+    '<label><span>启用</span><input id="f_enabled" type="checkbox" ' + (u.enabled !== false ? 'checked' : '') + '></label>' +
+    '</div>' +
+    '<div class="muted" style="margin:10px 0 6px">入站</div><div id="f_inbounds" class="row">' +
+    state.inbounds.map(ib => '<label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" value="' + h(ib.tag) + '" ' + (u.inbounds.includes(ib.tag) ? 'checked' : '') + '>' + h(ib.tag) + ' <span class="muted">(' + h(ib.kind) + ':' + h(ib.protocol) + ')</span></label>').join('') +
+    '</div>' +
+    '<div class="row" style="margin-top:12px"><button class="act" id="saveUser">' + (user ? '保存修改' : '创建用户') + '</button>' +
+    (user ? '<button class="ghost" onclick="cancelEdit()">取消</button>' : '') + '<span id="userMsg" class="muted"></span></div>';
+  document.getElementById('saveUser').onclick = saveUser;
+}
+function collect() {
+  const tags = Array.from(document.querySelectorAll('#f_inbounds input:checked')).map(i => i.value);
+  const gbValue = Number(document.getElementById('f_quota').value || 0);
+  return {
+    name: document.getElementById('f_name').value.trim(),
+    inbounds: tags,
+    expireAt: document.getElementById('f_expire').value ? document.getElementById('f_expire').value + 'T00:00:00Z' : '',
+    dataLimitBytes: gbValue > 0 ? Math.round(gbValue * 1073741824) : 0,
+    enabled: document.getElementById('f_enabled').checked,
+    note: document.getElementById('f_note').value.trim(),
+  };
+}
+async function saveUser() {
+  const body = collect();
+  const msg = document.getElementById('userMsg');
+  if (!body.name) { msg.textContent = '用户名必填'; msg.className = 'err'; return; }
+  const r = editing ? await api('PUT', '/api/users/' + encodeURIComponent(editing.name), body) : await api('POST', '/api/users', body);
+  if (r.status === 200) { editing = null; msg.textContent = '已保存'; await refresh(); }
+  else { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'err'; }
+}
+function editUser(name) { editing = state.users.find(u => u.name === name); renderUsers(); }
+function cancelEdit() { editing = null; renderUsers(); }
+async function delUser(name) {
+  if (!confirm('删除用户 ' + name + ' ?')) return;
+  const r = await api('DELETE', '/api/users/' + encodeURIComponent(name));
+  if (r.status === 200) { editing = null; await refresh(); } else alert(r.data.error || '删除失败');
+}
+async function loadConfig() {
+  const r = await api('GET', '/api/config');
+  document.getElementById('configText').value = r.data.json || '';
+}
+document.getElementById('saveConfig').onclick = async () => {
+  const msg = document.getElementById('configMsg');
+  const r = await api('PUT', '/api/config', { json: document.getElementById('configText').value });
+  if (r.status === 200) { msg.textContent = '已保存，备份在 config.json.bak-*'; msg.className = 'ok'; await refresh(); }
+  else { msg.textContent = (r.data.error || '保存失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'err'; }
+};
+document.getElementById('reloadConfig').onclick = () => loadConfig();
+document.querySelectorAll('[data-action]').forEach(btn => {
+  btn.onclick = async () => {
+    const action = btn.dataset.action;
+    const body = action === 'apply' ? { confirm: document.getElementById('applyConfirm').value } : {};
+    const out = document.getElementById('actionOut');
+    out.textContent = 'running ' + action + ' ...';
+    const r = await api('POST', '/api/actions/' + action, body);
+    out.textContent = (r.status === 200 ? (r.data.output || JSON.stringify(r.data, null, 2)) : ('error: ' + (r.data.error || r.status)));
+    await refresh();
+  };
+});
+document.querySelectorAll('nav button').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('nav button').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    document.querySelectorAll('main section').forEach(s => s.classList.remove('on'));
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('on');
+    if (btn.dataset.tab === 'config') loadConfig();
+  };
+});
+refresh();
+</script></body></html>

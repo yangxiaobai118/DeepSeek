@@ -31,6 +31,7 @@ function usage() {
     '  uniproxy doctor    -c <config.json>            pre-flight diagnostics',
     '  uniproxy apply     -c <config.json> [--yes]    validate, install and reload services',
     '  uniproxy serve     -c <config.json> [-p 8787]  start the dashboard + subscription server',
+    '  uniproxy ui        -c <config.json> [-p 8788]  start the u-ui management panel',
     '',
     'Options:',
     '  -c, --config <file>   path to the unified config (default: config.json)',
@@ -404,6 +405,13 @@ async function cmdServe(args) {
   mod.startDashboard(loaded.config, loaded.path, args.port || 8787);
 }
 
+async function cmdUi(args) {
+  const mod = await import('./ui/server.js');
+  const inst = await mod.startUi(args.config || 'config.json', args.port || 8788);
+  console.log('u-ui -> ' + inst.url);
+  console.log('password: UNIPROXY_UI_PASSWORD env var, or "ui": { "password": "..." } in the config');
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
@@ -422,6 +430,7 @@ async function main() {
     else if (cmd === 'doctor') cmdDoctor(args);
     else if (cmd === 'apply') cmdApply(args);
     else if (cmd === 'serve') await cmdServe(args);
+    else if (cmd === 'ui') await cmdUi(args);
     else {
       console.error('unknown command: ' + cmd);
       console.log(usage());

@@ -25,6 +25,7 @@
     "generate": "node src/index.js generate -c config.json -o out",
     "links": "node src/index.js links -c config.json",
     "serve": "node src/index.js serve -c config.json",
+    "ui": "node src/index.js ui -c config.json",
     "test": "node --test test/",
     "subscribe": "node src/index.js subscribe -c config.json",
     "doctor": "node src/index.js doctor -c config.json",

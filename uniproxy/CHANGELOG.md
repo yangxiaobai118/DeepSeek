@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- `u-ui`: `uniproxy ui` starts a management panel on top of the read-only
+  dashboard - password login with signed session cookies and CSRF double
+  submit, user registry CRUD, raw config editing with validation and backup,
+  and validate / doctor / plan / apply actions. Design notes in `docs/U-UI.md`.
+
 ### Fixed
 
 - Installation steps are now one command per line, so pasting a whole block

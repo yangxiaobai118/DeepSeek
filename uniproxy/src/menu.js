@@ -136,7 +136,7 @@ function readCfg(cfgPath) {
 export function renderMenu(ctx) {
   const sections = buildMenu(ctx);
   const parts = [];
-  parts.push(box('u-ui · uniproxy', ['0. 退出菜单']));
+  parts.push(box('u-ui · uniproxy', ['0. 退出菜单 (Exit)']));
   for (const section of sections) {
     parts.push(box(section.title, section.items.map(function (i) { return i.key + '. ' + i.label; })));
   }
@@ -161,59 +161,59 @@ export function buildMenu(ctx) {
   };
 
   const install = [
-    { key: '1', label: '安装到系统路径', run: function () { return installSystem(ctx); } },
-    { key: '2', label: '卸载系统安装', run: function () { return uninstallSystem(ctx); } },
-    { key: '3', label: '初始化向导', run: function () { return runSetupItem(ctx); } },
+    { key: '1', label: '安装到系统路径 (Install)', run: function () { return installSystem(ctx); } },
+    { key: '2', label: '卸载系统安装 (Uninstall)', run: function () { return uninstallSystem(ctx); } },
+    { key: '3', label: '初始化向导 (Setup)', run: function () { return runSetupItem(ctx); } },
     { key: 'U', label: '更新到最新版本 (Update)', run: function () { return updateSystem(ctx); } },
   ];
 
   const panel = [
-    { key: '4', label: '查看当前设置', run: function () { return withCfg(showSettings(ctx)); } },
-    { key: '5', label: '修改面板端口', run: function () { return withCfg(changePort(ctx)); } },
-    { key: '6', label: '重置账号密码', run: function () { return withCfg(resetPassword(ctx)); } },
-    { key: '7', label: '新增只读账号', run: function () { return withCfg(addViewer(ctx)); } },
+    { key: '4', label: '查看当前设置 (Settings)', run: function () { return withCfg(showSettings(ctx)); } },
+    { key: '5', label: '修改面板端口 (Panel Port)', run: function () { return withCfg(changePort(ctx)); } },
+    { key: '6', label: '重置账号密码 (Reset Password)', run: function () { return withCfg(resetPassword(ctx)); } },
+    { key: '7', label: '新增只读账号 (Add Viewer)', run: function () { return withCfg(addViewer(ctx)); } },
   ];
 
   const service = [
-    { key: '8', label: '安装服务单元', run: function () { return installService(ctx); } },
-    { key: '9', label: '卸载服务单元', run: function () { return uninstallService(ctx); } },
-    { key: '10', label: '启动面板', run: function () { return systemctl(ctx, 'start'); } },
-    { key: '11', label: '停止面板', run: function () { return systemctl(ctx, 'stop'); } },
-    { key: '12', label: '重启面板', run: function () { return systemctl(ctx, 'restart'); } },
-    { key: '13', label: '查看状态', run: function () { return showStatus(ctx); } },
-    { key: '14', label: '查看日志', run: function () { return showLogs(ctx); } },
-    { key: '15', label: '启用开机自启', run: function () { return systemctl(ctx, 'enable'); } },
-    { key: '16', label: '关闭开机自启', run: function () { return systemctl(ctx, 'disable'); } },
+    { key: '8', label: '安装服务单元 (Install Units)', run: function () { return installService(ctx); } },
+    { key: '9', label: '卸载服务单元 (Remove Units)', run: function () { return uninstallService(ctx); } },
+    { key: '10', label: '启动面板 (Start)', run: function () { return systemctl(ctx, 'start'); } },
+    { key: '11', label: '停止面板 (Stop)', run: function () { return systemctl(ctx, 'stop'); } },
+    { key: '12', label: '重启面板 (Restart)', run: function () { return systemctl(ctx, 'restart'); } },
+    { key: '13', label: '查看状态 (Status)', run: function () { return showStatus(ctx); } },
+    { key: '14', label: '查看日志 (Logs)', run: function () { return showLogs(ctx); } },
+    { key: '15', label: '启用开机自启 (Enable Autostart)', run: function () { return systemctl(ctx, 'enable'); } },
+    { key: '16', label: '关闭开机自启 (Disable Autostart)', run: function () { return systemctl(ctx, 'disable'); } },
   ];
 
   const config = [
-    { key: '17', label: '校验配置 validate', run: function () { return withCfg(runValidate(ctx)); } },
-    { key: '18', label: '预检 doctor', run: function () { return withCfg(runDoctorItem(ctx)); } },
-    { key: '19', label: '生成并下发 apply', run: function () { return withCfg(runApply(ctx)); } },
-    { key: '20', label: '立即备份配置', run: function () { return withCfg(doBackup(ctx)); } },
-    { key: '21', label: '恢复备份', run: function () { return withCfg(restorePicker(ctx)); } },
+    { key: '17', label: '校验配置 (Validate)', run: function () { return withCfg(runValidate(ctx)); } },
+    { key: '18', label: '预检 (Doctor)', run: function () { return withCfg(runDoctorItem(ctx)); } },
+    { key: '19', label: '生成并下发 (Apply)', run: function () { return withCfg(runApply(ctx)); } },
+    { key: '20', label: '立即备份配置 (Backup)', run: function () { return withCfg(doBackup(ctx)); } },
+    { key: '21', label: '恢复备份 (Restore)', run: function () { return withCfg(restorePicker(ctx)); } },
   ];
 
   const cores = [
-    { key: '22', label: '重启 xray', run: function () { return restartCore(ctx, 'xray'); } },
-    { key: '23', label: '重启 sing-box', run: function () { return restartCore(ctx, 'singbox'); } },
-    { key: '24', label: '重启 nginx', run: function () { return restartCore(ctx, 'nginx'); } },
+    { key: '22', label: '重启 xray (Restart Xray)', run: function () { return restartCore(ctx, 'xray'); } },
+    { key: '23', label: '重启 sing-box (Restart Sing-box)', run: function () { return restartCore(ctx, 'singbox'); } },
+    { key: '24', label: '重启 nginx (Restart Nginx)', run: function () { return restartCore(ctx, 'nginx'); } },
   ];
 
   const extra = [
-    { key: '25', label: '证书状态', run: function () { return withCfg(showCert(ctx)); } },
-    { key: '26', label: '申请 / 续期证书', run: function () { return withCfg(issueCert(ctx)); } },
-    { key: '27', label: '查看告警', run: function () { return withCfg(showAlerts(ctx)); } },
-    { key: '28', label: '节点列表', run: function () { return withCfg(showNodes(ctx)); } },
+    { key: '25', label: '证书状态 (Cert Status)', run: function () { return withCfg(showCert(ctx)); } },
+    { key: '26', label: '申请 / 续期证书 (Issue / Renew)', run: function () { return withCfg(issueCert(ctx)); } },
+    { key: '27', label: '查看告警 (Alerts)', run: function () { return withCfg(showAlerts(ctx)); } },
+    { key: '28', label: '节点列表 (Nodes)', run: function () { return withCfg(showNodes(ctx)); } },
   ];
 
   return [
-    { title: '安装', items: install },
-    { title: '面板', items: panel },
-    { title: '服务', items: service },
-    { title: '配置', items: config },
-    { title: '内核', items: cores },
-    { title: '其他', items: extra },
+    { title: '安装 (Install)', items: install },
+    { title: '面板 (Panel)', items: panel },
+    { title: '服务 (Service)', items: service },
+    { title: '配置 (Config)', items: config },
+    { title: '内核 (Cores)', items: cores },
+    { title: '其他 (Other)', items: extra },
   ];
 }
 

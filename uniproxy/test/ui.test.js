@@ -589,7 +589,7 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
   assert.ok(text.includes('u-ui · uniproxy'));
   assert.ok(text.includes('U. 更新到最新版本'));
   assert.ok(text.includes('0. 退出菜单'));
-  assert.ok(text.includes('17. 校验配置 validate'));
+  assert.ok(text.includes('17. 校验配置 (Validate)'));
   assert.ok(text.includes('26. 申请 / 续期证书'));
   assert.ok(text.includes('无效选项: 99'));
   assert.ok(text.includes('已退出'));

@@ -19,8 +19,8 @@ import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
 import { buildPlan, formatPlan, applyPlan } from '../apply.js';
 import { normalizeBasePath } from '../util.js';
+import { readTextAsset } from '../assets.js';
 
-const PAGE = new URL('./page.html', import.meta.url);
 const SESSION_COOKIE = 'uui_session';
 const CSRF_COOKIE = 'uui_csrf';
 const SESSION_TTL = 8 * 3600 * 1000;
@@ -42,7 +42,7 @@ export function startUi(cfgPath, port = 8788, options = {}) {
   const cookiePath = BASE ? BASE + '/' : '/';
 
   function pageHtml() {
-    const html = fs.readFileSync(PAGE, 'utf8');
+    const html = readTextAsset('page.html', 'ui/page.html');
     if (!BASE) return html;
     return html
       .replace(/(["'])\/api/g, '$1api')

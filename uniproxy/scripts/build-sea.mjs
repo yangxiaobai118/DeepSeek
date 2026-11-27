@@ -114,6 +114,7 @@ function bundle(buildDir) {
 
 function makeBlob(buildDir) {
   fs.copyFileSync(path.join(root, 'src', 'dashboard.html'), path.join(buildDir, 'dashboard.html'));
+  fs.copyFileSync(path.join(root, 'src', 'ui', 'page.html'), path.join(buildDir, 'page.html'));
   fs.writeFileSync(
     path.join(buildDir, 'sea-config.json'),
     JSON.stringify(
@@ -123,7 +124,7 @@ function makeBlob(buildDir) {
         disableExperimentalSEAWarning: true,
         useSnapshot: false,
         useCodeCache: false,
-        assets: { 'dashboard.html': 'dashboard.html' },
+        assets: { 'dashboard.html': 'dashboard.html', 'page.html': 'page.html' },
       },
       null,
       2,

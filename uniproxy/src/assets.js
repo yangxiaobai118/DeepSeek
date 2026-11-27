@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
  * node:sea; in a normal checkout it is read relative to this module. The
  * bundler rewrites the module to CommonJS, where __dirname is available.
  */
-export function readTextAsset(name) {
+export function readTextAsset(name, relativePath) {
   try {
     const sea = process.getBuiltinModule?.('node:sea');
     if (sea && sea.isSea()) return sea.getAsset(name, 'utf8');
@@ -17,5 +17,5 @@ export function readTextAsset(name) {
     // fall through to the filesystem
   }
   const dir = typeof __dirname === 'string' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
-  return fs.readFileSync(path.join(dir, name), 'utf8');
+  return fs.readFileSync(path.join(dir, relativePath || name), 'utf8');
 }

@@ -448,7 +448,7 @@ node src/index.js validate  -c config.json
 node src/index.js doctor    -c config.json
 node src/index.js generate  -c config.json -o out
 node src/index.js subscribe -c config.json
-node src/index.js users     -c config.json     # 用户、配额、到期
+node src/index.js users     -c config.json     # registry users, quotas, expiry
 node src/index.js serve     -c config.json -p 8787
 ```
 
@@ -474,7 +474,7 @@ node src/index.js serve     -c config.json -p 8787
     "expireAt": "2027-01-01T00:00:00Z",
     "dataLimitBytes": 107374182400,
     "usage": { "upload": 0, "download": 0 },
-    "subToken": "可选固定 token",
+    "subToken": "optional-pinned-token",
     "enabled": true,
     "note": "team A"
   }
@@ -504,8 +504,8 @@ sing-box 客户端配置生成对应的 `route.rules`（有屏蔽规则时追加
 ### 安全下发
 
 ```bash
-node src/index.js apply -c config.json          # 只看计划
-node src/index.js apply -c config.json --yes    # 校验 + 下发 + reload
+node src/index.js apply -c config.json          # show the plan
+node src/index.js apply -c config.json --yes    # validate, install, reload
 ```
 
 `apply` 先在临时目录生成配置并跑校验，再生成时间戳备份、写目标文件、执行 reload 命令；任一步失败会恢复旧配置。校验/重载命令可在 `apply.validate` / `apply.reload` 中覆盖。
@@ -516,20 +516,20 @@ Release 资产按**运行环境**命名，直接选和目标机器匹配的那�
 
 | 资产 | 环境 | 位数 | Node.js 构建 | 启动器 |
 |------|------|------|--------------|--------|
-| `uniproxy-<版本>-linux-x86_64.tar.gz` | Linux x86_64 | 64 位 | `linux-x64` | `./uniproxy` |
-| `uniproxy-<版本>-linux-i386.tar.gz` | Linux i386 | 32 位 | `linux-ia32`（发行版构建） | `./uniproxy` |
-| `uniproxy-<版本>-linux-arm64.tar.gz` | Linux arm64 | 64 位 | `linux-arm64` | `./uniproxy` |
-| `uniproxy-<版本>-linux-armv7l.tar.gz` | Linux armv7l | 32 位 | `linux-armv7l` | `./uniproxy` |
-| `uniproxy-<版本>-linux-armv6l.tar.gz` | Linux armv6l | 32 位 | `linux-armv6l`（非官方） | `./uniproxy` |
-| `uniproxy-<版本>-linux-s390x.tar.gz` | Linux s390x | 64 位 | `linux-s390x` | `./uniproxy` |
-| `uniproxy-<版本>-linux-ppc64le.tar.gz` | Linux ppc64le | 64 位 | `linux-ppc64le` | `./uniproxy` |
-| `uniproxy-<版本>-windows-x86_64.zip` | Windows x64 | 64 位 | `win-x64` | `uniproxy.cmd` |
-| `uniproxy-<版本>-windows-i386.zip` | Windows x86 | 32 位 | `win-x86` | `uniproxy.cmd` |
-| `uniproxy-<版本>-windows-arm64.zip` | Windows ARM64 | 64 位 | `win-arm64` | `uniproxy.cmd` |
-| `uniproxy-<版本>-macos-x86_64.tar.gz` | macOS Intel | 64 位 | `darwin-x64` | `./uniproxy` |
-| `uniproxy-<版本>-macos-arm64.tar.gz` | macOS Apple 芯片 | 64 位 | `darwin-arm64` | `./uniproxy` |
+| `uniproxy-<version>-linux-x86_64.tar.gz` | Linux x86_64 | 64 位 | `linux-x64` | `./uniproxy` |
+| `uniproxy-<version>-linux-i386.tar.gz` | Linux i386 | 32 位 | `linux-ia32`（发行版构建） | `./uniproxy` |
+| `uniproxy-<version>-linux-arm64.tar.gz` | Linux arm64 | 64 位 | `linux-arm64` | `./uniproxy` |
+| `uniproxy-<version>-linux-armv7l.tar.gz` | Linux armv7l | 32 位 | `linux-armv7l` | `./uniproxy` |
+| `uniproxy-<version>-linux-armv6l.tar.gz` | Linux armv6l | 32 位 | `linux-armv6l`（非官方） | `./uniproxy` |
+| `uniproxy-<version>-linux-s390x.tar.gz` | Linux s390x | 64 位 | `linux-s390x` | `./uniproxy` |
+| `uniproxy-<version>-linux-ppc64le.tar.gz` | Linux ppc64le | 64 位 | `linux-ppc64le` | `./uniproxy` |
+| `uniproxy-<version>-windows-x86_64.zip` | Windows x64 | 64 位 | `win-x64` | `uniproxy.cmd` |
+| `uniproxy-<version>-windows-i386.zip` | Windows x86 | 32 位 | `win-x86` | `uniproxy.cmd` |
+| `uniproxy-<version>-windows-arm64.zip` | Windows ARM64 | 64 位 | `win-arm64` | `uniproxy.cmd` |
+| `uniproxy-<version>-macos-x86_64.tar.gz` | macOS Intel | 64 位 | `darwin-x64` | `./uniproxy` |
+| `uniproxy-<version>-macos-arm64.tar.gz` | macOS Apple 芯片 | 64 位 | `darwin-arm64` | `./uniproxy` |
 
-`uniproxy-<版本>.tgz` 是与平台无关的 npm 包；`PLATFORMS.md`（Release 资产）重复这份矩阵，每个压缩包内还有 `ENVIRONMENT.txt` 写明目标环境、Node.js 构建和安装命令。
+`uniproxy-<version>.tgz` 是与平台无关的 npm 包；`PLATFORMS.md`（Release 资产）重复这份矩阵，每个压缩包内还有 `ENVIRONMENT.txt` 写明目标环境、Node.js 构建和安装命令。
 
 uniproxy 是纯 JavaScript：压缩包内代码一致、不含编译产物，后缀只是告诉你它面向哪个环境、该装哪种 Node.js 运行时。Linux 官方 Node 构建要求 glibc >= 2.28，不使用特殊内核特性；在 Linux 上执行 `uniproxy apply` 额外需要 `systemd`、`xray`、`sing-box`、`nginx` 与 root。每个资产带 `.sha256`，另有汇总 `SHA256SUMS.txt`。
 
@@ -539,19 +539,19 @@ uniproxy 是纯 JavaScript：压缩包内代码一致、不含编译产物，后
 
 | 目标 | 资产 | 说明 |
 |------|------|------|
-| Linux x86_64 | `uniproxy-<版本>-linux-x64` | glibc >= 2.28，内嵌 Node 运行时 |
-| Linux arm64 | `uniproxy-<版本>-linux-arm64` | |
-| Linux ppc64le | `uniproxy-<版本>-linux-ppc64le` | |
-| Linux s390x | `uniproxy-<版本>-linux-s390x` | |
-| Linux musl x64 | `uniproxy-<版本>-linux-musl-x64` | Alpine 等 musl 系统 |
-| Windows x64 | `uniproxy-<版本>-win-x64.exe` | |
-| Windows arm64 | `uniproxy-<版本>-win-arm64.exe` | |
-| macOS Intel | `uniproxy-<版本>-darwin-x64` | 临时签名 |
-| macOS Apple 芯片 | `uniproxy-<版本>-darwin-arm64` | 临时签名 |
+| Linux x86_64 | `uniproxy-<version>-linux-x64` | glibc >= 2.28，内嵌 Node 运行时 |
+| Linux arm64 | `uniproxy-<version>-linux-arm64` | |
+| Linux ppc64le | `uniproxy-<version>-linux-ppc64le` | |
+| Linux s390x | `uniproxy-<version>-linux-s390x` | |
+| Linux musl x64 | `uniproxy-<version>-linux-musl-x64` | Alpine 等 musl 系统 |
+| Windows x64 | `uniproxy-<version>-win-x64.exe` | |
+| Windows arm64 | `uniproxy-<version>-win-arm64.exe` | |
+| macOS Intel | `uniproxy-<version>-darwin-x64` | 临时签名 |
+| macOS Apple 芯片 | `uniproxy-<version>-darwin-arm64` | 临时签名 |
 
 ```bash
-chmod +x uniproxy-<版本>-linux-x64
-./uniproxy-<版本>-linux-x64 --help
+chmod +x uniproxy-<version>-linux-x64
+./uniproxy-<version>-linux-x64 --help
 ```
 
 每个二进制带 `.sha256`，Release 里还有 `BINARIES.md` 列出完整矩阵。32 位 Linux / Windows 二进制没有提供，因为 Node.js 已不再发布对应 32 位运行时；这些环境请用 JS 压缩包。

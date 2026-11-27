@@ -32,11 +32,10 @@
 
 整体链路：
 
-```
-准备服务器 → 装 uniproxy → 装三个内核 → 证书
-        → init 配置 → validate/doctor → generate
-        → apply（校验+备份+下发+reload）→ serve（订阅）→ 验收
-```
+1. 准备服务器 → 安装 uniproxy → 安装三个内核 → 准备证书
+2. `init` 生成配置 → `validate` / `doctor` 校验
+3. `generate` 生成三套配置
+4. `apply`（校验 + 备份 + 下发 + reload）→ `serve`（订阅）→ 验收
 
 ---
 
@@ -54,7 +53,7 @@
 uname -m
 cat /etc/os-release | head -3
 df -h / | tail -1
-ss -lntp | grep -E ':(80|443)\b' || echo "80/443 空闲"
+ss -lntp | grep -E ':(80|443)\b' || echo "80/443 free"
 ```
 
 **1.2 解析域名**（在域名服务商处添加 A 记录）
@@ -98,7 +97,7 @@ ufw allow 80/tcp && ufw allow 443/tcp   # Debian/Ubuntu
 - 架构为 `x86_64` 或 `aarch64`
 - 发行版为 Debian 11+/Ubuntu 20.04+/Rocky 8+
 - 四个域名都解析到 `<server-ip>`
-- 80/443 空闲（输出类似 `80/443 空闲`）
+- 80/443 空闲（输出类似 `80/443 free`）
 
 ### 不符合时
 
@@ -123,7 +122,7 @@ VERSION=0.3.2
 curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64"
 curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64.sha256"
 
-# 校验下载完整性（必须 OK 才能继续）
+# must print OK before continuing
 sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
 
 install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy
@@ -136,7 +135,7 @@ uniproxy --help
 curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}.tgz"
 npm install -g ./uniproxy-${VERSION}.tgz
 uniproxy --help
-# 或免安装：tar -xzf uniproxy-${VERSION}.tgz && node uniproxy/src/index.js --help
+# or without installing: tar -xzf uniproxy-${VERSION}.tgz && node uniproxy/src/index.js --help
 ```
 
 **创建运行目录**
@@ -193,7 +192,7 @@ systemctl is-active xray
 
 ```bash
 cd /tmp
-SB=1.12.0   # 以官方 Releases 的最新稳定版为准
+SB=1.12.0   # use the latest stable release
 curl -fLO "https://github.com/SagerNet/sing-box/releases/download/v${SB}/sing-box-${SB}-linux-amd64.tar.gz"
 tar -xzf "sing-box-${SB}-linux-amd64.tar.gz"
 install -m 0755 "sing-box-${SB}-linux-amd64/sing-box" /usr/local/bin/sing-box
@@ -256,8 +255,8 @@ cp /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.dist-$(date +%F)"
 nginx、Xray TLS 入站、sing-box TLS 入站共用同一份证书：
 
 ```
-/etc/uniproxy/certs/fullchain.pem   # 证书链
-/etc/uniproxy/certs/privkey.pem     # 私钥
+/etc/uniproxy/certs/fullchain.pem   # leaf + intermediates
+/etc/uniproxy/certs/privkey.pem     # private key
 ```
 
 ### 方案 A：已有证书（推荐）
@@ -277,7 +276,7 @@ openssl x509 -in /etc/uniproxy/certs/fullchain.pem -noout -subject -dates
 apt install -y certbot
 certbot certonly --manual --preferred-challenges dns \
   -d example.com -d '*.example.com'
-# 按提示在 DNS 添加 TXT 记录，等待校验通过
+# add the TXT record as prompted
 
 install -m 0644 /etc/letsencrypt/live/example.com/fullchain.pem /etc/uniproxy/certs/fullchain.pem
 install -m 0600 /etc/letsencrypt/live/example.com/privkey.pem  /etc/uniproxy/certs/privkey.pem
@@ -297,7 +296,7 @@ systemctl start nginx
 
 ```
 subject=CN = example.com
-notBefore=... notAfter=...（未过期）
+notBefore=... notAfter=... (in the future)
 ```
 
 ### 不符合时
@@ -560,9 +559,9 @@ ss -lntp | grep -E ':(80|443|8443)\b'
 - 任何一行 `FAIL`：命令会停在失败处，**不会继续写入后续文件**；已写入的文件会自动恢复到备份（提示 `restored previous configs`）。
 - `xray run -test` 失败：按输出的行号修 `config.json`（常见是 Reality 参数或 flow）。
 - `nginx -t` 失败：多为证书路径不存在、证书/私钥不匹配、端口被占用。
-- `reload failed`：看 `journalctl -u <服务> -n 50`；修复后重跑 `apply`。
+- `reload failed`：看 `journalctl -u <service> -n 50`；修复后重跑 `apply`。
 - 想跳过某个校验：`--skip-validate`（不推荐）；想只写不重启：`--skip-reload`。
-- 手动回退：`apply` 会在目标旁生成 `<目标>.bak-<时间戳>`，复制回去并 reload 即可。
+- 手动回退：`apply` 会在目标旁生成 `<target>.bak-<timestamp>`，复制回去并 reload 即可。
 
 ---
 
@@ -724,7 +723,7 @@ curl -sSI "https://sub.example.com/sub/${TOKEN}" | grep -iE 'subscription-userin
 ```
 
 ```bash
-uniproxy users     -c /etc/uniproxy/config.json   # 确认 bob 状态 active
+uniproxy users     -c /etc/uniproxy/config.json   # bob should be active
 uniproxy validate  -c /etc/uniproxy/config.json
 uniproxy generate  -c /etc/uniproxy/config.json -o /var/lib/uniproxy/out
 uniproxy apply     -c /etc/uniproxy/config.json --yes

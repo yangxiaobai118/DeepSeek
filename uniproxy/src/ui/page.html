@@ -40,6 +40,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <button data-tab="logs">日志</button>
 <button data-tab="nginx">nginx</button>
 <button data-tab="topology">拓扑</button>
+<button data-tab="nodes">节点</button>
 <button data-tab="config">配置</button>
 <button data-tab="actions">操作</button>
 <button data-tab="settings">设置</button>
@@ -91,6 +92,18 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 </section>
 <section id="tab-topology">
   <div class="card"><h2>流量拓扑</h2><div id="topology"></div></div>
+</section>
+<section id="tab-nodes">
+  <div class="card"><h2>节点（通过本机 ssh/scp 编排，无需在远端装 agent）</h2><div id="nodeTable"></div>
+  <div class="row" style="margin-top:12px">
+  <label>id<input id="n_id" size="12"></label>
+  <label>名称<input id="n_name" size="12"></label>
+  <label>host<input id="n_host" size="18" placeholder="203.0.113.9"></label>
+  <label>用户<input id="n_user" size="10" value="root"></label>
+  <label>端口<input id="n_port" type="number" value="22" style="width:80px"></label>
+  <label>密钥<input id="n_key" size="18" placeholder="/root/.ssh/id_ed25519"></label>
+  <label>远端配置<input id="n_path" size="26" value="/etc/uniproxy/config.json"></label>
+  <button class="act" id="saveNode">保存节点</button><span id="nodeMsg" class="muted"></span></div></div>
 </section>
 <section id="tab-config">
   <div class="card"><h2>config.json（保存前会跑 validate，并自动备份）</h2>
@@ -184,6 +197,16 @@ function renderInbounds() {
     : '<div class="muted">还没有入站</div>';
   renderInboundForm(editingInbound);
 }
+function syncProtocol() {
+  const name = document.getElementById('i_proto').value;
+  const p = (state.protocols || []).find(function (x) { return x.name === name; });
+  if (!p) return;
+  const coreSel = document.getElementById('i_kind');
+  if (!p.cores.includes(coreSel.value)) coreSel.value = p.cores[0];
+  const hint = document.getElementById('i_hint');
+  if (hint) hint.textContent = name + ' 可用：内核 ' + p.cores.join('/') + '，传输 ' + p.transports.join('/') + '，安全 ' + p.securities.join('/');
+}
+
 function renderInboundForm(editable) {
   const ib = editable || { kind: 'xray', tag: '', protocol: 'vless', listen: '127.0.0.1', port: 10443, network: 'tcp', security: 'none', sni: '', wsPath: '/ws', reality: {} };
   const r = ib.reality || {};
@@ -192,10 +215,10 @@ function renderInboundForm(editable) {
     '<div class="row">' +
     '<label>内核<select id="i_kind"><option value="xray"' + (ib.kind === 'xray' ? ' selected' : '') + '>xray</option><option value="singbox"' + (ib.kind === 'singbox' ? ' selected' : '') + '>singbox</option></select></label>' +
     '<label>tag<input id="i_tag" value="' + h(ib.tag) + '"></label>' +
-    '<label>协议<select id="i_proto">' + ['vless','vmess','trojan'].map(p => '<option' + (ib.protocol === p ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label>' +
+    '<label>协议<select id="i_proto">' + (state.protocols || []).map(function (p) { return '<option value="' + p.name + '"' + (ib.protocol === p.name ? ' selected' : '') + '>' + p.name + '</option>'; }).join('') + '</select></label>' +
     '<label>监听<input id="i_listen" value="' + h(ib.listen) + '"></label>' +
     '<label>端口<input id="i_port" type="number" value="' + h(ib.port) + '"></label>' +
-    '<label>网络<select id="i_net">' + ['tcp','ws','grpc','h2'].map(p => '<option' + (ib.network === p ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label>' +
+    '<label>网络<select id="i_net">' + ['tcp','ws','grpc','h2','quic'].map(p => '<option' + (ib.network === p ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label>' +
     '<label>安全<select id="i_sec">' + ['none','tls','reality'].map(p => '<option' + (ib.security === p ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label>' +
     '<label>SNI<input id="i_sni" value="' + h(ib.sni || '') + '"></label>' +
     '<label>WS 路径<input id="i_ws" value="' + h(ib.wsPath || '/ws') + '"></label>' +
@@ -206,9 +229,12 @@ function renderInboundForm(editable) {
     '<label>Reality privateKey<input id="i_rkey" value="' + h(r.privateKey || '') + '"></label>' +
     '<label>Reality shortIds<input id="i_rsid" value="' + h((r.shortIds || []).join(',')) + '" placeholder="0123456789abcdef"></label>' +
     '</div>' +
+    '<div class="muted" id="i_hint" style="margin-top:8px"></div>' +
     '<div class="row" style="margin-top:12px"><button class="act" id="saveInbound">' + (editable ? '保存修改' : '创建入站') + '</button>' +
     (editable ? '<button class="ghost" onclick="cancelInbound()">取消</button>' : '') + '<span id="inboundMsg" class="muted"></span></div>';
   document.getElementById('saveInbound').onclick = saveInbound;
+  document.getElementById('i_proto').onchange = syncProtocol;
+  syncProtocol();
 }
 function collectInbound() {
   return {
@@ -361,6 +387,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     if (btn.dataset.tab === 'audit') loadAudit();
     if (btn.dataset.tab === 'alerts') loadAlerts();
     if (btn.dataset.tab === 'certs') loadCerts();
+    if (btn.dataset.tab === 'nodes') loadNodes();
   };
 });
 async function openClients(kind, tag) {
@@ -626,6 +653,55 @@ async function certRun(path) {
 }
 document.getElementById('issueCert').onclick = function () { certRun('/api/certs/issue'); };
 document.getElementById('renewCert').onclick = function () { certRun('/api/certs/renew'); };
+
+async function loadNodes() {
+  const r = await api('GET', '/api/nodes');
+  const list = (r.data && r.data.nodes) || [];
+  const rows = list.length
+    ? '<table><thead><tr><th>id</th><th>host</th><th>user</th><th>远端配置</th><th>最近探测</th><th>操作</th></tr></thead><tbody>' +
+      list.map(function (n) {
+        const last = n.last ? (n.last.ok ? 'ok @ ' + n.last.at : 'failed @ ' + n.last.at) : '未探测';
+        return '<tr><td>' + h(n.id) + '</td><td>' + h(n.host + ':' + n.port) + '</td><td>' + h(n.user) + '</td><td><code>' + h(n.configPath) + '</code></td><td class="muted">' + h(last) + '</td>' +
+          '<td><button class="ghost" data-node="' + h(n.id) + '" data-act="probe">探测</button> ' +
+          '<button class="ghost" data-node="' + h(n.id) + '" data-act="deploy">下发</button> ' +
+          '<button class="ghost danger" data-node="' + h(n.id) + '" data-act="delete">删除</button></td></tr>';
+      }).join('') + '</tbody></table>'
+    : '<div class="muted">还没有节点</div>';
+  document.getElementById('nodeTable').innerHTML = rows;
+  document.querySelectorAll('#nodeTable [data-node]').forEach(function (btn) {
+    btn.onclick = function () { nodeAct(btn.dataset.node, btn.dataset.act); };
+  });
+}
+
+async function nodeAct(id, action) {
+  const msg = document.getElementById('nodeMsg');
+  if (action === 'delete') {
+    if (!confirm('删除节点 ' + id + ' ?')) return;
+    const r = await api('DELETE', '/api/nodes/' + encodeURIComponent(id));
+    if (r.status === 200) await loadNodes(); else alert(r.data.error || '失败');
+    return;
+  }
+  msg.textContent = action + ' ' + id + ' ...'; msg.className = 'muted';
+  const r = await api('POST', '/api/nodes/' + encodeURIComponent(id) + '/' + action);
+  msg.textContent = (r.data.output || r.data.error || '') || (r.status === 200 ? 'OK' : 'FAILED');
+  msg.className = r.status === 200 ? 'ok' : 'err';
+  await loadNodes();
+}
+
+document.getElementById('saveNode').onclick = async function () {
+  const msg = document.getElementById('nodeMsg');
+  const r = await api('POST', '/api/nodes', {
+    id: document.getElementById('n_id').value,
+    name: document.getElementById('n_name').value,
+    host: document.getElementById('n_host').value,
+    user: document.getElementById('n_user').value,
+    port: Number(document.getElementById('n_port').value),
+    key: document.getElementById('n_key').value,
+    configPath: document.getElementById('n_path').value,
+  });
+  if (r.status === 200) { msg.textContent = '已保存'; msg.className = 'ok'; await loadNodes(); }
+  else { msg.textContent = r.data.error || '失败'; msg.className = 'err'; }
+};
 
 refresh();
 </script></body></html>

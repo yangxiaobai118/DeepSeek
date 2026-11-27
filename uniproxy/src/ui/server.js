@@ -11,6 +11,8 @@ import { collectLogs, logSources } from '../logs.js';
 import { generateNginx } from '../generators/nginx.js';
 import { collectAlerts, notify, loadState } from '../alerts.js';
 import { certStatus, normalizeCerts, buildCommand, issue, validDomain } from '../certs.js';
+import { normalizeNodes, probe, deploy } from '../nodes.js';
+import { protocolList } from '../protocols.js';
 import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
 import { buildPlan, formatPlan, applyPlan } from '../apply.js';
@@ -121,6 +123,14 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     if (url.pathname === '/api/nginx/test' && req.method === 'POST') return nginxTest(res, abs);
     if (url.pathname === '/api/nginx/reload' && req.method === 'POST') return nginxReload(res, abs);
 
+    if (url.pathname === '/api/nodes' && req.method === 'GET') return getNodes(res, abs);
+    if (url.pathname === '/api/nodes' && req.method === 'POST') return saveNode(req, res, abs, null);
+    const nodeMatch = url.pathname.match(/^\/api\/nodes\/([^/]+)$/);
+    if (nodeMatch && req.method === 'PUT') return saveNode(req, res, abs, decodeURIComponent(nodeMatch[1]));
+    if (nodeMatch && req.method === 'DELETE') return deleteNode(res, abs, decodeURIComponent(nodeMatch[1]));
+    const nodeAction = url.pathname.match(/^\/api\/nodes\/([^/]+)\/(probe|deploy)$/);
+    if (nodeAction && req.method === 'POST') return nodeAct(req, res, abs, decodeURIComponent(nodeAction[1]), nodeAction[2]);
+
     if (url.pathname === '/api/certs') {
       if (req.method === 'GET') return getCerts(res, abs);
       if (req.method === 'PUT') return putCerts(req, res, abs);
@@ -206,6 +216,7 @@ function state(cfgPath, csrf, role) {
     subscriptions: subs.map(function (s) { return { name: s.name, token: s.token }; }),
     csrf: csrf || '',
     role: role || 'viewer',
+    protocols: protocolList(),
     sni: sniRoutes(c),
   };
 }
@@ -711,6 +722,78 @@ function nginxReload(res, cfgPath) {
   const result = runCmd(cmd);
   record(cfgPath, 'nginx.reload', result.ok ? 'ok' : 'failed');
   return json(res, result.ok ? 200 : 500, { ok: result.ok, output: result.output, error: result.error });
+}
+
+function nodeStatePath(cfgPath) { return cfgPath + '.nodes-state.json'; }
+
+function readNodeState(cfgPath) {
+  try { return JSON.parse(fs.readFileSync(nodeStatePath(cfgPath), 'utf8')); } catch (e) { return {}; }
+}
+
+function writeNodeState(cfgPath, state) {
+  try { fs.writeFileSync(nodeStatePath(cfgPath), JSON.stringify(state, null, 2) + '\n'); } catch (e) { /* best effort */ }
+}
+
+function getNodes(res, cfgPath) {
+  const c = derive(readRaw(cfgPath));
+  const state = readNodeState(cfgPath);
+  const nodes = normalizeNodes(c).map(function (n) {
+    return Object.assign({}, n, { last: state[n.id] || null });
+  });
+  return json(res, 200, { nodes: nodes });
+}
+
+function saveNode(req, res, cfgPath, id) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    const raw = readRaw(cfgPath);
+    if (!Array.isArray(raw.nodes)) raw.nodes = [];
+    const node = {
+      id: String(body.id || body.name || body.host || '').trim(),
+      name: String(body.name || body.host || '').trim(),
+      host: String(body.host || '').trim(),
+      user: String(body.user || 'root').trim(),
+      port: Number(body.port || 22),
+      key: String(body.key || '').trim(),
+      configPath: String(body.configPath || '/etc/uniproxy/config.json').trim(),
+    };
+    if (!node.id || !node.host) return json(res, 400, { error: 'id and host are required' });
+    if (!node.configPath.startsWith('/')) return json(res, 400, { error: 'configPath must be absolute' });
+    const idx = id ? raw.nodes.findIndex(function (n) { return String(n.id || n.name || n.host) === id; }) : -1;
+    if (id && idx < 0) return json(res, 404, { error: 'node not found' });
+    if (idx >= 0) raw.nodes[idx] = node; else raw.nodes.push(node);
+    record(cfgPath, 'node.' + (idx >= 0 ? 'update' : 'add'), node.id + ' ' + node.host);
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, node: node });
+  });
+}
+
+function deleteNode(res, cfgPath, id) {
+  const raw = readRaw(cfgPath);
+  const list = Array.isArray(raw.nodes) ? raw.nodes : [];
+  const next = list.filter(function (n) { return String(n.id || n.name || n.host) !== id; });
+  if (next.length === list.length) return json(res, 404, { error: 'node not found' });
+  raw.nodes = next;
+  record(cfgPath, 'node.delete', id);
+  saveRaw(cfgPath, raw);
+  return json(res, 200, { ok: true });
+}
+
+async function nodeAct(req, res, cfgPath, id, action) {
+  const c = derive(readRaw(cfgPath));
+  const node = normalizeNodes(c).find(function (n) { return n.id === id; });
+  if (!node) return json(res, 404, { error: 'node not found' });
+  const state = readNodeState(cfgPath);
+  if (action === 'probe') {
+    const result = probe(node);
+    state[id] = { ok: result.ok, status: result.status, output: result.output, at: new Date().toISOString() };
+    writeNodeState(cfgPath, state);
+    record(cfgPath, 'node.probe', id + ' ' + (result.ok ? 'ok' : 'failed'));
+    return json(res, result.ok ? 200 : 500, result);
+  }
+  const result = deploy(cfgPath, node);
+  record(cfgPath, 'node.deploy', id + ' ' + (result.ok ? 'ok' : 'failed'));
+  return json(res, result.ok ? 200 : 500, result);
 }
 
 function getCerts(res, cfgPath) {

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { validateChoice } from './protocols.js';
 import { PROTOCOLS, TRANSPORTS, inboundClients, clientSubToken, effectiveFlow, isPathTransport } from './clients.js';
 import { materializeUsers, parseDate, findInbound } from './users.js';
 
@@ -213,14 +214,8 @@ export function validateConfig(c) {
     if (!Number.isInteger(Number(ib.port)) || Number(ib.port) < 1 || Number(ib.port) > 65535) {
       errors.push(`${at}.port must be an integer in 1..65535`);
     }
-    if (!PROTOCOLS.includes(ib.protocol)) {
-      errors.push(`${at}.protocol "${ib.protocol}" is not supported (use ${PROTOCOLS.join(', ')})`);
-    }
-    if (!TRANSPORTS[kind].includes(ib.network)) {
-      errors.push(`${at}.network "${ib.network}" is not supported by ${kind} (use ${TRANSPORTS[kind].join(', ')})`);
-    }
-    if (!SECURITY.includes(ib.security)) {
-      errors.push(`${at}.security "${ib.security}" must be one of ${SECURITY.join(', ')}`);
+    for (const problem of validateChoice(ib.protocol, kind, ib.network, ib.security)) {
+      errors.push(`${at}: ${problem}`);
     }
     if (ib.security === 'reality') {
       if (!ib.reality) errors.push(`${at} security=reality requires a "reality" block`);

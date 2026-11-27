@@ -51,6 +51,21 @@ function buildInbound(ib, ctx) {
     inbound.users = users.map((u) =>
       stripUndefined({ password: u.password, name: u.name || u.email }),
     );
+  } else if (type === 'shadowsocks') {
+    inbound.method = ib.method || '2022-blake3-aes-128-gcm';
+    inbound.password = ib.password || (users[0] && users[0].password) || '';
+  } else if (type === 'hysteria2') {
+    inbound.users = users.map((u) =>
+      stripUndefined({ password: u.password || u.uuid || '', name: u.name || u.email }),
+    );
+  } else if (type === 'tuic') {
+    inbound.users = users.map((u) =>
+      stripUndefined({ uuid: u.uuid || u.id || '', password: u.password || '', name: u.name || u.email }),
+    );
+  } else if (type === 'socks' || type === 'http') {
+    if (users.length) {
+      inbound.users = users.map((u) => stripUndefined({ username: u.name || u.email, password: u.password }));
+    }
   } else {
     throw new Error('unsupported sing-box protocol: ' + type);
   }
@@ -81,6 +96,7 @@ function buildInbound(ib, ctx) {
     });
   }
 
+  if (type === 'hysteria2' || type === 'tuic') return inbound;
   const network = ib.network || 'tcp';
   const host = ib.host || ib.wsHost || ib.httpHost;
   const path = ib.path || ib.wsPath || ib.h2Path || (network === 'ws' ? '/ws' : '/');

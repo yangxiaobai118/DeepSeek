@@ -105,10 +105,23 @@ function buildSettings(protocol, ib) {
       ),
     };
   }
+  if (protocol === 'shadowsocks') {
+    return stripUndefined({
+      method: ib.method || '2022-blake3-aes-128-gcm',
+      password: ib.password,
+      network: 'tcp,udp',
+    });
+  }
+  if (protocol === 'socks') return { auth: 'noauth', udp: true };
+  if (protocol === 'http') return { accounts: [] };
   throw new Error('unsupported xray protocol: ' + protocol);
 }
 
 function buildStream(ib, ctx) {
+  const protocol = ib.protocol || 'vless';
+  if (protocol === 'shadowsocks' || protocol === 'socks' || protocol === 'http') {
+    return { network: 'tcp', security: 'none' };
+  }
   const network = ib.network || 'tcp';
   const security = ib.security || 'none';
   const ss = { network, security };

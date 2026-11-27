@@ -11,11 +11,18 @@ test('a complete config has no validation errors', () => {
   assert.deepEqual(warnings, []);
 });
 
-test('rejects a transport the target core cannot speak', () => {
+test('rejects a transport the protocol cannot use', () => {
   const c = makeConfig();
   c.singbox.inbounds[0].network = 'xhttp';
   const { errors } = validateConfig(c);
-  assert.ok(errors.some((e) => e.includes('not supported by singbox')));
+  assert.ok(errors.some((e) => e.includes('does not support the xhttp transport')));
+});
+
+test('rejects a protocol the chosen core cannot serve', () => {
+  const c = makeConfig();
+  c.xray.inbounds[0].protocol = 'hysteria2';
+  const { errors } = validateConfig(c);
+  assert.ok(errors.some((e) => e.includes('not supported by the xray core')));
 });
 
 test('warns when xtls-rprx-vision is used off plain TCP', () => {

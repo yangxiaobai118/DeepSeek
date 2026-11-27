@@ -38,6 +38,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 设置 | 公网 IP、邮箱、网站域名、证书/私钥路径、80/443/内部 TLS 端口、nginx 模式、两个面板的域名与端口 |
 | nginx | 模式切换（stream/http）、静态站点与反向代理（extraSites）增删、SNI 路由预览、生成配置预览、`nginx -t` 与 reload |
 | 拓扑 | 从 443 入口按 SNI 到各后端的流向，以及全部监听端口 |
+| 节点 | 注册其他服务器（ssh/scp，无需 agent），逐个探测内核状态，或把本地 `config.json` 下发并远端 `apply` |
 | 审计 | 每次配置写入、apply、内核操作、nginx 测试/重载的时间与动作 |
 | 告警 | 汇总 doctor 发现、端口冲突、内核未运行；配置 webhook / 命令通道，按冷却时间推送（`uniproxy alerts --notify` 亦可） |
 | 证书 | 查看当前证书（subject/issuer/到期/SANs）；用 certbot 或 acme.sh 申请与续期，支持 webroot / standalone / DNS-01，可选 staging；命令以 argv 方式执行，不拼 shell |
@@ -77,6 +78,10 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | GET/PUT | `/api/certs` | 证书状态、申请配置与计划命令 / 保存申请配置 |
 | POST | `/api/certs/issue` | 申请证书 |
 | POST | `/api/certs/renew` | 续期 |
+| GET/POST | `/api/nodes` | 列出 / 新增节点 |
+| PUT/DELETE | `/api/nodes/:id` | 修改 / 删除节点 |
+| POST | `/api/nodes/:id/probe` | ssh 探测远端内核状态 |
+| POST | `/api/nodes/:id/deploy` | scp 配置并远端 `apply --yes` |
 | POST | `/api/actions/:action` | `validate` `doctor` `plan` `apply` |
 
 所有非 GET 请求必须带 `x-uui-csrf` 头，值与 `uui_csrf` Cookie 相同（双提交）。
@@ -112,4 +117,20 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 - **已完成**：登录与双角色、概览、入站 CRUD（xray + sing-box）、入站级客户端、用户 CRUD、内核启停与开关、流量采集与同步、日志查看、nginx 站点/反代管理与测试重载、拓扑视图、审计日志、告警与通知、**证书申请与续期**、设置表单、原始配置编辑、四个操作按钮。
 - 后续：更细的权限矩阵、告警静默窗口、多通道分组。
+## 8. 协议矩阵
+
+面板不先问「xray 还是 sing-box」，而是先选协议，由 `src/protocols.js` 决定可用内核、传输与安全方式：
+
+| 协议 | 内核 | 传输 | 安全 |
+|---|---|---|---|
+| vless | xray / singbox | tcp, ws, grpc, h2 | none, tls, reality |
+| vmess | xray / singbox | tcp, ws, grpc, h2 | none, tls |
+| trojan | xray / singbox | tcp, ws, grpc | tls |
+| shadowsocks | xray / singbox | tcp | none |
+| socks / http | xray / singbox | tcp | none |
+| hysteria2 | singbox | quic | tls |
+| tuic | singbox | quic | tls |
+
+后端按同一张表校验，非法组合（例如用 xray 承载 hysteria2）会直接报错，不依赖前端过滤。
+
   

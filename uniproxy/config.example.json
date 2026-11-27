@@ -63,6 +63,7 @@
       "blockDomains": []
     }
   },
+  "nodes": [],
   "certs": {
     "provider": "certbot",
     "challenge": "http-01",

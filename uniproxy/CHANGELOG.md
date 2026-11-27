@@ -30,6 +30,13 @@
   test/reload to `config.json.audit.log` and show the tail in the panel.
 - u-ui roles: `ui.password` is admin and `ui.viewerPassword` is read-only;
   viewer sessions get 403 on every mutation.
+- one protocol matrix for both cores (`src/protocols.js`): vless/vmess/trojan/
+  shadowsocks/socks/http plus sing-box-only hysteria2 and tuic. The panel lists
+  each protocol once, picks a core that can serve it, and validation rejects
+  impossible core/transport/security combinations.
+- multi-node: register remote servers (ssh/scp, no agent), probe their core state
+  and deploy the local config with `apply --yes`; results are cached in
+  `config.json.nodes-state.json`.
 - u-ui certificates: read subject/issuer/expiry/SANs, and issue or renew with
   certbot or acme.sh (webroot, standalone or DNS-01, optional staging). The
   command runs as an argv array, so panel input cannot inject shell syntax;

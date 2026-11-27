@@ -7,6 +7,8 @@ import { startUi } from '../src/ui/server.js';
 import { parseXrayStatNames, parseClashConnections, mergeUsage } from '../src/stats.js';
 import { shouldSend, markSent, alertsFromDoctor, alertsFromPorts } from '../src/alerts.js';
 import { buildCommand, validDomain, certStatus } from '../src/certs.js';
+import { normalizeNodes, probeCommand, deployCommands } from '../src/nodes.js';
+import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -338,6 +340,76 @@ test('u-ui: certificate endpoints', async function () {
     assert.ok([200, 500].includes(issued.status));
     const issuedJson = await issued.json();
     assert.ok(issuedJson.command.includes('certbot'));
+  } finally {
+    await inst.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
+test('protocols: one matrix for both cores', function () {
+  const list = protocolList();
+  assert.ok(list.some(function (p) { return p.name === 'hysteria2' && p.cores.length === 1 && p.cores[0] === 'singbox'; }));
+  assert.equal(defaultCore('hysteria2'), 'singbox');
+  assert.equal(defaultCore('vless'), 'xray');
+  assert.deepEqual(validateChoice('hysteria2', 'xray', 'quic', 'tls'), ['hysteria2 is not supported by the xray core (use singbox)']);
+  assert.ok(validateChoice('vless', 'singbox', 'ws', 'tls').length === 0);
+  assert.ok(validateChoice('vless', 'xray', 'xhttp', 'none').length === 1);
+});
+
+test('nodes: command building never goes through a shell', function () {
+  const c = { nodes: [
+    { id: 'a', host: '10.0.0.1', user: 'root', port: 2222, key: '/k' },
+    { id: 'b', host: '10.0.0.2' },
+    { host: '' },
+  ] };
+  const nodes = normalizeNodes(c);
+  assert.equal(nodes.length, 2);
+  assert.equal(nodes[0].port, 2222);
+  assert.equal(nodes[1].user, 'root');
+
+  const probeArgv = probeCommand(nodes[0]);
+  assert.equal(probeArgv[0], 'ssh');
+  assert.ok(probeArgv.includes('root@10.0.0.1'));
+  assert.ok(probeArgv.includes('-i'));
+
+  const [scpArgv, sshArgv] = deployCommands('/tmp/config.json', nodes[0]);
+  assert.equal(scpArgv[0], 'scp');
+  assert.ok(scpArgv.includes('/tmp/config.json'));
+  assert.ok(scpArgv.includes('root@10.0.0.1:/etc/uniproxy/config.json'));
+  assert.equal(sshArgv[0], 'ssh');
+  assert.ok(sshArgv[sshArgv.length - 1].includes('uniproxy apply'));
+
+  assert.throws(function () { deployCommands('/tmp/c.json', { host: 'h', configPath: 'relative.json' }); }, /absolute/);
+});
+
+test('u-ui: node registry endpoints', async function () {
+  const ctx = setup();
+  const inst = await startUi(ctx.cfgPath, 0, { password: 'secret' });
+  try {
+    const auth = await login(inst);
+    const headers = { cookie: auth.cookie, 'x-uui-csrf': auth.csrf, 'content-type': 'application/json' };
+
+    const state = await fetch(inst.url + '/api/state', { headers: { cookie: auth.cookie } });
+    assert.ok(Array.isArray((await state.json()).protocols));
+
+    const empty = await fetch(inst.url + '/api/nodes', { headers: { cookie: auth.cookie } });
+    assert.deepEqual((await empty.json()).nodes, []);
+
+    const added = await fetch(inst.url + '/api/nodes', { method: 'POST', headers: headers, body: JSON.stringify({ id: 'n1', host: '203.0.113.9', user: 'root', port: 22 }) });
+    assert.equal(added.status, 200);
+    const raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
+    assert.equal(raw.nodes.length, 1);
+    assert.equal(raw.nodes[0].host, '203.0.113.9');
+
+    const badPath = await fetch(inst.url + '/api/nodes', { method: 'POST', headers: headers, body: JSON.stringify({ id: 'n2', host: 'h', configPath: 'relative.json' }) });
+    assert.equal(badPath.status, 400);
+
+    const probed = await fetch(inst.url + '/api/nodes/n1/probe', { method: 'POST', headers: headers });
+    assert.ok([200, 500].includes(probed.status));
+
+    const removed = await fetch(inst.url + '/api/nodes/n1', { method: 'DELETE', headers: headers });
+    assert.equal(removed.status, 200);
+    assert.equal(JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8')).nodes.length, 0);
   } finally {
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });

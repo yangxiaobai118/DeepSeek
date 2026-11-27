@@ -58,6 +58,14 @@ The values below are **not literals** — they are placeholders you must replace
 >
 > Also run code blocks **line by line**: pasting a whole block may collapse the newlines into one line and fail.
 
+### 0.2 Working-directory conventions
+
+Commands in this guide start in **`/root`** (root home) and are meant to run **in one shell, in order**.
+
+- Wherever a step needs a specific directory it writes `cd` explicitly and states **which directory you end up in**.
+- `cd` only affects the current shell. If you open a new terminal or start a new `sudo -i` session, go back to the documented directory first.
+- Most steps use absolute paths (`/etc/uniproxy/...`) and do not care about the current directory; only the tar-package and certificate steps do, and those are called out explicitly.
+
 ---
 
 ## 1. Step 1: Preparation
@@ -189,6 +197,8 @@ tar -xzf uniproxy-${VERSION}.tgz && node uniproxy/src/index.js --help
 mkdir -p /etc/uniproxy/certs /var/lib/uniproxy /var/log/uniproxy
 ```
 
+> **Directory note**: after `cd /tmp` in step 1, every download and extraction in this section happens in `/tmp`, and **you stay in `/tmp` when the section ends**. The `mkdir` below uses absolute paths, so it does not depend on the current directory.
+
 ### Expected result
 
 - `sha256sum -c` prints `uniproxy-0.3.3-linux-x64: OK`
@@ -225,23 +235,49 @@ Usage:
 
 uniproxy only generates and installs configuration; Xray and sing-box carry proxy traffic, nginx terminates TLS and multiplexes :443 by SNI.
 
+> **Directory note**: this section runs in `/tmp`, where step 2 left you. 3.1 (Xray) and 3.3 (nginx) use absolute paths and do not depend on the current directory; 3.2 (sing-box) runs `cd /tmp` explicitly and leaves you there.
+
 ### 3.1 Xray-core
+
+This step does not depend on the current directory (the installer uses absolute paths) and leaves you in `/tmp`.
+
+Step 1: install Xray (the script also creates the systemd unit)
 
 ```bash
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
-xray version
-systemctl is-active xray
+```
+
+Step 2: verify
+
+```bash
+xray version && systemctl is-active xray
 ```
 
 ### 3.2 sing-box
 
+Step 1: enter `/tmp` and set the version
+
 ```bash
-cd /tmp
-SB=1.12.0   # use the latest stable release
-curl -fLO "https://github.com/SagerNet/sing-box/releases/download/v${SB}/sing-box-${SB}-linux-amd64.tar.gz"
-tar -xzf "sing-box-${SB}-linux-amd64.tar.gz"
-install -m 0755 "sing-box-${SB}-linux-amd64/sing-box" /usr/local/bin/sing-box
-sing-box version
+cd /tmp && SB=1.12.0
+```
+
+> **What to replace**: `SB` with the latest stable sing-box release, and `linux-amd64` with your architecture (`linux-amd64` for x86_64, `linux-arm64` for aarch64). This step runs `cd /tmp` explicitly and leaves you there.
+
+Step 2: download and extract
+
+```bash
+curl -fLO "https://github.com/SagerNet/sing-box/releases/download/v${SB}/sing-box-${SB}-linux-amd64.tar.gz" && tar -xzf "sing-box-${SB}-linux-amd64.tar.gz"
+```
+
+Step 3: install and verify
+
+```bash
+install -m 0755 "sing-box-${SB}-linux-amd64/sing-box" /usr/local/bin/sing-box && sing-box version
+```
+
+Step 4: create the config directory
+
+```bash
 mkdir -p /usr/local/etc/sing-box
 ```
 
@@ -270,9 +306,17 @@ systemctl enable sing-box
 
 ### 3.3 nginx (needs the stream module)
 
+This step uses absolute paths and leaves you in `/tmp`. On Rocky / AlmaLinux replace the first command with `dnf install -y nginx`.
+
 ```bash
-apt update && apt install -y nginx        # Rocky: dnf install -y nginx
+apt update && apt install -y nginx
+```
+
+```bash
 nginx -V 2>&1 | grep -o -- --with-stream
+```
+
+```bash
 cp /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.dist-$(date +%F)"
 ```
 
@@ -306,10 +350,23 @@ nginx, Xray TLS inbounds and sing-box TLS inbounds share one certificate pair:
 
 ### Option A: existing certificate (recommended)
 
+Upload `fullchain.pem` and `privkey.pem` to any directory on the server (the example uses `/root/certs`), then **enter that directory** before running the commands below — `install` reads both files from the current directory. You stay in that directory afterwards; later steps use absolute paths and are unaffected.
+
+Step 1: enter the certificate directory (adjust to your real path)
+
 ```bash
-install -m 0644 fullchain.pem /etc/uniproxy/certs/fullchain.pem
-install -m 0600 privkey.pem  /etc/uniproxy/certs/privkey.pem
-chown root:root /etc/uniproxy/certs/*
+cd /root/certs
+```
+
+Step 2: copy into the uniproxy certificate directory and fix permissions
+
+```bash
+install -m 0644 fullchain.pem /etc/uniproxy/certs/fullchain.pem && install -m 0600 privkey.pem /etc/uniproxy/certs/privkey.pem && chown root:root /etc/uniproxy/certs/*
+```
+
+Step 3: verify the certificate
+
+```bash
 openssl x509 -in /etc/uniproxy/certs/fullchain.pem -noout -subject -dates
 ```
 
@@ -808,19 +865,43 @@ Expected: bob appears in the table; his subscription works after apply.
 
 ### 11.3 Upgrade uniproxy
 
+Downloads, checksum and install all happen in `/tmp` (step 2 runs `cd /tmp` explicitly); you stay in `/tmp`, and `doctor` / `apply` use absolute paths.
+
+Step 1: stop the subscription service
+
 ```bash
 systemctl stop uniproxy-sub
-cd /tmp && VERSION=<new-version>
-curl -fLO .../uniproxy-${VERSION}-linux-x64
-sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
-install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy
-uniproxy --help
-uniproxy doctor  -c /etc/uniproxy/config.json
-uniproxy apply   -c /etc/uniproxy/config.json --yes
-systemctl start uniproxy-sub
 ```
 
-> **What to replace**: `<new-version>` with the target version, and `...` with the full release asset URL (version and architecture must match). Stopping `uniproxy-sub` first and running `doctor` + `apply` afterwards avoids new binaries running against old config.
+Step 2: enter `/tmp` and set the new version
+
+```bash
+cd /tmp && VERSION=<new-version>
+```
+
+> **What to replace**: `<new-version>` with the target version; the asset name below must match your architecture (`linux-x64` for x86_64, `linux-arm64` for aarch64). Stopping `uniproxy-sub` first and running `doctor` + `apply` afterwards avoids new binaries running against old config.
+
+Step 3: download and verify
+
+```bash
+curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64" && curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64.sha256" && sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
+```
+
+Step 4: install and verify
+
+```bash
+install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy && uniproxy --help
+```
+
+Step 5: pre-flight, install, then restart the subscription service
+
+```bash
+uniproxy doctor -c /etc/uniproxy/config.json && uniproxy apply -c /etc/uniproxy/config.json --yes
+```
+
+```bash
+systemctl start uniproxy-sub
+```
 
 Expected: services back; apply keeps timestamped backups.
 

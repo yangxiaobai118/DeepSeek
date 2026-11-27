@@ -57,6 +57,14 @@
 >
 > 另外，代码块请**逐行执行**：整段粘贴可能因终端丢失换行被拼成一行而失败。
 
+### 0.2 工作目录约定
+
+本手册的命令默认从 **`/root`**（root 的家目录）开始，全程建议在**同一个 shell** 里按顺序执行。
+
+- 凡是需要进入特定目录的地方，都会明确写出 `cd`，并说明**执行后停留在哪个目录**。
+- `cd` 只影响当前 shell。如果你新开了终端、或 `sudo -i` 换了会话，请先回到手册指定的目录再继续。
+- 大部分步骤使用绝对路径（`/etc/uniproxy/...`），与当前目录无关；只有下载 tar 包、复制证书这几步依赖当前目录，文里会单独标注。
+
 ---
 
 ## 1. 步骤 1：准备
@@ -192,6 +200,8 @@ tar -xzf uniproxy-${VERSION}.tgz && node uniproxy/src/index.js --help
 mkdir -p /etc/uniproxy/certs /var/lib/uniproxy /var/log/uniproxy
 ```
 
+> **目录说明**：第 1 步的 `cd /tmp` 之后，本节所有下载/解压都在 `/tmp` 进行，**执行完本节仍停留在 `/tmp`**。下面的 `mkdir` 用的是绝对路径，与当前目录无关。
+
 ### 预期结果
 
 - `sha256sum -c` 输出 `uniproxy-0.3.3-linux-x64: OK`
@@ -228,23 +238,49 @@ Usage:
 
 uniproxy 只负责“生成配置并下发”，实际代理流量由 Xray / sing-box 处理，TLS 与 443 复用由 nginx 处理。
 
+> **目录说明**：本节命令在步骤 2 结束的 `/tmp` 下执行。3.1（Xray）与 3.3（nginx）使用绝对路径，不依赖当前目录；3.2（sing-box）会显式 `cd /tmp`，执行后仍停留在 `/tmp`。
+
 ### 3.1 Xray-core
+
+本步与当前目录无关（安装脚本内部使用绝对路径），执行后仍停留在 `/tmp`。
+
+第 1 步：安装 Xray（脚本同时创建 systemd 服务）
 
 ```bash
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
-xray version
-systemctl is-active xray
+```
+
+第 2 步：验证
+
+```bash
+xray version && systemctl is-active xray
 ```
 
 ### 3.2 sing-box
 
+第 1 步：进入 `/tmp` 并设定版本
+
 ```bash
-cd /tmp
-SB=1.12.0   # use the latest stable release
-curl -fLO "https://github.com/SagerNet/sing-box/releases/download/v${SB}/sing-box-${SB}-linux-amd64.tar.gz"
-tar -xzf "sing-box-${SB}-linux-amd64.tar.gz"
-install -m 0755 "sing-box-${SB}-linux-amd64/sing-box" /usr/local/bin/sing-box
-sing-box version
+cd /tmp && SB=1.12.0
+```
+
+> **替换点**：`SB` 换成 sing-box 的最新稳定版；`linux-amd64` 要和架构对应（x86_64 用 `linux-amd64`，aarch64 用 `linux-arm64`）。本步显式 `cd /tmp`，执行后停留在 `/tmp`。
+
+第 2 步：下载并解压
+
+```bash
+curl -fLO "https://github.com/SagerNet/sing-box/releases/download/v${SB}/sing-box-${SB}-linux-amd64.tar.gz" && tar -xzf "sing-box-${SB}-linux-amd64.tar.gz"
+```
+
+第 3 步：安装并验证
+
+```bash
+install -m 0755 "sing-box-${SB}-linux-amd64/sing-box" /usr/local/bin/sing-box && sing-box version
+```
+
+第 4 步：创建配置目录
+
+```bash
 mkdir -p /usr/local/etc/sing-box
 ```
 
@@ -273,9 +309,17 @@ systemctl enable sing-box
 
 ### 3.3 nginx（必须带 stream 模块）
 
+本步使用绝对路径，与当前目录无关，执行后仍停留在 `/tmp`。Rocky / AlmaLinux 请把第一条命令换成 `dnf install -y nginx`。
+
 ```bash
-apt update && apt install -y nginx        # Rocky: dnf install -y nginx
+apt update && apt install -y nginx
+```
+
+```bash
 nginx -V 2>&1 | grep -o -- --with-stream
+```
+
+```bash
 cp /etc/nginx/nginx.conf "/etc/nginx/nginx.conf.dist-$(date +%F)"
 ```
 
@@ -309,10 +353,23 @@ nginx、Xray TLS 入站、sing-box TLS 入站共用同一份证书：
 
 ### 方案 A：已有证书（推荐）
 
+把 `fullchain.pem` 和 `privkey.pem` 上传到服务器上的任意目录（示例用 `/root/certs`），然后**进入该目录**再执行——下面的 `install` 读的是当前目录下的这两个文件。执行后你停留在该目录；后续步骤都用绝对路径，不受影响。
+
+第 1 步：进入证书所在目录（按你的实际路径改）
+
 ```bash
-install -m 0644 fullchain.pem /etc/uniproxy/certs/fullchain.pem
-install -m 0600 privkey.pem  /etc/uniproxy/certs/privkey.pem
-chown root:root /etc/uniproxy/certs/*
+cd /root/certs
+```
+
+第 2 步：复制到 uniproxy 证书目录并修正权限
+
+```bash
+install -m 0644 fullchain.pem /etc/uniproxy/certs/fullchain.pem && install -m 0600 privkey.pem /etc/uniproxy/certs/privkey.pem && chown root:root /etc/uniproxy/certs/*
+```
+
+第 3 步：校验证书
+
+```bash
 openssl x509 -in /etc/uniproxy/certs/fullchain.pem -noout -subject -dates
 ```
 
@@ -815,19 +872,43 @@ uniproxy apply     -c /etc/uniproxy/config.json --yes
 
 ### 11.3 升级 uniproxy
 
+本节的下载、校验、安装都在 `/tmp` 进行（第 2 条命令显式 `cd /tmp`），执行后停留在 `/tmp`；后面的 `doctor` / `apply` 用绝对路径。
+
+第 1 步：停订阅服务
+
 ```bash
 systemctl stop uniproxy-sub
-cd /tmp && VERSION=<new-version>
-curl -fLO .../uniproxy-${VERSION}-linux-x64
-sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
-install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy
-uniproxy --help
-uniproxy doctor  -c /etc/uniproxy/config.json
-uniproxy apply   -c /etc/uniproxy/config.json --yes
-systemctl start uniproxy-sub
 ```
 
-> **替换点**：`<new-version>` 换成目标版本号；URL 里的 `...` 是省略，实际要填完整的 Release 资产地址（版本和架构都要对）。先停 `uniproxy-sub`、升级后跑 `doctor` + `apply`，是为了避免新二进制配旧配置。
+第 2 步：进入 `/tmp` 并设定新版本号
+
+```bash
+cd /tmp && VERSION=<new-version>
+```
+
+> **替换点**：`<new-version>` 换成目标版本号；下面的资产名要和架构对应（x86_64 用 `linux-x64`，aarch64 用 `linux-arm64`）。先停 `uniproxy-sub`、升级后跑 `doctor` + `apply`，是为了避免新二进制配旧配置。
+
+第 3 步：下载并校验
+
+```bash
+curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64" && curl -fLO "https://github.com/yangxiaobai118/DeepSeek/releases/download/uniproxy-v${VERSION}/uniproxy-${VERSION}-linux-x64.sha256" && sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
+```
+
+第 4 步：安装并验证
+
+```bash
+install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy && uniproxy --help
+```
+
+第 5 步：预检并下发，然后恢复订阅服务
+
+```bash
+uniproxy doctor -c /etc/uniproxy/config.json && uniproxy apply -c /etc/uniproxy/config.json --yes
+```
+
+```bash
+systemctl start uniproxy-sub
+```
 
 预期：服务恢复；apply 自动保留旧配置备份。
 

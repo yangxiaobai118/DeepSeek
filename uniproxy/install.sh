@@ -17,12 +17,13 @@ if [ "${FORCE_COLOR:-}" = "1" ]; then _use_color=1; fi
 if [ -n "${NO_COLOR:-}" ]; then _use_color=0; fi
 
 if [ "$_use_color" = "1" ]; then
-  GREEN=$(printf '\0033[32m')
-  BRIGHT=$(printf '\0033[92m')
-  YELLOW=$(printf '\0033[33m')
-  RED=$(printf '\0033[31m')
-  DIM=$(printf '\0033[2m')
-  RESET=$(printf '\0033[0m')
+  ESC=$(awk 'BEGIN { printf "%c", 27 }')
+  GREEN="${ESC}[32m"
+  BRIGHT="${ESC}[92m"
+  YELLOW="${ESC}[33m"
+  RED="${ESC}[31m"
+  DIM="${ESC}[2m"
+  RESET="${ESC}[0m"
 else
   GREEN=''
   BRIGHT=''
@@ -52,7 +53,7 @@ human_mib() { awk -v n="$1" 'BEGIN { printf "%.1f", n / 1048576 }'; }
 draw_progress() {
   _now=$1
   _total=$2
-  [ -t 2 ] || return 0
+  if [ ! -t 2 ] && [ "${UNIPROXY_PROGRESS_TEST:-0}" != "1" ]; then return 0; fi
   [ "$_total" -gt 0 ] || return 0
   _pct=$(( _now * 100 / _total ))
   [ "$_pct" -gt 100 ] && _pct=100
@@ -61,8 +62,8 @@ draw_progress() {
   _empty=$(( _cols - _fill ))
   _bar=$(printf '%*s' "$_fill" '' | tr ' ' '#')
   _spaces=$(printf '%*s' "$_empty" '')
-  printf '\r\0033[32m  [%s%s] %3d%%  %s / %s MiB\0033[0m' \
-    "$_bar" "$_spaces" "$_pct" "$(human_mib "$_now")" "$(human_mib "$_total")"
+  printf '\r%s  [%s%s] %3d%%  %s / %s MiB%s' \
+    "$GREEN" "$_bar" "$_spaces" "$_pct" "$(human_mib "$_now")" "$(human_mib "$_total")" "$RESET"
 }
 
 fetch_to() {
@@ -74,12 +75,12 @@ fetch_to() {
       curl -fsSL "$_url" -o "$_dest" &
       _pid=$!
       while kill -0 "$_pid" 2>/dev/null; do
-        _now=$(wc -c < "$_dest" 2>/dev/null | tr -d ' ')
+        if [ -f "$_dest" ]; then _now=$(wc -c < "$_dest" | tr -d ' '); else _now=0; fi
         [ -n "$_now" ] || _now=0
         if [ "$_total" -gt 0 ]; then
           draw_progress "$_now" "$_total"
         else
-          printf '\r\0033[32m  downloading ... %s MiB\0033[0m' "$(human_mib "$_now")"
+          printf '\r%s  downloading ... %s MiB%s' "$GREEN" "$(human_mib "$_now")" "$RESET"
         fi
         sleep 0.2
       done

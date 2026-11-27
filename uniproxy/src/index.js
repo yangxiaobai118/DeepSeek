@@ -31,6 +31,7 @@ function usage() {
     '  uniproxy users     -c <config.json>            list registry users, quotas and expiry',
     '  uniproxy doctor    -c <config.json>            pre-flight diagnostics',
     '  uniproxy alerts    -c <config.json> [--notify]  list alerts; --notify pushes due ones',
+    '  uniproxy menu      -c <config.json>            open the terminal menu (like the x-ui script)',
     '  uniproxy apply     -c <config.json> [--yes]    validate, install and reload services',
     '  uniproxy serve     -c <config.json> [-p 8787]  start the dashboard + subscription server',
     '  uniproxy ui        -c <config.json> [-p 8788]  start the u-ui management panel',
@@ -401,6 +402,11 @@ function cmdApply(args) {
   if (result.failed) process.exit(1);
 }
 
+async function cmdMenu(args) {
+  const mod = await import('./menu.js');
+  await mod.runMenu({ configPath: args.config || 'config.json' });
+}
+
 async function cmdAlerts(args) {
   const loaded = loadConfig(args.config || 'config.json');
   const alerts = collectAlerts(loaded.config, loaded.path);
@@ -434,6 +440,10 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const cmd = args._[0];
   try {
+    if (!cmd && process.stdin.isTTY) {
+      await cmdMenu(args);
+      return;
+    }
     if (!cmd || cmd === 'help' || cmd === '-h' || cmd === '--help') {
       console.log(usage());
       return;
@@ -447,6 +457,7 @@ async function main() {
     else if (cmd === 'users') cmdUsers(args);
     else if (cmd === 'doctor') cmdDoctor(args);
     else if (cmd === 'alerts') await cmdAlerts(args);
+    else if (cmd === 'menu') await cmdMenu(args);
     else if (cmd === 'apply') cmdApply(args);
     else if (cmd === 'serve') await cmdServe(args);
     else if (cmd === 'ui') await cmdUi(args);

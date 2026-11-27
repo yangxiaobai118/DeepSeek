@@ -10,6 +10,7 @@ import { buildCommand, validDomain, certStatus } from '../src/certs.js';
 import { normalizeNodes, probeCommand, deployCommands, deploy, deployBatch, probeBatch, localChecksum } from '../src/nodes.js';
 import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
 import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup, pruneBackups } from '../src/backups.js';
+import { runMenu, renderMenu, box, buildMenu } from '../src/menu.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -571,4 +572,34 @@ test('u-ui: backup retention is configurable and enforced on write', async funct
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });
   }
+});
+
+test('menu: renders the boxed sections and exits cleanly', async function () {
+  const ctx = setup();
+  const printed = [];
+  const answers = ['1', '8', '99', '0'];
+  const io = {
+    print: function (s) { printed.push(String(s)); },
+    question: async function () { return answers.length ? answers.shift() : '0'; },
+  };
+  await runMenu({ configPath: ctx.cfgPath, io: io });
+  const text = printed.join('\n');
+  assert.ok(text.includes('u-ui · uniproxy'));
+  assert.ok(text.includes('0. 退出菜单'));
+  assert.ok(text.includes('12. 校验配置 validate'));
+  assert.ok(text.includes('21. 申请 / 续期证书'));
+  assert.ok(text.includes('无效选项: 99'));
+  assert.ok(text.includes('已退出'));
+  fs.rmSync(ctx.dir, { recursive: true, force: true });
+});
+
+test('menu: box helper and section count', function () {
+  const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
+  const sections = buildMenu(ctx);
+  assert.equal(sections.length, 5);
+  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 23);
+  const rendered = box('面板', ['0. 退出菜单']);
+  assert.ok(rendered.startsWith('┌─ 面板'));
+  assert.ok(rendered.includes('│ 0. 退出菜单'));
+  assert.ok(rendered.trimEnd().endsWith('┘'));
 });

@@ -167,6 +167,7 @@ out/
 | `alerts` | list alerts; `--notify` pushes due ones via webhook/command |
 | `apply` | dry-run by default; `--yes` installs and reloads |
 | `serve` | start the dashboard and subscription endpoints |
+| `menu` | open the terminal menu (3x-ui style) |
 | `ui` | start the u-ui management panel (login, inbounds, clients, users, cores, traffic, logs, settings, config, actions) |
 
 ### Subscriptions

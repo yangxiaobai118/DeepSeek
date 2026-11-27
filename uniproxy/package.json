@@ -1,6 +1,6 @@
 {
   "name": "uniproxy",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Unified control plane for Xray, sing-box and nginx on a single host: one config, port planning, native configs, 443 SNI multiplexing, a user registry with quotas/expiry, and per-user subscriptions (base64 / sing-box / Clash).",
   "type": "module",
   "bin": {

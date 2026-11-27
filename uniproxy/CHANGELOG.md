@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1
+
+### Added
+
+- terminal menu: `uniproxy menu` (and a bare `uniproxy` on a TTY) opens the
+  3x-ui style boxed menu with panel / service / config / core / extras sections,
+  a live status footer and 23 actions covering settings, panel port, passwords,
+  service control, logs, validate / doctor / apply, backups, certificates,
+  alerts and the node list.
+
 ## 0.4.0
 
 ### Added

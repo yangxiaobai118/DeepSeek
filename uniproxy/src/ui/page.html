@@ -35,8 +35,11 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <button data-tab="inbounds">入站</button>
 <button data-tab="users">用户</button>
 <button data-tab="cores">内核</button>
+<button data-tab="stats">流量</button>
+<button data-tab="logs">日志</button>
 <button data-tab="config">配置</button>
 <button data-tab="actions">操作</button>
+<button data-tab="settings">设置</button>
 </nav><a href="/logout">退出</a></header>
 <main>
 <section id="tab-overview" class="on">
@@ -46,6 +49,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <section id="tab-inbounds">
   <div class="card"><h2>入站（同时管理 xray 与 sing-box）</h2><div id="inboundTable"></div></div>
   <div class="card"><h2 id="inboundFormTitle">新增入站</h2><div id="inboundForm"></div></div>
+  <div class="card"><h2 id="clientsTitle">客户端</h2><div id="clientsPanel"><div class="muted">在上表点「客户端」查看或添加</div></div></div>
 </section>
 <section id="tab-users">
   <div class="card"><h2>用户注册表</h2><div id="userTable"></div></div>
@@ -54,6 +58,18 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <section id="tab-cores">
   <div class="card"><h2>内核与服务</h2><div id="coreTable"></div>
   <div class="muted" style="margin-top:10px">开关控制的是 uniproxy 是否生成该内核的配置；启动/停止/重启走 systemctl。</div></div>
+</section>
+<section id="tab-stats">
+  <div class="card"><h2>流量（来自内核统计接口）</h2><div id="statsTable"></div>
+  <div class="row" style="margin-top:10px"><button class="act" id="syncStats">同步到 users.usage</button><span id="statsMsg" class="muted"></span></div></div>
+  <div class="card"><h2>采集错误</h2><div id="statsErrors" class="muted">(none)</div></div>
+</section>
+<section id="tab-logs">
+  <div class="card"><h2>日志（journalctl）</h2>
+  <div class="row"><label>来源<select id="logUnit"><option value="xray">xray</option><option value="singbox">sing-box</option><option value="nginx">nginx</option><option value="sub">uniproxy-sub</option></select></label>
+  <label>行数<input id="logLines" type="number" value="200" min="10" max="1000"></label>
+  <button class="ghost" id="loadLogsBtn">刷新</button></div>
+  <pre id="logOut" style="margin-top:12px">(idle)</pre></div>
 </section>
 <section id="tab-config">
   <div class="card"><h2>config.json（保存前会跑 validate，并自动备份）</h2>
@@ -71,10 +87,13 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   <button class="act" data-action="apply">apply</button>
   </div><pre id="actionOut" style="margin-top:12px">(idle)</pre></div>
 </section>
+<section id="tab-settings">
+  <div class="card"><h2>设置（写入 config.json，保存前校验）</h2><div id="settingsForm"><div class="muted">载入中…</div></div></div>
+</section>
 </main>
 <script>
 const csrf = () => { const m = document.cookie.match(/(?:^|; )uui_csrf=([^;]+)/); return m ? m[1] : ''; };
-let state = null; let cores = []; let editingUser = null; let editingInbound = null;
+let state = null; let cores = []; let editingUser = null; let editingInbound = null; let currentInbound = null;
 async function api(method, path, body) {
   const opts = { method, headers: { 'x-uui-csrf': csrf() } };
   if (body !== undefined) { opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
@@ -109,7 +128,7 @@ function renderInbounds() {
   t.innerHTML = state.inbounds.length
     ? '<table><thead><tr><th>内核</th><th>tag</th><th>协议</th><th>监听</th><th>网络</th><th>安全</th><th>操作</th></tr></thead><tbody>' +
       state.inbounds.map(ib => '<tr><td>' + h(ib.kind) + '</td><td><code>' + h(ib.tag) + '</code></td><td>' + h(ib.protocol) + '</td><td>' + h(ib.listen + ':' + ib.port) + '</td><td>' + h(ib.network) + '</td><td>' + h(ib.security) + '</td>' +
-      '<td><button class="ghost" onclick="editInbound(\'' + h(ib.kind) + '\',\'' + h(ib.tag) + '\')">编辑</button> <button class="ghost danger" onclick="delInbound(\'' + h(ib.kind) + '\',\'' + h(ib.tag) + '\')">删除</button></td></tr>').join('') + '</tbody></table>'
+      '<td><button class="ghost" onclick="openClients(\'' + h(ib.kind) + '\',\'' + h(ib.tag) + '\')">客户端</button> <button class="ghost" onclick="editInbound(\'' + h(ib.kind) + '\',\'' + h(ib.tag) + '\')">编辑</button> <button class="ghost danger" onclick="delInbound(\'' + h(ib.kind) + '\',\'' + h(ib.tag) + '\')">删除</button></td></tr>').join('') + '</tbody></table>'
     : '<div class="muted">还没有入站</div>';
   renderInboundForm(editingInbound);
 }
@@ -282,7 +301,122 @@ document.querySelectorAll('nav button').forEach(btn => {
     document.querySelectorAll('main section').forEach(s => s.classList.remove('on'));
     document.getElementById('tab-' + btn.dataset.tab).classList.add('on');
     if (btn.dataset.tab === 'config') loadConfig();
+    if (btn.dataset.tab === 'stats') loadStats();
+    if (btn.dataset.tab === 'logs') loadLogs();
+    if (btn.dataset.tab === 'settings') loadSettings();
   };
 });
+async function openClients(kind, tag) {
+  currentInbound = { kind: kind, tag: tag };
+  const r = await api('GET', '/api/inbounds/' + kind + '/' + encodeURIComponent(tag) + '/clients');
+  const list = (r.data && r.data.clients) || [];
+  document.getElementById('clientsTitle').textContent = '客户端：' + kind + ' / ' + tag;
+  const rows = list.length
+    ? '<table><thead><tr><th>名称</th><th>凭据</th><th>操作</th></tr></thead><tbody>' +
+      list.map(c => '<tr><td>' + h(c.name) + '</td><td><code>' + h(c.credential) + '</code></td><td><button class="ghost danger" data-client="' + h(c.name) + '">删除</button></td></tr>').join('') + '</tbody></table>'
+    : '<div class="muted">该入站还没有显式客户端（凭据可由 server.secret 派生）</div>';
+  document.getElementById('clientsPanel').innerHTML = rows +
+    '<div class="row" style="margin-top:10px"><label>名称<input id="c_name"></label>' +
+    '<label>凭据（留空自动派生）<input id="c_cred"></label>' +
+    '<button class="act" id="c_add">添加客户端</button><span id="c_msg" class="muted"></span></div>';
+  document.getElementById('c_add').onclick = function () { addClient(kind, tag); };
+  document.querySelectorAll('#clientsPanel [data-client]').forEach(function (btn) {
+    btn.onclick = function () { delClient(kind, tag, btn.dataset.client); };
+  });
+}
+
+async function addClient(kind, tag) {
+  const name = document.getElementById('c_name').value.trim();
+  const credential = document.getElementById('c_cred').value.trim();
+  const msg = document.getElementById('c_msg');
+  if (!name) { msg.textContent = '名称必填'; msg.className = 'err'; return; }
+  const r = await api('POST', '/api/inbounds/' + kind + '/' + encodeURIComponent(tag) + '/clients', { name: name, credential: credential });
+  if (r.status === 200) { await refresh(); await openClients(kind, tag); }
+  else { msg.textContent = r.data.error || '失败'; msg.className = 'err'; }
+}
+
+async function delClient(kind, tag, name) {
+  if (!confirm('删除客户端 ' + name + ' ?')) return;
+  const r = await api('DELETE', '/api/inbounds/' + kind + '/' + encodeURIComponent(tag) + '/clients/' + encodeURIComponent(name));
+  if (r.status === 200) { await refresh(); await openClients(kind, tag); } else alert(r.data.error || '删除失败');
+}
+
+async function loadStats() {
+  const r = await api('GET', '/api/stats');
+  const rows = (r.data && r.data.rows) || [];
+  document.getElementById('statsTable').innerHTML = rows.length
+    ? '<table><thead><tr><th>用户</th><th>上行</th><th>下行</th><th>合计</th></tr></thead><tbody>' +
+      rows.map(x => '<tr><td>' + h(x.name) + '</td><td>' + gb(x.upload) + '</td><td>' + gb(x.download) + '</td><td>' + gb(x.upload + x.download) + '</td></tr>').join('') + '</tbody></table>'
+    : '<div class="muted">没有采集到数据（内核未运行或统计接口不可用）</div>';
+  const errors = (r.data && r.data.errors) || [];
+  document.getElementById('statsErrors').innerHTML = errors.length ? errors.map(e => '<div class="warn">' + h(e) + '</div>').join('') : '<span class="ok">(none)</span>';
+}
+
+document.getElementById('syncStats').onclick = async function () {
+  const r = await api('POST', '/api/stats/sync');
+  const msg = document.getElementById('statsMsg');
+  if (r.status === 200) { msg.textContent = '已同步 ' + r.data.changed + ' 个用户'; msg.className = 'ok'; await refresh(); await loadStats(); }
+  else { msg.textContent = r.data.error || '失败'; msg.className = 'err'; }
+};
+
+async function loadLogs() {
+  const unit = document.getElementById('logUnit').value;
+  const lines = document.getElementById('logLines').value;
+  const r = await api('GET', '/api/logs?unit=' + encodeURIComponent(unit) + '&lines=' + encodeURIComponent(lines));
+  document.getElementById('logOut').textContent = r.status === 200 ? (r.data.output || '(empty)') : ('error: ' + (r.data.error || r.status));
+}
+
+document.getElementById('loadLogsBtn').onclick = loadLogs;
+
+async function loadSettings() {
+  const r = await api('GET', '/api/settings');
+  const s = r.data || {};
+  const server = s.server || {};
+  const ports = s.ports || {};
+  const panels = s.panels || {};
+  const xui = panels.xui || {};
+  const sui = panels.sui || {};
+  const mode = (s.nginx && s.nginx.mode) || 'http';
+  document.getElementById('settingsForm').innerHTML =
+    '<div class="row">' +
+    '<label>公网 IP<input id="s_ip" value="' + h(server.publicIp) + '"></label>' +
+    '<label>邮箱<input id="s_email" value="' + h(server.email) + '"></label>' +
+    '<label>网站域名<input id="s_web" value="' + h((server.domains || {}).web) + '"></label>' +
+    '<label>证书文件<input id="s_cert" value="' + h((server.cert || {}).certFile) + '"></label>' +
+    '<label>私钥文件<input id="s_key" value="' + h((server.cert || {}).keyFile) + '"></label>' +
+    '</div><div class="row" style="margin-top:10px">' +
+    '<label>HTTP 端口<input id="s_http" type="number" value="' + h(ports.http || 80) + '"></label>' +
+    '<label>HTTPS 端口<input id="s_https" type="number" value="' + h(ports.https || 443) + '"></label>' +
+    '<label>nginx 内部 TLS<input id="s_tls" type="number" value="' + h(ports.nginxInternalTls || 8443) + '"></label>' +
+    '<label>nginx 模式<select id="s_mode"><option value="stream"' + (mode === 'stream' ? ' selected' : '') + '>stream</option><option value="http"' + (mode === 'http' ? ' selected' : '') + '>http</option></select></label>' +
+    '</div><div class="row" style="margin-top:10px">' +
+    '<label>x-ui 域名<input id="s_xui" value="' + h(xui.domain) + '"></label>' +
+    '<label>x-ui 端口<input id="s_xuip" type="number" value="' + h(xui.port || 54321) + '"></label>' +
+    '<label>s-ui 域名<input id="s_sui" value="' + h(sui.domain) + '"></label>' +
+    '<label>s-ui 端口<input id="s_suip" type="number" value="' + h(sui.port || 2095) + '"></label>' +
+    '</div><div class="row" style="margin-top:12px"><button class="act" id="saveSettings">保存设置</button><span id="settingsMsg" class="muted"></span></div>';
+  document.getElementById('saveSettings').onclick = saveSettings;
+}
+
+async function saveSettings() {
+  const body = {
+    publicIp: document.getElementById('s_ip').value,
+    email: document.getElementById('s_email').value,
+    webDomain: document.getElementById('s_web').value,
+    certFile: document.getElementById('s_cert').value,
+    keyFile: document.getElementById('s_key').value,
+    http: Number(document.getElementById('s_http').value),
+    https: Number(document.getElementById('s_https').value),
+    nginxInternalTls: Number(document.getElementById('s_tls').value),
+    nginxMode: document.getElementById('s_mode').value,
+    xui: { domain: document.getElementById('s_xui').value, port: Number(document.getElementById('s_xuip').value) },
+    sui: { domain: document.getElementById('s_sui').value, port: Number(document.getElementById('s_suip').value) },
+  };
+  const msg = document.getElementById('settingsMsg');
+  const r = await api('PUT', '/api/settings', body);
+  if (r.status === 200) { msg.textContent = '已保存'; msg.className = 'ok'; await refresh(); }
+  else { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'err'; }
+}
+
 refresh();
 </script></body></html>

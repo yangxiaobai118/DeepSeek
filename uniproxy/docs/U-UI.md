@@ -31,8 +31,11 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 页面 | 内容 |
 |---|---|
 | 概览 | 配置路径、nginx 模式、公网 IP、端口表、校验结果、入站/用户/订阅计数 |
-| 入站 | 表格 + 表单，两套内核共用一套界面：新增/编辑/删除 xray 与 sing-box 入站（协议、监听、端口、网络、TLS/Reality、SNI、WS 路径、Reality 参数） |
+| 入站 | 表格 + 表单，两套内核共用一套界面：新增/编辑/删除 xray 与 sing-box 入站（协议、监听、端口、网络、TLS/Reality、SNI、WS 路径、Reality 参数）；每个入站可单独管理客户端（凭据留空则按 `server.secret` 派生） |
 | 内核 | xray / sing-box / nginx 的运行状态（systemctl），start / stop / restart，以及「是否让 uniproxy 生成该内核配置」的开关 |
+| 流量 | 从 Xray stats API 与 sing-box（Clash API）采集按用户的上行/下行，支持一键同步到 `users[].usage`（订阅的 `subscription-userinfo` 随之变化） |
+| 日志 | `journalctl` 查看 xray / sing-box / nginx / uniproxy-sub，可选行数 |
+| 设置 | 公网 IP、邮箱、网站域名、证书/私钥路径、80/443/内部 TLS 端口、nginx 模式、两个面板的域名与端口 |
 | 用户 | 表格（状态/到期/配额/入站/订阅 token）+ 新增/编辑/删除 |
 | 配置 | `config.json` 原始文本编辑器，保存前跑 `validate`，写入前自动备份 |
 | 操作 | `validate` / `doctor` / `plan`（只预览）/ `apply`（需输入确认词） |
@@ -54,6 +57,12 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | GET | `/api/cores` | 三个内核与服务的状态、是否生成配置 |
 | POST | `/api/cores/:kind/:action` | `start` `stop` `restart` |
 | PUT | `/api/cores/:kind` | `{ enabled: false }` 关掉该内核的配置生成 |
+| GET/POST | `/api/inbounds/:kind/:tag/clients` | 列出 / 新增该入站的客户端 |
+| DELETE | `/api/inbounds/:kind/:tag/clients/:name` | 删除客户端 |
+| GET | `/api/stats` | 采集后的按用户流量 |
+| POST | `/api/stats/sync` | 把流量写回 `users[].usage` |
+| GET | `/api/logs?unit=&lines=` | journalctl 日志 |
+| GET/PUT | `/api/settings` | 读取 / 保存常用设置 |
 | POST | `/api/actions/:action` | `validate` `doctor` `plan` `apply` |
 
 所有非 GET 请求必须带 `x-uui-csrf` 头，值与 `uui_csrf` Cookie 相同（双提交）。
@@ -86,6 +95,6 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 ## 7. 阶段
 
-- **MVP（已完成）**：登录、概览、**入站 CRUD（xray + sing-box）**、用户 CRUD、**内核启停与开关**、原始配置编辑、四个操作按钮。
-- 二期：内核拓扑图、流量统计接入、审计日志、多用户角色。
+- **已完成**：登录、概览、入站 CRUD（xray + sing-box）、**入站级客户端管理**、用户 CRUD、内核启停与开关、**流量采集与同步**、**日志查看**、**设置表单**、原始配置编辑、四个操作按钮。
+- 后续：内核拓扑图、审计日志、多用户角色。
   

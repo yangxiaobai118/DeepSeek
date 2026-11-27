@@ -5,7 +5,9 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { applyDefaults, validateConfig } from '../config.js';
 import { analyzePorts } from '../ports.js';
-import { resolveUsers } from '../users.js';
+import { resolveUsers, deriveUuid, derivePassword } from '../users.js';
+import { collectStats, combineStats, mergeUsage } from '../stats.js';
+import { collectLogs, logSources } from '../logs.js';
 import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
 import { buildPlan, formatPlan, applyPlan } from '../apply.js';
@@ -32,10 +34,14 @@ export function startUi(cfgPath, port = 8788, options = {}) {
   }
 
   const server = http.createServer(function (req, res) {
-    try { handle(req, res); } catch (e) { send(res, 500, { 'content-type': 'text/plain' }, 'error: ' + e.message); }
+    Promise.resolve()
+      .then(function () { return handle(req, res); })
+      .catch(function (e) {
+        try { send(res, 500, { 'content-type': 'text/plain' }, 'error: ' + e.message); } catch (ignored) { /* socket gone */ }
+      });
   });
 
-  function handle(req, res) {
+  async function handle(req, res) {
     const url = new URL(req.url, 'http://127.0.0.1');
     const cookies = parseCookies(req.headers.cookie || '');
 
@@ -76,7 +82,15 @@ export function startUi(cfgPath, port = 8788, options = {}) {
 
     if (url.pathname === '/api/inbounds' && req.method === 'GET') return listInbounds(res, abs);
     if (url.pathname === '/api/inbounds' && req.method === 'POST') return createInbound(req, res, abs);
-    const ibMatch = url.pathname.match(/^\/api\/inbounds\/([a-z]+)\/(.+)$/);
+    const clientsMatch = url.pathname.match(/^\/api\/inbounds\/([a-z]+)\/([^/]+)\/clients(?:\/(.+))?$/);
+    if (clientsMatch) {
+      const ckind = clientsMatch[1];
+      const ctag = decodeURIComponent(clientsMatch[2]);
+      if (req.method === 'GET' && !clientsMatch[3]) return listClients(res, abs, ckind, ctag);
+      if (req.method === 'POST' && !clientsMatch[3]) return addClient(req, res, abs, ckind, ctag);
+      if (req.method === 'DELETE' && clientsMatch[3]) return removeClient(res, abs, ckind, ctag, decodeURIComponent(clientsMatch[3]));
+    }
+    const ibMatch = url.pathname.match(/^\/api\/inbounds\/([a-z]+)\/([^/]+)$/);
     if (ibMatch && req.method === 'PUT') return updateInbound(req, res, abs, ibMatch[1], decodeURIComponent(ibMatch[2]));
     if (ibMatch && req.method === 'DELETE') return deleteInbound(res, abs, ibMatch[1], decodeURIComponent(ibMatch[2]));
 
@@ -85,6 +99,14 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     if (coreMatch && req.method === 'POST') return coreAction(res, coreMatch[1], coreMatch[2]);
     const corePut = url.pathname.match(/^\/api\/cores\/([a-z]+)$/);
     if (corePut && req.method === 'PUT') return setCoreEnabled(req, res, abs, corePut[1]);
+
+    if (url.pathname === '/api/stats' && req.method === 'GET') return await statsState(res, abs);
+    if (url.pathname === '/api/stats/sync' && req.method === 'POST') return await syncStats(res, abs);
+    if (url.pathname === '/api/logs' && req.method === 'GET') return logView(res, url);
+    if (url.pathname === '/api/settings') {
+      if (req.method === 'GET') return getSettings(res, abs);
+      if (req.method === 'PUT') return putSettings(req, res, abs);
+    }
 
     return json(res, 404, { error: 'not found' });
   }
@@ -441,6 +463,144 @@ function setCoreEnabled(req, res, cfgPath, kind) {
     saveRaw(cfgPath, raw);
     return json(res, 200, { ok: true, kind: kind, enabled: raw[kind].enabled });
   });
+}
+
+async function statsState(res, cfgPath) {
+  const c = derive(readRaw(cfgPath));
+  const stats = await collectStats(c);
+  return json(res, 200, { rows: combineStats(stats), errors: stats.errors });
+}
+
+async function syncStats(res, cfgPath) {
+  const raw = readRaw(cfgPath);
+  const c = derive(raw);
+  const stats = await collectStats(c);
+  const changed = mergeUsage(raw.users || [], stats);
+  if (changed) saveRaw(cfgPath, raw);
+  return json(res, 200, { ok: true, changed: changed, rows: combineStats(stats), errors: stats.errors });
+}
+
+function logView(res, url) {
+  const unit = url.searchParams.get('unit') || 'xray';
+  const lines = Number(url.searchParams.get('lines') || 200);
+  try {
+    return json(res, 200, collectLogs(unit, lines));
+  } catch (e) {
+    return json(res, 400, { error: e.message, sources: logSources() });
+  }
+}
+
+function getSettings(res, cfgPath) {
+  const raw = readRaw(cfgPath);
+  const server = raw.server || {};
+  return json(res, 200, {
+    server: {
+      publicIp: server.publicIp || '',
+      email: server.email || '',
+      hasSecret: Boolean(server.secret),
+      domains: server.domains || {},
+      cert: server.cert || {},
+    },
+    ports: raw.ports || {},
+    nginx: { mode: (raw.nginx && raw.nginx.mode) || 'http' },
+    panels: raw.panels || {},
+    apply: raw.apply || {},
+  });
+}
+
+function putSettings(req, res, cfgPath) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    const raw = readRaw(cfgPath);
+    raw.server = raw.server || {};
+    raw.server.domains = raw.server.domains || {};
+    raw.server.cert = raw.server.cert || {};
+    raw.ports = raw.ports || {};
+    raw.nginx = raw.nginx || {};
+    raw.panels = raw.panels || {};
+
+    if (body.publicIp !== undefined) raw.server.publicIp = String(body.publicIp).trim();
+    if (body.email !== undefined) raw.server.email = String(body.email).trim();
+    if (body.webDomain !== undefined) raw.server.domains.web = String(body.webDomain).trim();
+    if (body.certFile !== undefined) raw.server.cert.certFile = String(body.certFile).trim();
+    if (body.keyFile !== undefined) raw.server.cert.keyFile = String(body.keyFile).trim();
+    for (const key of ['http', 'https', 'nginxInternalTls']) {
+      if (body[key] !== undefined) raw.ports[key] = Number(body[key]);
+    }
+    if (body.nginxMode !== undefined) raw.nginx.mode = String(body.nginxMode);
+    if (body.xui) raw.panels.xui = Object.assign({}, raw.panels.xui, body.xui);
+    if (body.sui) raw.panels.sui = Object.assign({}, raw.panels.sui, body.sui);
+
+    const check = validateConfig(derive(raw));
+    if (check.errors.length) return json(res, 400, { error: 'validation failed', errors: check.errors });
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, warnings: check.warnings });
+  });
+}
+
+function clientArray(kind, ib) {
+  if (kind === 'singbox') {
+    if (!Array.isArray(ib.users)) ib.users = [];
+    return ib.users;
+  }
+  if (!Array.isArray(ib.clients)) ib.clients = [];
+  return ib.clients;
+}
+
+function findInboundRaw(raw, kind, tag) {
+  if (KINDS.indexOf(kind) < 0) return null;
+  const list = (raw[kind] && raw[kind].inbounds) || [];
+  return list.find(function (x) { return x.tag === tag; }) || null;
+}
+
+function listClients(res, cfgPath, kind, tag) {
+  const raw = readRaw(cfgPath);
+  const ib = findInboundRaw(raw, kind, tag);
+  if (!ib) return json(res, 404, { error: 'inbound not found' });
+  const clients = clientArray(kind, ib).map(function (c) {
+    return { name: c.name || c.email || '', credential: c.id || c.uuid || c.password || '' };
+  });
+  return json(res, 200, { kind: kind, tag: tag, clients: clients });
+}
+
+function addClient(req, res, cfgPath, kind, tag) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    const raw = readRaw(cfgPath);
+    const ib = findInboundRaw(raw, kind, tag);
+    if (!ib) return json(res, 404, { error: 'inbound not found' });
+    const name = String(body.name || '').trim();
+    if (!name) return json(res, 400, { error: 'client name is required' });
+    const list = clientArray(kind, ib);
+    if (list.some(function (c) { return (c.name || c.email) === name; })) return json(res, 409, { error: 'client already exists' });
+    const secret = (raw.server && raw.server.secret) || '';
+    const protocol = ib.protocol || 'vless';
+    let client;
+    if (protocol === 'trojan') {
+      client = { name: name, password: body.credential || derivePassword(secret, 'trojan', name, tag) };
+    } else {
+      const credential = body.credential || deriveUuid(secret, protocol, name, tag);
+      client = { name: name };
+      if (kind === 'singbox') client.uuid = credential;
+      else { client.id = credential; client.email = name; if (body.flow) client.flow = body.flow; }
+    }
+    list.push(client);
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, client: client });
+  });
+}
+
+function removeClient(res, cfgPath, kind, tag, name) {
+  const raw = readRaw(cfgPath);
+  const ib = findInboundRaw(raw, kind, tag);
+  if (!ib) return json(res, 404, { error: 'inbound not found' });
+  const list = clientArray(kind, ib);
+  const next = list.filter(function (c) { return (c.name || c.email) !== name; });
+  if (next.length === list.length) return json(res, 404, { error: 'client not found' });
+  if (kind === 'singbox') ib.users = next;
+  else ib.clients = next;
+  saveRaw(cfgPath, raw);
+  return json(res, 200, { ok: true });
 }
 
 function send(res, status, headers, body) {

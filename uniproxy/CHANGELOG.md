@@ -12,6 +12,13 @@
   sing-box from one form (protocol, listen, port, network, TLS/Reality, SNI).
 - u-ui core control: show the systemd state of xray, sing-box and nginx, start /
   stop / restart them, and toggle whether uniproxy generates each core's config.
+- u-ui traffic accounting: collect per-user counters from the Xray stats API and
+  the sing-box Clash API, show them per user, and sync them into `users[].usage`.
+- u-ui logs: tail `journalctl` for xray, sing-box, nginx and uniproxy-sub.
+- u-ui client management: add and remove clients per inbound; credentials are
+  derived from `server.secret` when left blank.
+- u-ui settings: edit public IP, domains, certificate paths, ports, nginx mode
+  and the two panel domains/ports from a form.
 
 ### Fixed
 

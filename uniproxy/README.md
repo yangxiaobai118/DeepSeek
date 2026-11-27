@@ -166,7 +166,7 @@ out/
 | `doctor` | pre-flight diagnostics (`--json`, `--no-probe`) |
 | `apply` | dry-run by default; `--yes` installs and reloads |
 | `serve` | start the dashboard and subscription endpoints |
-| `ui` | start the u-ui management panel (login, inbounds, users, cores, config, actions) |
+| `ui` | start the u-ui management panel (login, inbounds, clients, users, cores, traffic, logs, settings, config, actions) |
 
 ### Subscriptions
 
@@ -439,7 +439,7 @@ MIT. See [LICENSE](LICENSE).
 - **`doctor`**：预检占位符、证书、Reality 密钥、重复 SNI、端口和内核二进制；
 - **`apply`**：先校验（`xray run -test`、`sing-box check`、`nginx -t`），再备份、下发、reload；reload 失败自动回滚；
 - 只读 Web 仪表盘（`serve`）：端口地图、体检、链接、订阅地址与配置预览；
-- **u-ui 管理面板**（`ui`）：密码登录、入站增删改（xray + sing-box）、用户增删改、内核启停与开关、配置编辑、validate / doctor / plan / apply；
+- **u-ui 管理面板**（`ui`）：密码登录、入站增删改（xray + sing-box）、入站级客户端、用户增删改、内核启停与开关、流量采集与同步、日志查看、设置表单、配置编辑、validate / doctor / plan / apply；
 - 订阅接口带 `no-store`、profile 头与按客户端的 token；
 - 零运行时依赖（Node.js >= 18）。
 

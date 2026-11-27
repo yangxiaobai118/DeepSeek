@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { hashPassword, USERNAME_RE } from './auth.js';
 import { syncUnitPorts } from './units.js';
 import { validDomain } from './certs.js';
@@ -217,6 +218,14 @@ export async function runSetup(opts = {}) {
 
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
   const synced = syncUnitPorts({ uiPort: cfg.ui.port, subPort: cfg.subscription.port });
+  let panelState = '未安装 systemd 单元（菜单 8 安装）';
+  const unitFile = path.join(process.env.UNIPROXY_UNIT_DIR || '/etc/systemd/system', 'uniproxy-ui.service');
+  if (fs.existsSync(unitFile) && (typeof process.getuid !== 'function' || process.getuid() === 0)) {
+    const restarted = spawnSync('systemctl', ['restart', 'uniproxy-ui'], { timeout: 30000, encoding: 'utf8' });
+    panelState = restarted.status === 0
+      ? '已启动/重启'
+      : ('启动失败: ' + String(restarted.stderr || restarted.stdout || '').trim().split('\n')[0]);
+  }
 
   const top6 = Object.keys(cfg).slice(0, 6);
   const lines = [
@@ -228,6 +237,7 @@ export async function runSetup(opts = {}) {
     '  面板端口:   ' + cfg.ui.port,
     '  订阅端口:   ' + cfg.subscription.port,
     '  访问路径:   ' + (cfg.ui.basePath || '/'),
+    '  面板服务:   ' + panelState,
     '  管理员账号: ' + username,
     '  管理员密码: ' + (adminChanged && passwordChanged ? adminPassword : '保持不变'),
     '  其他账号:   稍后在面板「账号」页添加',

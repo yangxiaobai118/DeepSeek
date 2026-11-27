@@ -18,7 +18,7 @@ Requirements: Linux with systemd, root access, TCP **80/443** open.
 bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
 ```
 
-The installer detects the architecture, downloads the matching release asset (self-contained binary when available, otherwise the Node bundle), installs `uniproxy` / `u-ui`, writes `/etc/uniproxy/config.json` and the two systemd units, and starts the panel.
+The installer detects the architecture, downloads the matching release asset (self-contained binary when available, otherwise the Node bundle), installs `uniproxy` / `u-ui`, writes `/etc/uniproxy/config.json` and the two systemd units, and enables them. The u-ui panel becomes reachable after the setup wizard creates an admin account.
 
 **Pin a version** (append the tag number):
 
@@ -145,7 +145,7 @@ Binaries are Node.js SEA builds (glibc >= 2.28 on Linux, ad-hoc signed on macOS)
 
 ## 中文快速开始
 
-要求：Linux + systemd、root、放行 80/443。一条命令安装（自动识别架构、写入 systemd 单元并启动面板）：
+要求：Linux + systemd、root、放行 80/443。一条命令安装（自动识别架构、写入并启用 systemd 单元（执行初始化向导创建管理员后即可访问面板））：
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)

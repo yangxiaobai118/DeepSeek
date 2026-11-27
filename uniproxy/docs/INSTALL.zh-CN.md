@@ -8,7 +8,7 @@
 
 ## 一键安装（推荐）
 
-在一台全新的 Linux 服务器上以 root 执行。安装器会自动识别架构、下载对应发布资产（优先免 Node 的单文件二进制）、安装 `uniproxy` / `u-ui`、生成 `/etc/uniproxy/config.json`、写入 systemd 单元并启动面板。
+在一台全新的 Linux 服务器上以 root 执行。安装器会自动识别架构、下载对应发布资产（优先免 Node 的单文件二进制）、安装 `uniproxy` / `u-ui`、生成 `/etc/uniproxy/config.json`、写入 systemd 单元（执行初始化向导创建管理员账号后即可访问面板）。
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)

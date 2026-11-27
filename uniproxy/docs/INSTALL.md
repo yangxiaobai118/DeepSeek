@@ -8,7 +8,7 @@ Quick start, feature list and platform matrix: [repository README](../../README.
 
 ## One-line install (recommended)
 
-Run as root on a fresh Linux server. The installer detects the architecture, downloads the matching release asset (self-contained binary when available, otherwise the Node bundle), installs `uniproxy` / `u-ui`, seeds `/etc/uniproxy/config.json`, writes the systemd units and starts the panel.
+Run as root on a fresh Linux server. The installer detects the architecture, downloads the matching release asset (self-contained binary when available, otherwise the Node bundle), installs `uniproxy` / `u-ui`, seeds `/etc/uniproxy/config.json` and writes the systemd units; the panel is reachable once the setup wizard creates an admin account.
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)

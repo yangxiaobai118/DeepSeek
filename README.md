@@ -47,6 +47,8 @@ Other overrides: `UNIPROXY_VERSION`, `UNIPROXY_BIN_DIR`, `UNIPROXY_ETC_DIR`, `UN
 UNIPROXY_MODE=js bash <(curl -Ls https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh)
 ```
 
+Downloads retry up to five times, abort when the transfer stays under 1 KiB/s for 60 s (30-minute cap), and fall back to the ~50 KiB JS bundle when Node.js 18+ is present if the binary cannot be fetched. 
+
 If GitHub is slow from your network, prefix a mirror (the URL is simply prepended):
 
 ```bash

@@ -50,6 +50,12 @@ warn() { printf '%s%s%s\n' "$YELLOW" "$*" "$RESET" >&2; }
 die() { printf '%serror: %s%s\n' "$RED" "$*" "$RESET" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+node_ok() {
+  have node || return 1
+  _major=$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)
+  [ "${_major:-0}" -ge 18 ] 2>/dev/null
+}
+
 human_mib() { awk -v n="$1" 'BEGIN { printf "%.1f", n / 1048576 }'; }
 
 draw_progress() {
@@ -74,7 +80,7 @@ fetch_to() {
   if have curl; then
     _total=$(curl -fsIL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 "$_url" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { v = $2 } END { print v + 0 }')
     if [ -t 2 ]; then
-      curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 "$_url" -o "$_dest" &
+      curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 "$_url" -o "$_dest" &
       _pid=$!
       while kill -0 "$_pid" 2>/dev/null; do
         if [ -f "$_dest" ]; then _now=$(wc -c < "$_dest" | tr -d ' '); else _now=0; fi
@@ -94,7 +100,7 @@ fetch_to() {
       printf '\n'
       return 1
     fi
-    curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1 --speed-time 300 "$_url" -o "$_dest"
+    curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 "$_url" -o "$_dest"
   elif have wget; then
     wget -qO "$_dest" "$_url"
   else
@@ -192,7 +198,7 @@ fi
 
 [ "$(id -u)" = "0" ] || die 'run as root (sudo)'
 
-if [ "$MODE" = "tar" ] && ! have node; then
+if [ "$MODE" = "tar" ] && ! node_ok; then
   die 'this build needs Node.js >= 18 (no self-contained binary for this platform)'
 fi
 
@@ -200,7 +206,28 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 say "downloading $ASSET"
-fetch_to "$ASSET" "$tmp/asset" || die "download failed: $ASSET"
+if ! fetch_to "$ASSET" "$tmp/asset"; then
+  case "$MODE" in
+    sea-gz|sea)
+      if node_ok; then
+        warn "binary download failed; falling back to the ~50 KiB JS bundle (Node.js 18+ detected)"
+        MODE=tar
+        ASSET="$BASE/$TAR_NAME"
+        fetch_to "$ASSET" "$tmp/asset" || die "download failed: $ASSET (set UNIPROXY_MIRROR or retry later)"
+      elif [ "$MODE" = "sea-gz" ]; then
+        warn "compressed binary download failed; trying the raw binary"
+        MODE=sea
+        ASSET="$BASE/$SEA_NAME"
+        fetch_to "$ASSET" "$tmp/asset" || die "download failed: $ASSET (set UNIPROXY_MIRROR or retry later)"
+      else
+        die "download failed: $ASSET (retry, set UNIPROXY_MIRROR=https://ghfast.top/ , or install Node.js >= 18 and use UNIPROXY_MODE=js)"
+      fi
+      ;;
+    *)
+      die "download failed: $ASSET (retry or set UNIPROXY_MIRROR=https://ghfast.top/)"
+      ;;
+  esac
+fi
 
 mkdir -p "$PREFIX" "$BIN_DIR" "$ETC_DIR" "$UNIT_DIR"
 

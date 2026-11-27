@@ -39,6 +39,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | nginx | 模式切换（stream/http）、静态站点与反向代理（extraSites）增删、SNI 路由预览、生成配置预览、`nginx -t` 与 reload |
 | 拓扑 | 从 443 入口按 SNI 到各后端的流向，以及全部监听端口 |
 | 审计 | 每次配置写入、apply、内核操作、nginx 测试/重载的时间与动作 |
+| 告警 | 汇总 doctor 发现、端口冲突、内核未运行；配置 webhook / 命令通道，按冷却时间推送（`uniproxy alerts --notify` 亦可） |
 | 用户 | 表格（状态/到期/配额/入站/订阅 token）+ 新增/编辑/删除 |
 | 配置 | `config.json` 原始文本编辑器，保存前跑 `validate`，写入前自动备份 |
 | 操作 | `validate` / `doctor` / `plan`（只预览）/ `apply`（需输入确认词） |
@@ -70,6 +71,8 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | POST | `/api/nginx/test` | 用 `apply.validate.nginx` 跑 `nginx -t` |
 | POST | `/api/nginx/reload` | 用 `apply.reload.nginx` 重载 |
 | GET | `/api/audit?limit=` | 审计日志（JSONL 尾读） |
+| GET | `/api/alerts` | 当前告警与通道状态 |
+| POST | `/api/alerts/notify` | 推送到期告警（遵守冷却） |
 | POST | `/api/actions/:action` | `validate` `doctor` `plan` `apply` |
 
 所有非 GET 请求必须带 `x-uui-csrf` 头，值与 `uui_csrf` Cookie 相同（双提交）。
@@ -103,6 +106,6 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 ## 7. 阶段
 
-- **已完成**：登录与双角色、概览、入站 CRUD（xray + sing-box）、入站级客户端、用户 CRUD、内核启停与开关、流量采集与同步、日志查看、**nginx 站点/反代管理与测试重载**、**拓扑视图**、**审计日志**、设置表单、原始配置编辑、四个操作按钮。
-- 后续：更细的权限矩阵、告警与通知。
+- **已完成**：登录与双角色、概览、入站 CRUD（xray + sing-box）、入站级客户端、用户 CRUD、内核启停与开关、流量采集与同步、日志查看、nginx 站点/反代管理与测试重载、拓扑视图、审计日志、**告警与通知**、设置表单、原始配置编辑、四个操作按钮。
+- 后续：更细的权限矩阵、告警静默窗口、多通道分组。
   

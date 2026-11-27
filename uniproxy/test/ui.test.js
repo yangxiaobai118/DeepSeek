@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { startUi } from '../src/ui/server.js';
 import { parseXrayStatNames, parseClashConnections, mergeUsage } from '../src/stats.js';
+import { shouldSend, markSent, alertsFromDoctor, alertsFromPorts } from '../src/alerts.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -233,6 +234,49 @@ test('u-ui: nginx management and viewer role', async function () {
     const auditJson = await audit.json();
     assert.ok(auditJson.entries.length > 0);
     assert.ok(auditJson.entries.some(function (e) { return e.action === 'nginx.update'; }));
+  } finally {
+    await inst.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
+test('alerts: cooldown, doctor findings and port conflicts', function () {
+  const now = Date.parse('2027-01-01T00:00:00Z');
+  const state = {};
+  assert.equal(shouldSend(state, 'k', now, 3600000), true);
+  markSent(state, 'k', now);
+  assert.equal(shouldSend(state, 'k', now + 1000, 3600000), false);
+  assert.equal(shouldSend(state, 'k', now + 3600000, 3600000), true);
+
+  const report = { results: [
+    { level: 'ok', title: 'config', detail: '' },
+    { level: 'warn', title: 'domains', detail: 'still example' },
+    { level: 'fail', title: 'server.publicIp', detail: 'placeholder' },
+  ] };
+  const fromDoctor = alertsFromDoctor(report);
+  assert.equal(fromDoctor.length, 2);
+  assert.equal(fromDoctor[1].level, 'fail');
+
+  const ports = alertsFromPorts({ ports: {}, panels: {}, nginx: { mode: 'http', sites: [] }, xray: { inbounds: [], stats: false }, singbox: { inbounds: [], clashApi: false } });
+  assert.ok(Array.isArray(ports));
+});
+
+test('u-ui: alerts endpoints', async function () {
+  const ctx = setup();
+  const inst = await startUi(ctx.cfgPath, 0, { password: 'secret' });
+  try {
+    const auth = await login(inst);
+    const list = await fetch(inst.url + '/api/alerts', { headers: { cookie: auth.cookie } });
+    assert.equal(list.status, 200);
+    const listJson = await list.json();
+    assert.ok(Array.isArray(listJson.alerts));
+    assert.equal(typeof listJson.channels.webhook, 'boolean');
+
+    const sent = await fetch(inst.url + '/api/alerts/notify', { method: 'POST', headers: { cookie: auth.cookie, 'x-uui-csrf': auth.csrf, 'content-type': 'application/json' }, body: '{}' });
+    assert.equal(sent.status, 200);
+    const sentJson = await sent.json();
+    assert.equal(typeof sentJson.sent, 'number');
+    assert.equal(typeof sentJson.skipped, 'number');
   } finally {
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });

@@ -8,6 +8,7 @@ import { generateXray } from './generators/xray.js';
 import { generateSingbox } from './generators/singbox.js';
 import { generateNginx } from './generators/nginx.js';
 import { generateLinkRecords, generateLinks } from './generators/links.js';
+import { collectAlerts, notify, loadState } from './alerts.js';
 import { buildSubscriptions } from './subscribe.js';
 import { resolveUsers, formatUsersTable } from './users.js';
 import { runDoctor, formatDoctor } from './doctor.js';
@@ -29,6 +30,7 @@ function usage() {
     '  uniproxy subscribe -c <config.json>            print per-client subscription URLs',
     '  uniproxy users     -c <config.json>            list registry users, quotas and expiry',
     '  uniproxy doctor    -c <config.json>            pre-flight diagnostics',
+    '  uniproxy alerts    -c <config.json> [--notify]  list alerts; --notify pushes due ones',
     '  uniproxy apply     -c <config.json> [--yes]    validate, install and reload services',
     '  uniproxy serve     -c <config.json> [-p 8787]  start the dashboard + subscription server',
     '  uniproxy ui        -c <config.json> [-p 8788]  start the u-ui management panel',
@@ -399,6 +401,22 @@ function cmdApply(args) {
   if (result.failed) process.exit(1);
 }
 
+async function cmdAlerts(args) {
+  const loaded = loadConfig(args.config || 'config.json');
+  const alerts = collectAlerts(loaded.config, loaded.path);
+  if (args.json) {
+    console.log(JSON.stringify(alerts, null, 2));
+    return;
+  }
+  if (!alerts.length) console.log('no alerts');
+  for (const a of alerts) console.log(a.level.toUpperCase() + '  ' + a.title + '  ' + a.detail);
+  if (args._.includes('--notify')) {
+    const stateFile = loaded.path + '.alerts-state.json';
+    const result = await notify(loaded.config, alerts, { state: loadState(stateFile), stateFile: stateFile });
+    console.log('notify: sent=' + result.sent + ' skipped=' + result.skipped + (result.errors.length ? ' errors=' + result.errors.join('; ') : ''));
+  }
+}
+
 async function cmdServe(args) {
   const mod = await import('./server.js');
   const loaded = loadConfig(args.config || 'config.json');
@@ -428,6 +446,7 @@ async function main() {
     else if (cmd === 'subscribe') cmdSubscribe(args);
     else if (cmd === 'users') cmdUsers(args);
     else if (cmd === 'doctor') cmdDoctor(args);
+    else if (cmd === 'alerts') await cmdAlerts(args);
     else if (cmd === 'apply') cmdApply(args);
     else if (cmd === 'serve') await cmdServe(args);
     else if (cmd === 'ui') await cmdUi(args);

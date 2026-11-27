@@ -44,6 +44,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <button data-tab="actions">操作</button>
 <button data-tab="settings">设置</button>
 <button data-tab="audit">审计</button>
+<button data-tab="alerts">告警</button>
 </nav><span id="roleBadge" class="muted"></span><a href="/logout">退出</a></header>
 <main>
 <section id="tab-overview" class="on">
@@ -111,6 +112,11 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 </section>
 <section id="tab-audit">
   <div class="card"><h2>审计日志（最近 200 条）</h2><div id="auditTable"></div></div>
+</section>
+<section id="tab-alerts">
+  <div class="card"><h2>当前告警</h2><div id="alertList"></div>
+  <div class="row" style="margin-top:10px"><button class="act" id="notifyAlerts">检查并推送</button><span id="alertMsg" class="muted"></span></div>
+  <div class="muted" id="alertChannels" style="margin-top:8px"></div></div>
 </section>
 </main>
 <script>
@@ -333,6 +339,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     if (btn.dataset.tab === 'nginx') loadNginx();
     if (btn.dataset.tab === 'topology') renderTopology();
     if (btn.dataset.tab === 'audit') loadAudit();
+    if (btn.dataset.tab === 'alerts') loadAlerts();
   };
 });
 async function openClients(kind, tag) {
@@ -533,6 +540,28 @@ async function loadAudit() {
     ? '<table><thead><tr><th>时间</th><th>动作</th><th>详情</th></tr></thead><tbody>' + rows.slice().reverse().map(function (x) { return '<tr><td>' + h(x.ts) + '</td><td>' + h(x.action) + '</td><td>' + h(x.detail) + '</td></tr>'; }).join('') + '</tbody></table>'
     : '<div class="muted">还没有记录</div>';
 }
+
+async function loadAlerts() {
+  const r = await api('GET', '/api/alerts');
+  const alerts = (r.data && r.data.alerts) || [];
+  document.getElementById('alertList').innerHTML = alerts.length
+    ? '<table><thead><tr><th>级别</th><th>问题</th><th>详情</th></tr></thead><tbody>' +
+      alerts.map(function (a) { return '<tr><td class="' + (a.level === 'fail' ? 'err' : 'warn') + '">' + h(a.level) + '</td><td>' + h(a.title) + '</td><td>' + h(a.detail) + '</td></tr>'; }).join('') + '</tbody></table>'
+    : '<div class="ok">没有告警</div>';
+  const ch = (r.data && r.data.channels) || {};
+  document.getElementById('alertChannels').textContent = '通道：webhook ' + (ch.webhook ? '已配置' : '未配置') + '，command ' + (ch.command ? '已配置' : '未配置') + '；冷却 ' + ((r.data && r.data.cooldownHours) || 12) + ' 小时';
+}
+
+document.getElementById('notifyAlerts').onclick = async function () {
+  const msg = document.getElementById('alertMsg');
+  const r = await api('POST', '/api/alerts/notify');
+  if (r.status === 200) {
+    const errs = (r.data && r.data.errors) || [];
+    msg.textContent = '发送 ' + r.data.sent + '，跳过 ' + r.data.skipped + (errs.length ? '，错误：' + errs.join('; ') : '');
+    msg.className = errs.length ? 'err' : 'ok';
+  } else { msg.textContent = r.data.error || '失败'; msg.className = 'err'; }
+  await loadAlerts();
+};
 
 refresh();
 </script></body></html>

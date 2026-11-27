@@ -30,6 +30,10 @@
   test/reload to `config.json.audit.log` and show the tail in the panel.
 - u-ui roles: `ui.password` is admin and `ui.viewerPassword` is read-only;
   viewer sessions get 403 on every mutation.
+- alerts: `uniproxy alerts` (and the u-ui alert tab) collects doctor findings,
+  port conflicts and inactive cores, then pushes due ones to `alerts.webhook`
+  (JSON POST) and/or `alerts.command` (text in `UNIPROXY_ALERT_TEXT`), with a
+  per-alert cooldown stored in `config.json.alerts-state.json`.
 
 ### Fixed
 

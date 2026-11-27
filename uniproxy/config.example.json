@@ -63,6 +63,13 @@
       "blockDomains": []
     }
   },
+  "alerts": {
+    "enabled": true,
+    "webhook": "",
+    "command": "",
+    "cooldownHours": 12,
+    "checkCores": true
+  },
   "users": [],
   "xray": {
     "enabled": true,

@@ -31,6 +31,7 @@
     "doctor": "node src/index.js doctor -c config.json",
     "apply": "node src/index.js apply -c config.json",
     "users": "node src/index.js users -c config.json",
+    "alerts": "node src/index.js alerts -c config.json",
     "pack:platforms": "node scripts/package.mjs --out dist",
     "build:sea": "node scripts/build-sea.mjs --out bin"
   }

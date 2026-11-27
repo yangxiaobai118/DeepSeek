@@ -9,6 +9,7 @@ import { resolveUsers, deriveUuid, derivePassword } from '../users.js';
 import { collectStats, combineStats, mergeUsage } from '../stats.js';
 import { collectLogs, logSources } from '../logs.js';
 import { generateNginx } from '../generators/nginx.js';
+import { collectAlerts, notify, loadState } from '../alerts.js';
 import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
 import { buildPlan, formatPlan, applyPlan } from '../apply.js';
@@ -118,6 +119,9 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     }
     if (url.pathname === '/api/nginx/test' && req.method === 'POST') return nginxTest(res, abs);
     if (url.pathname === '/api/nginx/reload' && req.method === 'POST') return nginxReload(res, abs);
+
+    if (url.pathname === '/api/alerts' && req.method === 'GET') return getAlerts(res, abs);
+    if (url.pathname === '/api/alerts/notify' && req.method === 'POST') return await notifyAlerts(res, abs);
 
     if (url.pathname === '/api/audit' && req.method === 'GET') {
       return json(res, 200, { entries: readAudit(abs, Number(url.searchParams.get('limit') || 200)) });
@@ -699,6 +703,25 @@ function nginxReload(res, cfgPath) {
   const result = runCmd(cmd);
   record(cfgPath, 'nginx.reload', result.ok ? 'ok' : 'failed');
   return json(res, result.ok ? 200 : 500, { ok: result.ok, output: result.output, error: result.error });
+}
+
+function getAlerts(res, cfgPath) {
+  const c = derive(readRaw(cfgPath));
+  const alerts = collectAlerts(c, cfgPath);
+  return json(res, 200, {
+    alerts: alerts,
+    channels: { webhook: Boolean(c.alerts && c.alerts.webhook), command: Boolean(c.alerts && c.alerts.command) },
+    cooldownHours: (c.alerts && c.alerts.cooldownHours) || 12,
+  });
+}
+
+async function notifyAlerts(res, cfgPath) {
+  const c = derive(readRaw(cfgPath));
+  const alerts = collectAlerts(c, cfgPath);
+  const stateFile = cfgPath + '.alerts-state.json';
+  const result = await notify(c, alerts, { state: loadState(stateFile), stateFile: stateFile });
+  record(cfgPath, 'alerts.notify', 'sent=' + result.sent + ' skipped=' + result.skipped);
+  return json(res, 200, Object.assign({ alerts: alerts }, result));
 }
 
 function record(cfgPath, action, detail) {

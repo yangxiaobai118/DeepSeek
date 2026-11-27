@@ -78,6 +78,17 @@ function stage(entry, stageRoot) {
     path.join(dir, 'uniproxy.cmd'),
     ['@echo off', 'setlocal', 'node "%~dp0src\\index.js" %*', ''].join('\r\n'),
   );
+  const shellUi = [
+    '#!/bin/sh',
+    '# u-ui launcher - opens the terminal menu',
+    'DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)',
+    'exec node "$DIR/src/u-ui.js" "$@"',
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(dir, 'u-ui'), shellUi);
+  fs.chmodSync(path.join(dir, 'u-ui'), 0o755);
+  fs.writeFileSync(path.join(dir, 'u-ui.cmd'), ['@echo off', 'setlocal', 'node "%~dp0src\\u-ui.js" %*', ''].join('\r\n'));
+
   fs.writeFileSync(
     path.join(dir, 'uniproxy.ps1'),
     ['#!/usr/bin/env pwsh', '$here = Split-Path -Parent $MyInvocation.MyCommand.Path', 'node (Join-Path $here "src/index.js") @args', ''].join('\n'),

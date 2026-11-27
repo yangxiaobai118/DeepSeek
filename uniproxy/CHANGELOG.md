@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.2
+
+### Added
+
+- `u-ui` command: the terminal menu is now also installed as its own binary, so
+  `u-ui` (or `uniproxy menu`) opens it directly; release bundles ship `u-ui` and
+  `u-ui.cmd` launchers next to `uniproxy`.
+- menu service section: install and remove the `uniproxy-ui` and
+  `uniproxy-sub` systemd units from the menu, then start / enable them without
+  hand-writing unit files.
+
 ## 0.4.1
 
 ### Added

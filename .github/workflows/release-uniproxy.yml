@@ -164,7 +164,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          gh release upload "uniproxy-v$VERSION" bin/* --clobber
+          for attempt in 1 2 3; do
+            if gh release upload "uniproxy-v$VERSION" bin/* --clobber; then
+              exit 0
+            fi
+            echo "upload attempt $attempt failed; retrying in 10s"
+            sleep 10
+          done
+          exit 1
 
   docs:
     name: manuals

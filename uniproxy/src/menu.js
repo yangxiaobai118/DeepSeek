@@ -50,7 +50,19 @@ function run(command) {
 function unitState(unit) {
   const res = run('systemctl is-active ' + unit);
   if (res.error) return 'unknown';
-  return res.output || 'unknown';
+  const text = String(res.output || '').trim();
+  if (!text) return 'unknown';
+  if (/failed to|no such file|not-found/i.test(text)) return 'not-found';
+  const first = text.split('\n')[0].trim();
+  return first || 'unknown';
+}
+
+function unitEnabled(unit) {
+  const res = run('systemctl is-enabled ' + unit);
+  if (res.error) return 'unknown';
+  const text = String(res.output || '').trim();
+  if (!text || /failed to get unit file state|no such file|not-found/i.test(text)) return 'not-found';
+  return text.split('\n')[0].trim();
 }
 
 /** Terminal columns used by one code point: CJK and fullwidth forms take 2. */
@@ -98,9 +110,11 @@ export function box(title, lines) {
 }
 
 function colorState(value) {
-  const text = String(value || 'unknown');
+  let text = String(value || 'unknown');
+  if (text === 'not-found') text = '未安装';
   if (/^(active|enabled|running)/.test(text)) return GREEN + text + RESET;
-  if (/^(inactive|failed|disabled|unknown)/.test(text)) return RED + text + RESET;
+  if (/^(not installed|未安装|activating|deactivating|reloading|unknown|static|masked|indirect)/.test(text)) return YELLOW + text + RESET;
+  if (/^(inactive|failed|disabled)/.test(text)) return RED + text + RESET;
   return text;
 }
 
@@ -129,9 +143,9 @@ export function renderMenu(ctx) {
   let cfg = null;
   try { cfg = readCfg(ctx.configPath).config; } catch (e) { /* unreadable config */ }
   const uiState = unitState(UI_UNIT);
-  const coreLine = Object.keys(CORE_UNITS).map(function (k) { return CORE_UNITS[k] + ': ' + unitState(CORE_UNITS[k]); }).join('   ');
+  const coreLine = Object.keys(CORE_UNITS).map(function (k) { return CORE_UNITS[k] + ': ' + colorState(unitState(CORE_UNITS[k])); }).join('   ');
   const footer = [
-    '面板状态: ' + colorState(uiState) + '   开机自启: ' + colorState(run('systemctl is-enabled ' + UI_UNIT).output || 'unknown'),
+    '面板状态: ' + colorState(uiState) + '   开机自启: ' + colorState(unitEnabled(UI_UNIT)),
     '配置文件: ' + (cfg ? ctx.configPath : '(读取失败)'),
     coreLine,
   ];
@@ -324,6 +338,8 @@ export async function uninstallSystem(ctx) {
   }
   try { fs.rmSync(p.prefix, { recursive: true, force: true }); } catch (e) { /* missing */ }
   ctx.io.print('已卸载程序与 unit；配置目录 ' + path.dirname(configPath) + ' 保留（需要时手动删除）');
+  ctx.io.print('uniproxy 已卸载，菜单退出');
+  ctx.quit = true;
 }
 
 /** Where the service should point: a node script needs the interpreter in front. */
@@ -579,8 +595,14 @@ function defaultIO() {
 
 export async function runMenu(options = {}) {
   const pause = options.pause !== false;
+  let configPath = options.configPath || 'config.json';
+  if (!fs.existsSync(configPath)) {
+    const etc = process.env.UNIPROXY_ETC_DIR || '/etc/uniproxy';
+    const installed = path.join(etc, 'config.json');
+    if (fs.existsSync(installed)) configPath = installed;
+  }
   const ctx = {
-    configPath: options.configPath || 'config.json',
+    configPath: configPath,
     io: options.io || defaultIO(),
   };
   const items = buildMenu(ctx).reduce(function (acc, s) { return acc.concat(s.items); }, []);
@@ -594,6 +616,10 @@ export async function runMenu(options = {}) {
       await item.run();
     } catch (e) {
       ctx.io.print('执行失败: ' + e.message);
+    }
+    if (ctx.quit) {
+      if (ctx.io.close) ctx.io.close();
+      return;
     }
     if (pause && answer !== '0') {
       ctx.io.print('\n' + YELLOW + '按回车返回主菜单' + RESET);

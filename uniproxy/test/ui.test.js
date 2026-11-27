@@ -638,6 +638,37 @@ test('menu: pauses after an action until Enter', async function () {
   fs.rmSync(ctx.dir, { recursive: true, force: true });
 });
 
+test('menu: uninstall exits instead of pausing', async function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'menu-exit-'));
+  const keys = ['UNIPROXY_PREFIX', 'UNIPROXY_BIN_DIR', 'UNIPROXY_ETC_DIR', 'UNIPROXY_UNIT_DIR'];
+  const saved = {};
+  for (const k of keys) saved[k] = process.env[k];
+  process.env.UNIPROXY_PREFIX = path.join(dir, 'prefix');
+  process.env.UNIPROXY_BIN_DIR = path.join(dir, 'bin');
+  process.env.UNIPROXY_ETC_DIR = path.join(dir, 'etc');
+  process.env.UNIPROXY_UNIT_DIR = path.join(dir, 'units');
+  const printed = [];
+  const answers = ['2'];
+  try {
+    fs.mkdirSync(path.join(dir, 'prefix'), { recursive: true });
+    fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'bin', 'uniproxy'), 'x');
+    fs.writeFileSync(path.join(dir, 'bin', 'u-ui'), 'x');
+    fs.mkdirSync(path.join(dir, 'units'), { recursive: true });
+    await runMenu({
+      configPath: path.join(dir, 'etc', 'config.json'),
+      io: { print: function (s) { printed.push(String(s)); }, question: async function () { return answers.length ? answers.shift() : '0'; } },
+    });
+    const text = printed.join('\n');
+    assert.ok(text.includes('菜单退出'));
+    assert.ok(!text.includes('按回车返回主菜单'));
+    assert.equal(fs.existsSync(path.join(dir, 'prefix')), false);
+  } finally {
+    for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('menu: installPlan for a SEA binary ships the executable, not the source tree', function () {
   const plan = installPlan({ prefix: '/opt/uniproxy', binDir: '/usr/local/bin', etcDir: '/etc/uniproxy', unitDir: '/etc/systemd/system', sea: true });
   assert.equal(plan.binary, process.execPath);

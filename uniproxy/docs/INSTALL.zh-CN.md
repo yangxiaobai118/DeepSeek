@@ -240,6 +240,41 @@ uniproxy 只负责“生成配置并下发”，实际代理流量由 Xray / sin
 
 > **目录说明**：本节命令在步骤 2 结束的 `/tmp` 下执行。3.1（Xray）与 3.3（nginx）使用绝对路径，不依赖当前目录；3.2（sing-box）会显式 `cd /tmp`，执行后仍停留在 `/tmp`。
 
+### 3.0 已经装过？先自检（可整节跳过）
+
+如果服务器上已经有 Xray / sing-box / nginx，**不用重装，也不要把它们放进 `/tmp`**。uniproxy 从不读取 `/tmp` 里的二进制：
+
+- 按 **PATH** 调用 `xray` / `sing-box` / `nginx`（`xray run -test`、`sing-box check`、`nginx -t`）；
+- 按 **systemd 单元名**重启/重载服务（`xray` / `sing-box` / `nginx`）。
+
+所以只要这三个命令在当前 shell 里能执行、三个服务是 active，uniproxy 就会直接接管，不需要你改任何东西。先确认：
+
+```bash
+xray version; sing-box version; nginx -v
+```
+
+```bash
+systemctl is-active xray sing-box nginx
+```
+
+- 三条版本都打印、服务都是 `active` → **跳过 3.1–3.3，直接做步骤 4**。
+- 某个命令 `command not found` → 把二进制放进 `/usr/local/bin`，或建软链（把 `/opt/xray/xray` 换成你的实际路径）：
+
+```bash
+ln -s /opt/xray/xray /usr/local/bin/xray
+```
+
+- 服务名不是默认的（比如叫 `my-xray`）→ 在 `config.json` 里覆盖命令：
+
+```json
+"apply": {
+  "validate": { "xray": "/opt/xray/xray run -test -c {file}" },
+  "reload":   { "xray": "systemctl restart my-xray" }
+}
+```
+
+> **缺失会怎样**：`apply` 会先对生成的配置跑校验命令（`xray run -test` / `sing-box check` / `nginx -t`）；**命令不存在则校验失败，`apply` 直接中止，此时还没有写入任何文件**。所以自检不过就先别跑 `apply`；确实暂时缺某个校验器，可以用 `--skip-validate`（不推荐）。
+
 ### 3.1 Xray-core
 
 本步与当前目录无关（安装脚本内部使用绝对路径），执行后仍停留在 `/tmp`。

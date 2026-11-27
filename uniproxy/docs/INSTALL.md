@@ -237,6 +237,41 @@ uniproxy only generates and installs configuration; Xray and sing-box carry prox
 
 > **Directory note**: this section runs in `/tmp`, where step 2 left you. 3.1 (Xray) and 3.3 (nginx) use absolute paths and do not depend on the current directory; 3.2 (sing-box) runs `cd /tmp` explicitly and leaves you there.
 
+### 3.0 Already installed? Check first (this whole section can be skipped)
+
+If Xray / sing-box / nginx are already on the server, **do not reinstall them and do not move them into `/tmp`**. uniproxy never reads binaries from `/tmp`:
+
+- it calls `xray` / `sing-box` / `nginx` through **PATH** (`xray run -test`, `sing-box check`, `nginx -t`);
+- it restarts/reloads services by **systemd unit name** (`xray` / `sing-box` / `nginx`).
+
+So as long as the three commands run in your shell and the three units are active, uniproxy takes them over with no extra configuration. Check first:
+
+```bash
+xray version; sing-box version; nginx -v
+```
+
+```bash
+systemctl is-active xray sing-box nginx
+```
+
+- All three versions print and all units are `active` → **skip 3.1-3.3 and go straight to step 4**.
+- A command is `command not found` → put the binary in `/usr/local/bin`, or link it (replace `/opt/xray/xray` with your real path):
+
+```bash
+ln -s /opt/xray/xray /usr/local/bin/xray
+```
+
+- The unit name differs from the default (for example `my-xray`) → override the commands in `config.json`:
+
+```json
+"apply": {
+  "validate": { "xray": "/opt/xray/xray run -test -c {file}" },
+  "reload":   { "xray": "systemctl restart my-xray" }
+}
+```
+
+> **What happens when something is missing**: `apply` first runs the validators against the generated configs (`xray run -test` / `sing-box check` / `nginx -t`); **if a command does not exist the validation fails and `apply` aborts before writing any file**. So do not run `apply` until the checks above pass; if you deliberately have no validator, `--skip-validate` exists but is not recommended.
+
 ### 3.1 Xray-core
 
 This step does not depend on the current directory (the installer uses absolute paths) and leaves you in `/tmp`.

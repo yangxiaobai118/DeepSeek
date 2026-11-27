@@ -588,7 +588,7 @@ test('version: source checkout reports the package version', function () {
 test('menu: renders the boxed sections and exits cleanly', async function () {
   const ctx = setup();
   const printed = [];
-  const answers = ['1', '8', '99', '0'];
+  const answers = ['5', '99', '0'];
   const io = {
     print: function (s) { printed.push(String(s)); },
     question: async function () { return answers.length ? answers.shift() : '0'; },
@@ -596,13 +596,13 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
   await runMenu({ configPath: ctx.cfgPath, io: io, pause: false });
   const text = printed.join('\n');
   assert.ok(text.includes('u-ui · uniproxy'));
-  assert.ok(text.includes('U. 更新到最新版本'));
+  assert.ok(text.includes('4. 更新到最新版本 (Update)'));
   assert.ok(text.includes('0. 退出菜单'));
-  assert.ok(text.includes('17. 校验配置 (Validate Config)'));
-  assert.ok(text.includes('31. 安装/升级 xray (Install / Upgrade Xray)'));
-  assert.ok(text.includes('36. 申请 / 续期证书 (Issue / Renew Cert)'));
-  assert.ok(text.includes('25. 停止 xray (Stop Xray)'));
-  assert.ok(text.includes('28. 启动 xray (Start Xray)'));
+  assert.ok(text.includes('19. 校验配置 (Validate Config)'));
+  assert.ok(text.includes('33. 安装/升级 xray (Install / Upgrade Xray)'));
+  assert.ok(text.includes('38. 申请 / 续期证书 (Issue / Renew Cert)'));
+  assert.ok(text.includes('27. 停止 xray (Stop Xray)'));
+  assert.ok(text.includes('30. 启动 xray (Start Xray)'));
   assert.ok(text.includes('无效选项: 99'));
   assert.ok(text.includes('已退出'));
   fs.rmSync(ctx.dir, { recursive: true, force: true });
@@ -611,7 +611,7 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
 test('menu: settings flags a placeholder public IP', async function () {
   const ctx = setup();
   const printed = [];
-  const answers = ['4', '', '0'];
+  const answers = ['5', '', '0'];
   const io = {
     print: function (s) { printed.push(String(s)); },
     question: async function () { return answers.length ? answers.shift() : '0'; },
@@ -627,7 +627,7 @@ test('menu: box helper and section count', function () {
   const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
   const sections = buildMenu(ctx);
   assert.equal(sections.length, 6);
-  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 41);
+  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 40);
   const rendered = box('面板', ['0. 退出菜单']);
   assert.ok(rendered.startsWith('┌─ 面板'));
   assert.ok(rendered.includes('│ 0. 退出菜单'));
@@ -698,7 +698,7 @@ test('menu: core install stops without root', async function () {
 
 test('menu: changes the u-ui base path', async function () {
   const ctx = setup();
-  const answers = ['B', '/panel/', '', '0'];
+  const answers = ['7', '/panel/', '', '0'];
   const printed = [];
   const io = {
     print: function (s) { printed.push(String(s)); },
@@ -714,7 +714,7 @@ test('menu: changes the u-ui base path', async function () {
 test('menu: pauses after an action until Enter', async function () {
   const ctx = setup();
   const printed = [];
-  const answers = ['13', '', '0'];
+  const answers = ['15', '', '0'];
   const io = {
     print: function (s) { printed.push(String(s)); },
     question: async function () { return answers.length ? answers.shift() : '0'; },

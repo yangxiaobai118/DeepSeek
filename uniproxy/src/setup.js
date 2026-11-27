@@ -218,7 +218,7 @@ export async function runSetup(opts = {}) {
 
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
   const synced = syncUnitPorts({ uiPort: cfg.ui.port, subPort: cfg.subscription.port });
-  let panelState = '未安装 systemd 单元（菜单 8 安装）';
+  let panelState = '未安装 systemd 单元（菜单 10 安装）';
   const unitFile = path.join(process.env.UNIPROXY_UNIT_DIR || '/etc/systemd/system', 'uniproxy-ui.service');
   if (fs.existsSync(unitFile) && (typeof process.getuid !== 'function' || process.getuid() === 0)) {
     const restarted = spawnSync('systemctl', ['restart', 'uniproxy-ui'], { timeout: 30000, encoding: 'utf8' });

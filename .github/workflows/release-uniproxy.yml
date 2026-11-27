@@ -34,7 +34,17 @@ jobs:
         run: |
           sh -n install.sh
           UNIPROXY_DRY_RUN=1 UNIPROXY_VERSION="$(node -p "require('./package.json').version")" sh install.sh
-          UNIPROXY_PROGRESS_TEST=1 sh install.sh
+          UNIPROXY_PROGRESS_TEST=1 sh install.sh > /tmp/bar.out 2>&1
+          if ! grep -q "$(printf '\033')" /tmp/bar.out; then
+            echo "progress bar did not emit ANSI color codes" >&2
+            cat /tmp/bar.out >&2
+            exit 1
+          fi
+          if grep -qi 'no such file' /tmp/bar.out; then
+            echo "progress bar printed a missing-file error" >&2
+            cat /tmp/bar.out >&2
+            exit 1
+          fi
 
       - name: Resolve package version and tag
         id: meta

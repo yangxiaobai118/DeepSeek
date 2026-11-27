@@ -12,6 +12,7 @@ import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
 import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup, pruneBackups } from '../src/backups.js';
 import { runMenu, renderMenu, box, buildMenu, unitFiles, installSystem, installPlan, uninstallSystem } from '../src/menu.js';
 import { randomPassword, randomPort, runSetup } from '../src/setup.js';
+import { generateNginx } from '../src/generators/nginx.js';
 import { verifyPassword } from '../src/auth.js';
 import { version } from '../src/version.js';
 import { syncUnitPorts } from '../src/units.js';
@@ -789,6 +790,36 @@ test('setup: derives panel hostnames into certificate SANs', async function () {
   }
 });
 
+test('setup: u-ui domain without x-ui/s-ui panels', async function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-uui-'));
+  const cfgPath = path.join(dir, 'config.json');
+  const example = JSON.parse(fs.readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'));
+  fs.writeFileSync(cfgPath, JSON.stringify(example, null, 2));
+  const answers = ['example.net', 'n', 'panel.example.net', '203.0.113.9', '8788', '8787', 'admin', '', 'ops@example.net'];
+  try {
+    await runSetup({
+      configPath: cfgPath,
+      detectIp: false,
+      io: { print: function () {}, question: async function () { return answers.length ? answers.shift() : ''; } },
+    });
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    assert.equal(cfg.ui.domain, 'panel.example.net');
+    assert.equal(cfg.panels.xui.enabled, false);
+    assert.equal(cfg.panels.sui.enabled, false);
+    assert.ok(cfg.certs.domains.includes('example.net'));
+    assert.ok(cfg.certs.domains.includes('panel.example.net'));
+    assert.ok(cfg.certs.domains.includes('sb.example.net'));
+    assert.ok(!cfg.certs.domains.includes('xui.example.net'));
+    const nginx = generateNginx(cfg);
+    assert.ok(nginx.includes('server_name panel.example.net;'));
+    assert.ok(nginx.includes('proxy_pass http://127.0.0.1:8788;'));
+    assert.ok(nginx.includes('panel.example.net  127.0.0.1:8443;'));
+    assert.ok(!nginx.includes('xui.example.net'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('setup: random password and port generators', function () {
   const a = randomPassword();
   const b = randomPassword();
@@ -805,7 +836,7 @@ test('setup: asks for the domain, randomises the rest', async function () {
   raw.ui = {};
   fs.writeFileSync(ctx.cfgPath, JSON.stringify(raw, null, 2));
 
-  const answers = ['example.org', '', '', '', '203.0.113.7', 'r', 'r', 'admin', '', 'ops@example.org'];
+  const answers = ['example.org', '', '', '', '', '', '203.0.113.7', 'r', 'r', 'admin', '', 'ops@example.org'];
   const printed = [];
   const io = {
     print: function (s) { printed.push(String(s)); },
@@ -819,7 +850,9 @@ test('setup: asks for the domain, randomises the rest', async function () {
   assert.equal(cfg.panels.xui.domain, 'xui.example.org');
   assert.equal(cfg.panels.sui.domain, 'sui.example.org');
   assert.equal(cfg.panels.sui.sub.domain, 'sub.example.org');
+  assert.equal(cfg.ui.domain, 'uui.example.org');
   assert.ok(cfg.certs.domains.includes('xui.example.org'));
+  assert.ok(cfg.certs.domains.includes('uui.example.org'));
   assert.equal(cfg.server.publicIp, '203.0.113.7');
   assert.ok(cfg.ui.port >= 40000 && cfg.ui.port < 60000);
   assert.ok(cfg.subscription.port >= 40000 && cfg.subscription.port < 60000);

@@ -109,6 +109,30 @@ export function generateNginx(c) {
     // on port 80 for the certificate in server.cert.
   }
 
+  if (c.ui && c.ui.domain) {
+    const uiPort = (c.ui && c.ui.port) || 8788;
+    w('    # ---- u-ui panel: ' + c.ui.domain + ' -> 127.0.0.1:' + uiPort + ' ----');
+    w('    server {');
+    for (const line of listenLines()) w(line);
+    w('        server_name ' + c.ui.domain + ';');
+    for (const line of tlsLines()) w(line);
+    for (const line of securityHeaders()) w(line);
+    w('        location / {');
+    w('            proxy_pass http://127.0.0.1:' + uiPort + ';');
+    w('            proxy_http_version 1.1;');
+    w('            proxy_set_header Host $host;');
+    w('            proxy_set_header X-Real-IP $remote_addr;');
+    w('            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;');
+    w('            proxy_set_header X-Forwarded-Proto $scheme;');
+    w('            proxy_set_header Upgrade $http_upgrade;');
+    w('            proxy_set_header Connection $connection_upgrade;');
+    w('            proxy_read_timeout 3600s;');
+    w('            proxy_buffering off;');
+    w('        }');
+    w('    }');
+    w('');
+  }
+
   for (const site of nginx.sites || []) {
     w('    # ---- website: ' + site.serverName + ' ----');
     w('    server {');
@@ -199,6 +223,7 @@ export function generateNginx(c) {
 
   if (mode === 'stream') {
     const routes = new Map();
+    if (c.ui && c.ui.domain) routes.set(c.ui.domain, '127.0.0.1:' + ports.nginxInternalTls);
     for (const site of nginx.sites || []) {
       routes.set(site.serverName, '127.0.0.1:' + ports.nginxInternalTls);
     }

@@ -437,7 +437,11 @@ function showSettings(ctx) {
     const subPort = sub.port || 8787;
     const subBase = sub.publicBase ? String(sub.publicBase).replace(/\/+$/, '') : ('http://' + (c.server.publicIp || '<server-ip>') + ':' + subPort);
     const siteNames = (c.nginx.sites || []).map(function (s) { return s.serverName; }).filter(Boolean).join(', ') || '(未设置)';
-    const panelNames = [c.panels.xui && c.panels.xui.domain, c.panels.sui && c.panels.sui.domain, c.panels.sui && c.panels.sui.sub && c.panels.sui.sub.domain].filter(Boolean).join(', ') || '(未设置)';
+    const panelNames = [
+      c.panels.xui && c.panels.xui.enabled !== false ? c.panels.xui.domain : '',
+      c.panels.sui && c.panels.sui.enabled !== false ? c.panels.sui.domain : '',
+      c.panels.sui && c.panels.sui.enabled !== false && c.panels.sui.sub && c.panels.sui.sub.enabled !== false ? c.panels.sui.sub.domain : '',
+    ].filter(Boolean).join(', ') || '(未启用)';
     const apply = c.apply || {};
     const certLine = cert.ok
       ? (cert.file + '（剩余 ' + cert.daysLeft + ' 天；SAN: ' + (cert.sans || '-') + '）')
@@ -456,6 +460,7 @@ function showSettings(ctx) {
       '管理员密码: ' + (admins.some(function (u) { return u.hash; }) ? '已设置（scrypt 哈希）' : ((ui.password || ui.viewerPassword) ? '使用旧版明文密码，建议重置' : '未设置')),
       '公网 IP: ' + ipLine,
       '域名: ' + ((c.server.domains && c.server.domains.web) || '(未设置)'),
+      'u-ui 域名: ' + ((ui.domain) || '未设置（仅 SSH 隧道）'),
       '证书: ' + certLine,
       '订阅服务: ' + (sub.enabled ? (subBase + (sub.basePath || '/sub/') + '（' + users.length + ' 个用户）') : '未启用'),
       'nginx: ' + c.nginx.mode + '，站点: ' + siteNames + '；面板: ' + panelNames,

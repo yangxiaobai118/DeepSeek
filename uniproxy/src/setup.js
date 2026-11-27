@@ -77,7 +77,7 @@ export async function runSetup(opts = {}) {
   const domain = flags.domain != null ? flags.domain : await ask('域名（如 example.com；回车=仅 IP，不使用域名）', domainHint);
   if (domain) applyDomain(cfg, domain);
 
-  // 2. panel / subscription hostnames: defaults derive from the domain, r = random prefix
+  // 2. u-ui hostname + whether the x-ui / s-ui panels are still proxied
   if (domain) {
     const askHost = async function (question, fallback) {
       const value = (await ask(question, fallback)).trim();
@@ -96,25 +96,59 @@ export async function runSetup(opts = {}) {
     cfg.panels.xui = cfg.panels.xui || { enabled: true };
     cfg.panels.sui = cfg.panels.sui || { enabled: true };
     cfg.panels.sui.sub = cfg.panels.sui.sub || { enabled: true };
+
+    let panelsInUse = Boolean(cfg.panels.xui.enabled !== false || cfg.panels.sui.enabled !== false);
+    if (!yes) {
+      const keep = String(await ask('是否继续接入 x-ui / s-ui 面板（n = 只用 u-ui）', panelsInUse ? 'y' : 'n')).trim().toLowerCase();
+      panelsInUse = keep === 'y' || keep === 'yes';
+    }
+    if (!panelsInUse) {
+      cfg.panels.xui.enabled = false;
+      cfg.panels.sui.enabled = false;
+      cfg.panels.sui.sub.enabled = false;
+    }
+
     const hostDefault = function (current, prefix) {
       return current && validDomain(current) && current.endsWith('.' + domain) && current !== domain
         ? current
         : prefix + '.' + domain;
     };
-    if (cfg.panels.xui.enabled !== false) {
-      cfg.panels.xui.domain = await askHost('x-ui 面板域名（r = 随机前缀）', hostDefault(cfg.panels.xui.domain, 'xui'));
+    const uiFallback = hostDefault(cfg.ui.domain, 'uui');
+    let uiDomain = cfg.ui.domain || '';
+    if (!yes) {
+      const value = String(await ask('u-ui 面板域名（- = 仅 SSH 隧道；r = 随机前缀）', uiFallback)).trim();
+      if (value === '-' || value.toLowerCase() === 'none') uiDomain = '';
+      else if (value.toLowerCase() === 'r') uiDomain = 'uui-' + crypto.randomBytes(2).toString('hex') + '.' + domain;
+      else if (!value) uiDomain = uiFallback;
+      else if (validDomain(value)) uiDomain = value;
+      else {
+        io.print('域名不合法，使用 ' + uiFallback);
+        uiDomain = uiFallback;
+      }
+    } else if (!validDomain(uiDomain)) {
+      uiDomain = '';
     }
-    if (cfg.panels.sui.enabled !== false) {
-      cfg.panels.sui.domain = await askHost('s-ui 面板域名（r = 随机前缀）', hostDefault(cfg.panels.sui.domain, 'sui'));
-    }
-    if (cfg.panels.sui.enabled !== false && cfg.panels.sui.sub.enabled !== false) {
-      cfg.panels.sui.sub.domain = await askHost('订阅域名（r = 随机前缀）', hostDefault(cfg.panels.sui.sub.domain, 'sub'));
+    cfg.ui.domain = uiDomain;
+
+    if (panelsInUse) {
+      if (cfg.panels.xui.enabled !== false) {
+        cfg.panels.xui.domain = await askHost('x-ui 面板域名（r = 随机前缀）', hostDefault(cfg.panels.xui.domain, 'xui'));
+      }
+      if (cfg.panels.sui.enabled !== false) {
+        cfg.panels.sui.domain = await askHost('s-ui 面板域名（r = 随机前缀）', hostDefault(cfg.panels.sui.domain, 'sui'));
+      }
+      if (cfg.panels.sui.enabled !== false && cfg.panels.sui.sub.enabled !== false) {
+        cfg.panels.sui.sub.domain = await askHost('订阅域名（r = 随机前缀）', hostDefault(cfg.panels.sui.sub.domain, 'sub'));
+      }
     }
 
     const hosts = [domain];
-    if (cfg.panels.xui.enabled !== false && cfg.panels.xui.domain) hosts.push(cfg.panels.xui.domain);
-    if (cfg.panels.sui.enabled !== false && cfg.panels.sui.domain) hosts.push(cfg.panels.sui.domain);
-    if (cfg.panels.sui.enabled !== false && cfg.panels.sui.sub.enabled !== false && cfg.panels.sui.sub.domain) hosts.push(cfg.panels.sui.sub.domain);
+    if (uiDomain) hosts.push(uiDomain);
+    if (panelsInUse) {
+      if (cfg.panels.xui.enabled !== false && cfg.panels.xui.domain) hosts.push(cfg.panels.xui.domain);
+      if (cfg.panels.sui.enabled !== false && cfg.panels.sui.domain) hosts.push(cfg.panels.sui.domain);
+      if (cfg.panels.sui.enabled !== false && cfg.panels.sui.sub.enabled !== false && cfg.panels.sui.sub.domain) hosts.push(cfg.panels.sui.sub.domain);
+    }
     for (const ib of (cfg.singbox && cfg.singbox.inbounds) || []) {
       if (ib.security === 'tls' && ib.sni && (ib.sni === domain || ib.sni.endsWith('.' + domain))) hosts.push(ib.sni);
     }

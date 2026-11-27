@@ -256,7 +256,7 @@ systemctl is-active xray sing-box nginx
 | What you see | Meaning | What to do |
 |---|---|---|
 | all three versions print and all units are `active` | installed and running | **skip 3.1-3.3 and go to step 4** |
-| a command is `command not found` and its unit is `inactive` | not installed | install only what is missing: 3.1 for Xray, 3.2 for sing-box, 3.3 for nginx |
+| a command is `command not found` and its unit is `inactive` | not installed, or installed inside a panel directory and not on PATH | see **3.0.1** below: decide who owns the cores first, then install |
 | the version prints but the unit is `inactive` | installed but not started | `systemctl enable --now xray` (same for sing-box; use `nginx` for nginx) |
 | nginx `active`, xray and sing-box both `command not found` | most common: only nginx installed | **do 3.1 and 3.2 only, skip 3.3** |
 | the version prints but fails with `GLIBC_2.28 not found` | OS too old | use the JS package with a newer Node (see 1.4) |
@@ -290,6 +290,40 @@ ln -s /opt/xray/xray /usr/local/bin/xray
 ```
 
 > **What happens when something is missing**: `apply` first runs the validators against the generated configs (`xray run -test` / `sing-box check` / `nginx -t`); **if a command does not exist the validation fails and `apply` aborts before writing any file**. So do not run `apply` until the checks above pass; if you deliberately have no validator, `--skip-validate` exists but is not recommended.
+
+### 3.0.1 Already running 3x-ui / s-ui?
+
+3x-ui and s-ui **ship their own core** (3x-ui bundles Xray, s-ui bundles sing-box) and start it themselves. The core usually lives inside the panel directory (for example `/usr/local/x-ui/bin/`, `/usr/local/s-ui/bin/`) and is **not on PATH**, so `xray version` / `sing-box version` report `command not found` even though it is installed.
+
+**Do not let both sides manage the core**: the panel writes its own config and starts the core, while uniproxy `apply` also writes a config and runs `systemctl restart xray` / `sing-box`; they overwrite each other and fight for the same port. Pick one mode first:
+
+**Mode A: let uniproxy own it (recommended if you want its config generation, subscriptions and doctor)**
+
+1. Stop the panels so they release their ports:
+
+```bash
+systemctl disable --now x-ui s-ui
+```
+
+2. Install the official cores via 3.1 / 3.2 - they create the `xray` / `sing-box` systemd units that `apply` needs.
+3. Continue with step 4. Inbounds, users and subscriptions are then managed by `config.json`.
+
+> You can leave the panel cores installed but unused. Do not symlink one to `xray` and expect `systemctl restart xray` to work - the panel never created a unit with that name.
+
+**Mode B: panels keep the cores, uniproxy only does nginx / 443**
+
+1. Keep the panels running.
+2. Disable both cores in `config.json`:
+
+```json
+"xray":    { "enabled": false },
+"singbox": { "enabled": false }
+```
+
+3. `apply` then only writes nginx; no core config is generated or restarted.
+4. For `nginx.mode: "stream"`, fill `sni` and ports from the inbounds **actually configured in the panels**, or :443 will forward to a dead port.
+
+> Also make sure the panels are not holding 80/443: `ss -lntp | grep -E ':(80|443)\b'`.
 
 ### 3.1 Xray-core
 

@@ -259,7 +259,7 @@ systemctl is-active xray sing-box nginx
 | 你看到的情况 | 说明 | 你要做什么 |
 |---|---|---|
 | 三个版本号都打印，三条都是 `active` | 都装好且在跑 | **跳过 3.1–3.3，直接做步骤 4** |
-| 某个命令 `command not found`，对应服务 `inactive` | 这个没装 | 只装缺的：Xray 做 3.1，sing-box 做 3.2，nginx 做 3.3 |
+| 某个命令 `command not found`，对应服务 `inactive` | 没装，或装在面板目录里没进 PATH | 见下面的 **3.0.1**：先确定谁管内核，再决定装不装 |
 | 版本号能打印，但服务 `inactive` | 装了但没启动 | `systemctl enable --now xray`（sing-box 同理；nginx 用 `nginx`） |
 | nginx 是 `active`，xray / sing-box 都是 `command not found` | 最常见：只装了 nginx | **只做 3.1 和 3.2，3.3 跳过** |
 | 版本号能打印但报 `GLIBC_2.28 not found` 之类 | 系统太旧 | 改用 JS 包 + 新版 Node（见 1.4） |
@@ -293,6 +293,40 @@ ln -s /opt/xray/xray /usr/local/bin/xray
 ```
 
 > **缺失会怎样**：`apply` 会先对生成的配置跑校验命令（`xray run -test` / `sing-box check` / `nginx -t`）；**命令不存在则校验失败，`apply` 直接中止，此时还没有写入任何文件**。所以自检不过就先别跑 `apply`；确实暂时缺某个校验器，可以用 `--skip-validate`（不推荐）。
+
+### 3.0.1 已经装了 3x-ui / s-ui 怎么办？
+
+3x-ui 和 s-ui 会**各自带一份内核**（3x-ui 带 Xray、s-ui 带 sing-box），并由面板自己启动。它们通常装在面板目录里（如 `/usr/local/x-ui/bin/`、`/usr/local/s-ui/bin/`），**不在 PATH**，所以 `xray version` / `sing-box version` 会报 `command not found`——这不代表没装。
+
+**不能两边都管**：面板会写自己的配置并拉起内核，uniproxy 的 `apply` 也会写配置并 `systemctl restart xray` / `sing-box`，两者会互相覆盖、抢同一个端口。先选一种模式：
+
+**模式 A：交给 uniproxy（推荐，想用它的配置生成 + 订阅 + doctor）**
+
+1. 停掉面板，让出端口：
+
+```bash
+systemctl disable --now x-ui s-ui
+```
+
+2. 按 3.1 / 3.2 装官方内核——它们会自动创建 `xray` / `sing-box` 的 systemd 单元，`apply` 才能重启它们。
+3. 继续步骤 4。之后入站、用户、订阅全部由 `config.json` 管理。
+
+> 面板自带的内核可以留着不用。不要把它软链成 `xray` 就指望 `systemctl restart xray` 能工作——面板并没有创建名为 `xray` 的单元。
+
+**模式 B：面板继续管内核，uniproxy 只做 nginx / 443**
+
+1. 保留面板运行。
+2. 在 `config.json` 里关掉两个内核：
+
+```json
+"xray":    { "enabled": false },
+"singbox": { "enabled": false }
+```
+
+3. 这样 `apply` 只会写 nginx，不会生成或重启内核配置。
+4. `nginx.mode: "stream"` 的 SNI 分流要按**面板里实际配置的入站**填 `sni` 和端口，否则 443 会转到空端口。
+
+> 还要确认面板没占用 80/443：`ss -lntp | grep -E ':(80|443)\b'`。
 
 ### 3.1 Xray-core
 

@@ -10,7 +10,7 @@ import { buildCommand, validDomain, certStatus } from '../src/certs.js';
 import { normalizeNodes, probeCommand, deployCommands, deploy, deployBatch, probeBatch, localChecksum } from '../src/nodes.js';
 import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
 import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup, pruneBackups } from '../src/backups.js';
-import { runMenu, renderMenu, box, buildMenu, unitFiles } from '../src/menu.js';
+import { runMenu, renderMenu, box, buildMenu, unitFiles, installSystem, installPlan } from '../src/menu.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -586,8 +586,8 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
   const text = printed.join('\n');
   assert.ok(text.includes('u-ui · uniproxy'));
   assert.ok(text.includes('0. 退出菜单'));
-  assert.ok(text.includes('14. 校验配置 validate'));
-  assert.ok(text.includes('23. 申请 / 续期证书'));
+  assert.ok(text.includes('16. 校验配置 validate'));
+  assert.ok(text.includes('25. 申请 / 续期证书'));
   assert.ok(text.includes('无效选项: 99'));
   assert.ok(text.includes('已退出'));
   fs.rmSync(ctx.dir, { recursive: true, force: true });
@@ -596,8 +596,8 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
 test('menu: box helper and section count', function () {
   const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
   const sections = buildMenu(ctx);
-  assert.equal(sections.length, 5);
-  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 25);
+  assert.equal(sections.length, 6);
+  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 27);
   const rendered = box('面板', ['0. 退出菜单']);
   assert.ok(rendered.startsWith('┌─ 面板'));
   assert.ok(rendered.includes('│ 0. 退出菜单'));
@@ -611,4 +611,38 @@ test('menu: service unit files point at the right command', function () {
   assert.ok(files['uniproxy-ui.service'].includes('WorkingDirectory=/etc/uniproxy'));
   assert.ok(files['uniproxy-ui.service'].includes('WantedBy=multi-user.target'));
   assert.ok(files['uniproxy-sub.service'].includes('serve -c /etc/uniproxy/config.json -p 8787'));
+});
+
+test('menu: installPlan describes a 3x-ui style layout', function () {
+  const plan = installPlan({ prefix: '/usr/local/uniproxy', binDir: '/usr/local/bin', etcDir: '/etc/uniproxy', unitDir: '/etc/systemd/system', sourceDir: '/src', exe: 'node /usr/local/uniproxy/src/index.js' });
+  assert.equal(plan.prefix, '/usr/local/uniproxy');
+  assert.ok(plan.copy.includes('src'));
+  assert.ok(plan.launchers['/usr/local/bin/uniproxy'].includes('/usr/local/uniproxy/src/index.js'));
+  assert.ok(plan.launchers['/usr/local/bin/u-ui'].includes('/usr/local/uniproxy/src/u-ui.js'));
+  assert.ok(plan.units['uniproxy-ui.service'].includes('ExecStart=node /usr/local/uniproxy/src/index.js ui -c /etc/uniproxy/config.json'));
+});
+
+test('menu: install lays out prefix, launchers, config and units', async function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'install-'));
+  const keys = ['UNIPROXY_PREFIX', 'UNIPROXY_BIN_DIR', 'UNIPROXY_ETC_DIR', 'UNIPROXY_UNIT_DIR'];
+  const saved = {};
+  for (const k of keys) saved[k] = process.env[k];
+  process.env.UNIPROXY_PREFIX = path.join(dir, 'prefix');
+  process.env.UNIPROXY_BIN_DIR = path.join(dir, 'bin');
+  process.env.UNIPROXY_ETC_DIR = path.join(dir, 'etc');
+  process.env.UNIPROXY_UNIT_DIR = path.join(dir, 'units');
+  const printed = [];
+  try {
+    await installSystem({ configPath: path.join(dir, 'etc', 'config.json'), io: { print: function (s) { printed.push(String(s)); } } });
+    assert.ok(fs.existsSync(path.join(dir, 'prefix', 'src', 'index.js')));
+    assert.ok(fs.existsSync(path.join(dir, 'prefix', 'src', 'u-ui.js')));
+    assert.ok(fs.existsSync(path.join(dir, 'bin', 'uniproxy')));
+    assert.ok(fs.existsSync(path.join(dir, 'bin', 'u-ui')));
+    assert.ok(fs.existsSync(path.join(dir, 'etc', 'config.json')));
+    assert.ok(fs.existsSync(path.join(dir, 'units', 'uniproxy-ui.service')));
+    assert.ok(printed.join('\n').includes('安装完成'));
+  } finally {
+    for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

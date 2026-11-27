@@ -1,6 +1,6 @@
 # uniproxy Installation & Deployment Guide
 
-> Version: **0.4.2**　|　Target OS: Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+ (glibc ≥ 2.28)
+> Version: **0.4.3**　|　Target OS: Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+ (glibc ≥ 2.28)
 > Audience: operators deploying on a single Linux server
 > Examples: domain `example.com`, panels `xui.example.com` / `sui.example.com`, subscriptions `sub.example.com`, Reality SNI `www.bing.com`, server IP written as `<server-ip>`
 
@@ -48,7 +48,7 @@ The values below are **not literals** — they are placeholders you must replace
 | `www` / `xui` / `sui` / `sub` (e.g. `for d in www xui sui sub`) | the subdomain prefixes you planned; add or remove as needed | the loop builds `$d.example.com` to check DNS | you resolve the example domains, so an IP in the output proves nothing about your own DNS |
 | `<server-ip>` | the server public IP | client links, `server.publicIp` and acceptance commands use it | links point at a placeholder and clients cannot connect |
 | `203.0.113.10` | the real public IP | it is an RFC 5737 example range, not your IP | `validate` fails with `server.publicIp still a placeholder` |
-| `<version>`, `0.4.2` | the actual release version | download URLs, asset names and install paths include it | download 404 |
+| `<version>`, `0.4.3` | the actual release version | download URLs, asset names and install paths include it | download 404 |
 | `<service>` | the real unit name: `xray` / `sing-box` / `nginx` / `uniproxy-sub` | `journalctl -u` filters by unit name | no logs, and you may think there were no errors |
 | `<target>`, `<timestamp>` | the backed-up file and its timestamp | `apply` writes `.bak-<timestamp>` | you cannot find the backup to roll back |
 | `<uuid>`, `TOKEN=xxxx...` | the UUID from `uniproxy users`, the subscription token | client credentials and subscription auth | auth fails, subscription 403 |
@@ -148,7 +148,7 @@ The four steps below run in the **same shell**. Each step is a single line, so c
 Step 1: enter a working directory and set the version
 
 ```bash
-cd /tmp && VERSION=0.4.2
+cd /tmp && VERSION=0.4.3
 ```
 
 > **What to replace**: set `VERSION` to the release you are installing (the example is the current one), and make the asset name `uniproxy-${VERSION}-linux-x64` match `uname -m` (`linux-x64` for x86_64, `linux-arm64` for aarch64 — see the table in 1.4). A wrong version or asset name returns 404.
@@ -170,6 +170,8 @@ Step 4: install and check
 ```bash
 install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy && uniproxy --help
 ```
+
+> **About the install directory**: `/tmp` is only a scratch directory for the download - you can throw it away afterwards, or use `cd /root` instead. What actually matters is where the executable lives. To skip the manual steps, use the terminal menu entry **1. Install to system paths**: it puts the program in `/usr/local/uniproxy`, creates `uniproxy` and `u-ui` in `/usr/local/bin`, and writes the systemd units - the same layout 3x-ui uses under `/usr/local/x-ui`.
 
 > **Copying tip**: every step is one line, so line-by-line copying always works. If pasting a multi-line block collapses it into a single line and you get `cd: too many arguments`, your terminal lost the newlines; a `#` comment also swallows the rest of a collapsed line, which is why this guide keeps explanations in prose instead of between commands.
 
@@ -201,7 +203,7 @@ mkdir -p /etc/uniproxy/certs /var/lib/uniproxy /var/log/uniproxy
 
 ### Expected result
 
-- `sha256sum -c` prints `uniproxy-0.4.2-linux-x64: OK`
+- `sha256sum -c` prints `uniproxy-0.4.3-linux-x64: OK`
 - `uniproxy --help` prints:
 
 ```

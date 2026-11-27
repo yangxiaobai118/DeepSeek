@@ -1,6 +1,6 @@
 # uniproxy 安装与部署手册
 
-> 适用版本：**0.4.2**　|　目标系统：Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+（glibc ≥ 2.28）
+> 适用版本：**0.4.3**　|　目标系统：Debian 11+ / Ubuntu 20.04+ / Rocky Linux 8+（glibc ≥ 2.28）
 > 读者：负责在一台 Linux 服务器上完成部署的运维/开发人员
 > 示例约定：域名 `example.com`，面板 `xui.example.com` / `sui.example.com`，订阅 `sub.example.com`，Reality SNI `www.bing.com`，服务器公网 IP 记为 `<server-ip>`
 
@@ -47,7 +47,7 @@
 | `www` / `xui` / `sui` / `sub`（例如 `for d in www xui sui sub`） | 你规划的子域名前缀，可增可减 | 循环会把前缀拼成 `$d.example.com` 去查解析 | 查到的是示例域名，你的域名没配好也可能“看到 IP” |
 | `<server-ip>` | 服务器公网 IP | 客户端链接、`server.publicIp`、验收命令都用它 | 链接指向占位符，客户端连不上 |
 | `203.0.113.10` | 真实公网 IP | 它是 RFC 5737 的示例保留地址，不是你的 IP | `validate` 直接报 `server.publicIp still a placeholder` |
-| `<version>`、`0.4.2` | 实际版本号 | 下载 URL、资产名、安装路径都带版本 | 下载 404 |
+| `<version>`、`0.4.3` | 实际版本号 | 下载 URL、资产名、安装路径都带版本 | 下载 404 |
 | `<service>` | 真实服务名：`xray` / `sing-box` / `nginx` / `uniproxy-sub` | `journalctl -u` 按服务名过滤 | 查不到日志，误以为“没报错” |
 | `<target>`、`<timestamp>` | 被备份的文件、备份时间 | `apply` 生成的 `.bak-<timestamp>` | 找不到备份，无法回滚 |
 | `<uuid>`、`TOKEN=xxxx...` | `uniproxy users` 的 UUID、订阅 token | 客户端凭据与订阅鉴权 | 认证失败、订阅 403 |
@@ -151,7 +151,7 @@ ufw allow 80/tcp && ufw allow 443/tcp   # Debian/Ubuntu
 第 1 步：进入目录并设定版本
 
 ```bash
-cd /tmp && VERSION=0.4.2
+cd /tmp && VERSION=0.4.3
 ```
 
 > **替换点**：`VERSION` 改成你要安装的 Release 版本号（示例为当前版本）；资产名 `uniproxy-${VERSION}-linux-x64` 必须和 `uname -m` 对应（x86_64→`linux-x64`，aarch64→`linux-arm64`，见 1.4 的表）。版本号或资产名不对会直接 404。
@@ -173,6 +173,8 @@ sha256sum -c uniproxy-${VERSION}-linux-x64.sha256
 ```bash
 install -m 0755 uniproxy-${VERSION}-linux-x64 /usr/local/bin/uniproxy && uniproxy --help
 ```
+
+> **关于安装目录**：`/tmp` 只是下载/解压用的**临时目录**，装完就能丢，也可以换成 `cd /root`。真正的安装位置是「可执行文件在哪」。想省掉手动步骤，用终端菜单的 **1. 安装到系统路径**：它把程序放到 `/usr/local/uniproxy`、在 `/usr/local/bin` 建 `uniproxy` 和 `u-ui` 命令，并写好 systemd 单元——等价于 3x-ui 的 `/usr/local/x-ui` 布局。
 
 > **复制提示**：每一步只有一行命令，逐行复制最稳。如果你把多行代码块整段粘贴后命令连成了一行、报 `cd: too many arguments`，那是终端没保留换行；另外 `#` 注释在连成一行时会把后面的命令一起吞掉，所以本手册把说明都写在正文，不夹在命令之间。
 
@@ -204,7 +206,7 @@ mkdir -p /etc/uniproxy/certs /var/lib/uniproxy /var/log/uniproxy
 
 ### 预期结果
 
-- `sha256sum -c` 输出 `uniproxy-0.4.2-linux-x64: OK`
+- `sha256sum -c` 输出 `uniproxy-0.4.3-linux-x64: OK`
 - `uniproxy --help` 输出：
 
 ```
@@ -225,7 +227,7 @@ Usage:
 
 ### 不符合时
 
-- `404 Not Found`：版本号或资产名不对。打开 Releases 页面确认 `uniproxy-v0.4.2` 下的资产名，再替换 URL。
+- `404 Not Found`：版本号或资产名不对。打开 Releases 页面确认 `uniproxy-v0.4.3` 下的资产名，再替换 URL。
 - `sha256sum: no properly formatted checksum lines found`：`.sha256` 文件没下载全，重新下载。
 - `Permission denied`：加 `sudo`，或确认写入了 `/usr/local/bin`。
 - 二进制报 `GLIBC_2.28 not found`：系统太旧，改用 JS 包并安装新版 Node。

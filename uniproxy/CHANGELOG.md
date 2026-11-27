@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.3
+
+### Added
+
+- menu install section: `1. Install to system paths` copies the program to
+  `/usr/local/uniproxy`, writes `uniproxy` and `u-ui` launchers into
+  `/usr/local/bin`, seeds `/etc/uniproxy/config.json` and installs the systemd
+  units - the same layout 3x-ui uses under `/usr/local/x-ui`. `2. Uninstall`
+  removes the program and units but keeps the config.
+- docs now explain that `/tmp` is only a scratch directory; installing from
+  `/root` (or anywhere) is fine.
+
 ## 0.4.2
 
 ### Added

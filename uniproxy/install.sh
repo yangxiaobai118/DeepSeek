@@ -50,6 +50,11 @@ warn() { printf '%s%s%s\n' "$YELLOW" "$*" "$RESET" >&2; }
 die() { printf '%serror: %s%s\n' "$RED" "$*" "$RESET" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+CURL_RETRY_ALL=''
+if have curl && curl --help all 2>/dev/null | grep -q -- '--retry-all-errors'; then
+  CURL_RETRY_ALL='--retry-all-errors'
+fi
+
 node_ok() {
   have node || return 1
   _major=$(node -p "process.versions.node.split('.')[0]" 2>/dev/null || echo 0)
@@ -78,9 +83,9 @@ fetch_to() {
   _url=$1
   _dest=$2
   if have curl; then
-    _total=$(curl -fsIL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 "$_url" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { v = $2 } END { print v + 0 }')
+    _total=$(curl -fsIL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 --http1.1 $CURL_RETRY_ALL "$_url" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { v = $2 } END { print v + 0 }')
     if [ -t 2 ]; then
-      curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 "$_url" -o "$_dest" &
+      curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 --http1.1 $CURL_RETRY_ALL "$_url" -o "$_dest" &
       _pid=$!
       while kill -0 "$_pid" 2>/dev/null; do
         if [ -f "$_dest" ]; then _now=$(wc -c < "$_dest" | tr -d ' '); else _now=0; fi
@@ -100,7 +105,7 @@ fetch_to() {
       printf '\n'
       return 1
     fi
-    curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 "$_url" -o "$_dest"
+    curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 --http1.1 $CURL_RETRY_ALL "$_url" -o "$_dest"
   elif have wget; then
     wget -qO "$_dest" "$_url"
   else
@@ -118,13 +123,13 @@ if [ "${UNIPROXY_PROGRESS_TEST:-0}" = "1" ]; then
 fi
 
 fetch_stdout() {
-  if have curl; then curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 "$1"
+  if have curl; then curl -fsSL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 --http1.1 $CURL_RETRY_ALL "$1"
   elif have wget; then wget -qO- "$1"
   else die 'need curl or wget'; fi
 }
 
 url_exists() {
-  if have curl; then curl -fsIL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 "$1" >/dev/null 2>&1
+  if have curl; then curl -fsIL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 --http1.1 $CURL_RETRY_ALL "$1" >/dev/null 2>&1
   elif have wget; then wget --spider -q "$1" >/dev/null 2>&1
   else return 1; fi
 }

@@ -2,7 +2,7 @@ import readline from 'node:readline';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { loadConfig, validateConfig } from './config.js';
 import { runDoctor, formatDoctor } from './doctor.js';
 import { buildPlan, applyPlan, formatPlan } from './apply.js';
@@ -315,17 +315,24 @@ export async function installSystem(ctx) {
   }
 }
 
+function runInstaller() {
+  return new Promise(function (resolve) {
+    const child = spawn('sh', ['-c', 'curl -fsSL --retry 3 --http1.1 ' + INSTALL_URL + ' | sh'], {
+      stdio: 'inherit',
+      env: Object.assign({}, process.env, { UNIPROXY_NO_MENU: '1' }),
+    });
+    child.on('error', function (e) { resolve({ ok: false, error: e.message }); });
+    child.on('close', function (code) { resolve({ ok: code === 0, code: code }); });
+  });
+}
+
 async function updateSystem(ctx) {
   const answer = String((await ctx.io.question('从 GitHub 安装最新版本? [Y/n]: ')) || '').trim().toLowerCase();
   if (answer === 'n' || answer === 'no') return ctx.io.print('已取消');
   ctx.io.print('正在下载并安装最新版本（完成后会重启面板服务）…');
-  const result = spawnSync('sh', ['-c', 'curl -fsSL ' + INSTALL_URL + ' | sh'], {
-    stdio: 'inherit',
-    timeout: 600000,
-    env: Object.assign({}, process.env, { UNIPROXY_NO_MENU: '1' }),
-  });
-  if (result.error) return ctx.io.print('更新失败: ' + result.error.message);
-  ctx.io.print(result.status === 0 ? '更新完成' : ('更新失败: exit ' + result.status));
+  const result = await runInstaller();
+  if (result.error) return ctx.io.print('更新失败: ' + result.error);
+  ctx.io.print(result.ok ? '更新完成' : ('更新失败: exit ' + result.code));
 }
 
 export async function runSetupItem(ctx) {

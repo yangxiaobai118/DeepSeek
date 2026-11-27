@@ -170,10 +170,10 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 公网 IP | 自动探测，可覆盖 | 探测结果 | 用于生成客户端链接 |
 | 面板端口 | ✅ 输入 `r` 随机 | 8788 | |
 | 订阅端口 | ✅ 输入 `r` 随机 | 8787 | |
-| 管理员密码 | ✅ 回车即随机 | 16 位随机 | 生成后只在屏幕上显示一次 |
+| 管理员密码 | ✅ `r` 随机；首次安装回车随机 | 保留已有密码 | 已存在管理员时回车不变，输入新密码才更新 |
 | 只读密码 | ✅ 回车=不设置，`r`=随机 | 不设置 | |
 | 邮箱 | ❌ 需你提供，可跳过 | 无 | 仅申请证书时用到 |
 | `server.secret` | ✅ 自动 | 随机 | 所有凭据都由它派生 |
 | VLESS UUID / Reality 密钥 / shortId / 用户 UUID | ✅ 自动 | 随机 | |
 
-初始化只创建**一个管理员账号**（用户名 + 密码），其他账号在面板「账号」页添加。向导不再配置 x-ui / s-ui 面板反代（默认 `panels.xui.enabled=false`、`panels.sui.enabled=false`）；需要时可在 `config.json` 里手动打开。非交互用法：`uniproxy setup --yes --domain example.com --username admin --password '...' --email a@b.c`。
+初始化只创建**一个管理员账号**（用户名 + 密码），其他账号在面板「账号」页添加。**重复运行向导时回车保留当前值**，只有重新输入的项才会更新；没有配置文件时自动生成一份默认配置。向导不再配置 x-ui / s-ui 面板反代（默认 `panels.xui.enabled=false`、`panels.sui.enabled=false`）；需要时可在 `config.json` 里手动打开。非交互用法：`uniproxy setup --yes --domain example.com --username admin --password '...' --email a@b.c`。

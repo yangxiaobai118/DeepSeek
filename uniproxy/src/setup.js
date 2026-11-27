@@ -1,9 +1,11 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import crypto from 'node:crypto';
 import { hashPassword, USERNAME_RE } from './auth.js';
 import { syncUnitPorts } from './units.js';
 import { validDomain } from './certs.js';
-import { normalizeBasePath } from './util.js';
+import { normalizeBasePath, isPlaceholderAddress } from './util.js';
+import { scaffold } from './scaffold.js';
 
 /**
  * First-run wizard.
@@ -56,10 +58,12 @@ export async function runSetup(opts = {}) {
   const flags = opts.flags || {};
 
   if (!fs.existsSync(cfgPath)) {
-    io.print('没有找到 ' + cfgPath + '；请先运行 uniproxy init -c ' + cfgPath + '，或用菜单 1 安装到系统路径');
-    return { ok: false, error: 'missing config' };
+    fs.mkdirSync(path.dirname(path.resolve(cfgPath)), { recursive: true });
+    fs.writeFileSync(cfgPath, JSON.stringify(scaffold(), null, 2) + '\n');
+    io.print('未找到配置，已生成默认配置 ' + cfgPath);
   }
   const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+  const original = JSON.parse(JSON.stringify(cfg));
   cfg.ui = cfg.ui || {};
   cfg.subscription = cfg.subscription || {};
 
@@ -70,13 +74,14 @@ export async function runSetup(opts = {}) {
     return answer === '' ? (fallback || '') : answer;
   };
 
-  if (!yes) io.print('回车 = 使用默认值 / 随机值；r = 随机；无法随机的项会明确提示。');
+  if (!yes) io.print('回车 = 保留当前值 / 使用默认值；r = 随机；只有你重新输入的项会被修改。');
 
   // 1. domain: cannot be random
   const currentDomain = (cfg.server.domains && cfg.server.domains.web) || '';
   const domainHint = currentDomain && !currentDomain.endsWith('.example.com') ? currentDomain : '';
   const domain = flags.domain != null ? flags.domain : await ask('域名（如 example.com；回车=仅 IP，不使用域名）', domainHint);
-  if (domain) applyDomain(cfg, domain);
+  const domainChanged = domain !== currentDomain;
+  if (domain && domainChanged) applyDomain(cfg, domain);
 
   // 2. u-ui hostname; x-ui / s-ui panel proxying is no longer configured here
   if (domain) {
@@ -93,6 +98,7 @@ export async function runSetup(opts = {}) {
         ? current
         : prefix + '.' + domain;
     };
+    const originalUiDomain = cfg.ui.domain || '';
     const uiFallback = hostDefault(cfg.ui.domain, 'uui');
     let uiDomain = cfg.ui.domain || '';
     if (!yes) {
@@ -123,8 +129,11 @@ export async function runSetup(opts = {}) {
     for (const ib of (cfg.singbox && cfg.singbox.inbounds) || []) {
       if (ib.security === 'tls' && ib.sni && (ib.sni === domain || ib.sni.endsWith('.' + domain))) hosts.push(ib.sni);
     }
-    cfg.certs = cfg.certs || {};
-    cfg.certs.domains = Array.from(new Set(hosts));
+    const existingCerts = (cfg.certs && Array.isArray(cfg.certs.domains)) ? cfg.certs.domains : [];
+    if (domainChanged || uiDomain !== originalUiDomain || !existingCerts.length) {
+      cfg.certs = cfg.certs || {};
+      cfg.certs.domains = Array.from(new Set(hosts));
+    }
 
     if (!yes) io.print('已关闭 x-ui / s-ui 面板反代：只用 u-ui');
   }
@@ -132,9 +141,11 @@ export async function runSetup(opts = {}) {
   // 3. public IP: auto-detected, overridable
   let detected = '';
   if (!yes && opts.detectIp !== false) detected = await detectPublicIp();
+  const oldIp = cfg.server.publicIp || '';
+  const ipFallback = isPlaceholderAddress(oldIp) ? (detected || oldIp) : oldIp;
   let ip = flags.ip;
   if (ip == null) {
-    ip = await ask(detected ? '公网 IP（已自动探测，回车使用）' : '公网 IP', detected || cfg.server.publicIp || '');
+    ip = await ask(detected && isPlaceholderAddress(oldIp) ? '公网 IP（已自动探测，回车使用）' : '公网 IP（回车保留当前）', ipFallback);
   }
   if (ip) cfg.server.publicIp = ip;
 
@@ -156,17 +167,44 @@ export async function runSetup(opts = {}) {
     return { ok: false, error: 'invalid username' };
   }
   let adminPassword = flags.password || '';
-  if (!adminPassword) {
-    if (yes) adminPassword = randomPassword();
-    else {
-      const pw = await ask('管理员密码（回车 = 随机生成）', '');
-      adminPassword = pw && pw !== 'r' ? pw : randomPassword();
+  let passwordChanged = Boolean(flags.password);
+  if (!adminPassword && !yes) {
+    const question = existingAdmin ? '管理员密码（回车 = 保持不变；r = 随机）' : '管理员密码（回车 = 随机生成）';
+    const pw = String(await ask(question, '')).trim();
+    if (pw === 'r') {
+      adminPassword = randomPassword();
+      passwordChanged = true;
+    } else if (pw) {
+      adminPassword = pw;
+      passwordChanged = true;
     }
   }
-  cfg.ui.users = (cfg.ui.users || []).filter(function (u) { return String(u.username) !== username; });
-  cfg.ui.users.unshift({ username: username, role: 'admin', hash: hashPassword(adminPassword), addedAt: new Date().toISOString() });
-  delete cfg.ui.password;
-  delete cfg.ui.viewerPassword;
+  let adminChanged = false;
+  if (!existingAdmin) {
+    if (!adminPassword) {
+      adminPassword = randomPassword();
+      passwordChanged = true;
+    }
+    cfg.ui.users = (cfg.ui.users || []).filter(function (u) { return String(u.username) !== username; });
+    cfg.ui.users.unshift({ username: username, role: 'admin', hash: hashPassword(adminPassword), addedAt: new Date().toISOString() });
+    adminChanged = true;
+  } else if (username !== existingAdmin.username) {
+    cfg.ui.users = (cfg.ui.users || []).filter(function (u) { return String(u.username) !== existingAdmin.username && String(u.username) !== username; });
+    cfg.ui.users.unshift({
+      username: username,
+      role: 'admin',
+      hash: passwordChanged ? hashPassword(adminPassword) : existingAdmin.hash,
+      addedAt: existingAdmin.addedAt || new Date().toISOString(),
+    });
+    adminChanged = true;
+  } else if (passwordChanged) {
+    existingAdmin.hash = hashPassword(adminPassword);
+    adminChanged = true;
+  }
+  if (adminChanged) {
+    delete cfg.ui.password;
+    delete cfg.ui.viewerPassword;
+  }
 
   // 7. e-mail for ACME
   const email = flags.email != null ? flags.email : await ask('邮箱（申请证书用，回车 = 跳过）', cfg.server.email || '');
@@ -191,7 +229,7 @@ export async function runSetup(opts = {}) {
     '  订阅端口:   ' + cfg.subscription.port,
     '  访问路径:   ' + (cfg.ui.basePath || '/'),
     '  管理员账号: ' + username,
-    '  管理员密码: ' + adminPassword,
+    '  管理员密码: ' + (adminChanged && passwordChanged ? adminPassword : '保持不变'),
     '  其他账号:   稍后在面板「账号」页添加',
     '  邮箱:       ' + (cfg.server.email || '(未设置)'),
     ...(synced.updated.length ? ['  服务单元:   已同步端口 -> ' + synced.updated.join(', ')] : []),

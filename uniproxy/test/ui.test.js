@@ -859,6 +859,56 @@ test('u-ui: basePath prefixes pages, login and API routes', async function () {
   }
 });
 
+test('setup: re-running keeps unchanged values and the existing password', async function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-keep-'));
+  const cfgPath = path.join(dir, 'config.json');
+  const example = JSON.parse(fs.readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'));
+  example.server.domains.web = 'real.example.org';
+  example.server.publicIp = '203.0.113.50';
+  example.ui = { domain: 'uui.real.example.org', basePath: '/uui/', port: 8788, users: [{ username: 'admin', role: 'admin', hash: 'KEEP-ME' }] };
+  example.subscription = { port: 8787 };
+  example.certs = { domains: ['real.example.org', 'uui.real.example.org'] };
+  fs.writeFileSync(cfgPath, JSON.stringify(example, null, 2));
+  const answers = ['', '', '', '', '', '', '', '', ''];
+  try {
+    await runSetup({
+      configPath: cfgPath,
+      detectIp: false,
+      io: { print: function () {}, question: async function () { return answers.length ? answers.shift() : ''; } },
+    });
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    assert.equal(cfg.server.domains.web, 'real.example.org');
+    assert.equal(cfg.server.publicIp, '203.0.113.50');
+    assert.equal(cfg.ui.domain, 'uui.real.example.org');
+    assert.equal(cfg.ui.basePath, '/uui/');
+    assert.equal(cfg.ui.users.length, 1);
+    assert.equal(cfg.ui.users[0].hash, 'KEEP-ME');
+    assert.deepEqual(cfg.certs.domains, ['real.example.org', 'uui.real.example.org']);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('setup: creates a default config when the file is missing', async function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-new-'));
+  const cfgPath = path.join(dir, 'config.json');
+  const answers = ['', '', '', '', '', '', ''];
+  try {
+    const res = await runSetup({
+      configPath: cfgPath,
+      detectIp: false,
+      io: { print: function () {}, question: async function () { return answers.length ? answers.shift() : ''; } },
+    });
+    assert.equal(res.ok, true);
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    assert.equal(cfg.ui.users.length, 1);
+    assert.equal(cfg.ui.users[0].username, 'admin');
+    assert.ok(cfg.ui.users[0].hash);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('setup: random password and port generators', function () {
   const a = randomPassword();
   const b = randomPassword();

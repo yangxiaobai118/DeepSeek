@@ -13,7 +13,7 @@ import { collectAlerts, notify, loadState } from '../alerts.js';
 import { certStatus, normalizeCerts, buildCommand, issue, validDomain } from '../certs.js';
 import { normalizeNodes, probe, deploy, probeBatch, deployBatch } from '../nodes.js';
 import { protocolList } from '../protocols.js';
-import { listBackups, createBackup, readBackup, deleteBackup, restoreBackup } from '../backups.js';
+import { listBackups, createBackup, readBackup, deleteBackup, restoreBackup, pruneBackups } from '../backups.js';
 import { buildSubscriptions } from '../subscribe.js';
 import { runDoctor, formatDoctor } from '../doctor.js';
 import { buildPlan, formatPlan, applyPlan } from '../apply.js';
@@ -124,7 +124,7 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     if (url.pathname === '/api/nginx/test' && req.method === 'POST') return nginxTest(res, abs);
     if (url.pathname === '/api/nginx/reload' && req.method === 'POST') return nginxReload(res, abs);
 
-    if (url.pathname === '/api/backups' && req.method === 'GET') return json(res, 200, { backups: listBackups(abs) });
+    if (url.pathname === '/api/backups' && req.method === 'GET') return json(res, 200, { backups: listBackups(abs), keep: backupKeep(abs) });
     if (url.pathname === '/api/backups' && req.method === 'POST') return createBackupHandler(res, abs);
     const backupRestore = url.pathname.match(/^\/api\/backups\/([^/]+)\/restore$/);
     if (backupRestore && req.method === 'POST') return restoreBackupHandler(res, abs, decodeURIComponent(backupRestore[1]));
@@ -264,6 +264,7 @@ function saveRaw(cfgPath, raw) {
   const tmp = cfgPath + '.tmp-' + process.pid;
   fs.writeFileSync(tmp, text);
   fs.renameSync(tmp, cfgPath);
+  pruneBackups(cfgPath, raw && raw.backups ? raw.backups.keep : 20);
   record(cfgPath, 'config.write', 'config.json updated');
 }
 
@@ -560,6 +561,7 @@ function getSettings(res, cfgPath) {
     },
     ports: raw.ports || {},
     nginx: { mode: (raw.nginx && raw.nginx.mode) || 'http' },
+    backups: { keep: raw.backups && raw.backups.keep != null ? raw.backups.keep : 20 },
     panels: raw.panels || {},
     apply: raw.apply || {},
   });
@@ -585,6 +587,7 @@ function putSettings(req, res, cfgPath) {
       if (body[key] !== undefined) raw.ports[key] = Number(body[key]);
     }
     if (body.nginxMode !== undefined) raw.nginx.mode = String(body.nginxMode);
+    if (body.backupKeep !== undefined) { raw.backups = raw.backups || {}; raw.backups.keep = Number(body.backupKeep); }
     if (body.xui) raw.panels.xui = Object.assign({}, raw.panels.xui, body.xui);
     if (body.sui) raw.panels.sui = Object.assign({}, raw.panels.sui, body.sui);
 
@@ -767,9 +770,15 @@ function readJsonAsync(req) {
   });
 }
 
+function backupKeep(cfgPath) {
+  const raw = readRaw(cfgPath);
+  return raw && raw.backups && raw.backups.keep != null ? Number(raw.backups.keep) : 20;
+}
+
 function createBackupHandler(res, cfgPath) {
   try {
     const name = createBackup(cfgPath, 'manual');
+    pruneBackups(cfgPath, backupKeep(cfgPath));
     record(cfgPath, 'backup.create', name);
     return json(res, 200, { ok: true, name: name, backups: listBackups(cfgPath) });
   } catch (e) {

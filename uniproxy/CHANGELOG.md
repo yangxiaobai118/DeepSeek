@@ -44,6 +44,9 @@
 - config backups in the panel: list the automatic `.bak-<stamp>` copies, take a
   labelled one, download, restore (validated first, with a pre-restore safety
   copy) or delete. The config tab also accepts pasted JSON as an import.
+- backup retention: `backups.keep` (default 20, `0` keeps everything) prunes the
+  oldest copies after every write; manual and automatic backups share the limit
+  and colliding timestamps get a numeric suffix instead of overwriting.
 - u-ui certificates: read subject/issuer/expiry/SANs, and issue or renew with
   certbot or acme.sh (webroot, standalone or DNS-01, optional staging). The
   command runs as an argv array, so panel input cannot inject shell syntax;

@@ -63,6 +63,7 @@
       "blockDomains": []
     }
   },
+  "backups": { "keep": 20 },
   "nodes": [],
   "certs": {
     "provider": "certbot",

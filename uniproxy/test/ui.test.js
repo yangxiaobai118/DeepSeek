@@ -9,7 +9,7 @@ import { shouldSend, markSent, alertsFromDoctor, alertsFromPorts } from '../src/
 import { buildCommand, validDomain, certStatus } from '../src/certs.js';
 import { normalizeNodes, probeCommand, deployCommands, deploy, deployBatch, probeBatch, localChecksum } from '../src/nodes.js';
 import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
-import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup } from '../src/backups.js';
+import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup, pruneBackups } from '../src/backups.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -522,6 +522,51 @@ test('u-ui: backup endpoints', async function () {
 
     const removed = await fetch(inst.url + '/api/backups/' + encodeURIComponent(createdJson.name), { method: 'DELETE', headers: headers });
     assert.equal(removed.status, 200);
+  } finally {
+    await inst.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
+test('backups: retention keeps the newest N and never overwrites', function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bak2-'));
+  const cfgPath = path.join(dir, 'config.json');
+  fs.writeFileSync(cfgPath, '{"v":1}\n');
+
+  const names = [];
+  for (let i = 0; i < 4; i++) names.push(createBackup(cfgPath, 'manual'));
+  assert.equal(new Set(names).size, 4);
+  assert.equal(listBackups(cfgPath).length, 4);
+
+  const removed = pruneBackups(cfgPath, 2);
+  assert.equal(removed.length, 2);
+  assert.equal(listBackups(cfgPath).length, 2);
+
+  assert.deepEqual(pruneBackups(cfgPath, 0), []);
+  assert.equal(listBackups(cfgPath).length, 2);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('u-ui: backup retention is configurable and enforced on write', async function () {
+  const ctx = setup();
+  const inst = await startUi(ctx.cfgPath, 0, { password: 'secret' });
+  try {
+    const auth = await login(inst);
+    const headers = { cookie: auth.cookie, 'x-uui-csrf': auth.csrf, 'content-type': 'application/json' };
+
+    const initial = await fetch(inst.url + '/api/backups', { headers: { cookie: auth.cookie } });
+    assert.equal((await initial.json()).keep, 20);
+
+    const saved = await fetch(inst.url + '/api/settings', { method: 'PUT', headers: headers, body: JSON.stringify({ backupKeep: 1 }) });
+    assert.equal(saved.status, 200);
+    assert.equal(JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8')).backups.keep, 1);
+
+    await fetch(inst.url + '/api/backups', { method: 'POST', headers: headers });
+    await fetch(inst.url + '/api/backups', { method: 'POST', headers: headers });
+    const listed = await fetch(inst.url + '/api/backups', { headers: { cookie: auth.cookie } });
+    const listedJson = await listed.json();
+    assert.equal(listedJson.keep, 1);
+    assert.equal(listedJson.backups.length, 1);
   } finally {
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });

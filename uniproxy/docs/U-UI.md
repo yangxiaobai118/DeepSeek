@@ -42,7 +42,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 审计 | 每次配置写入、apply、内核操作、nginx 测试/重载的时间与动作 |
 | 告警 | 汇总 doctor 发现、端口冲突、内核未运行；配置 webhook / 命令通道，按冷却时间推送（`uniproxy alerts --notify` 亦可） |
 | 证书 | 查看当前证书（subject/issuer/到期/SANs）；用 certbot 或 acme.sh 申请与续期，支持 webroot / standalone / DNS-01，可选 staging；命令以 argv 方式执行，不拼 shell |
-| 备份 | 列出自动备份（每次写配置都会生成 `.bak-<时间戳>`）与手动备份，可下载、恢复、删除；恢复前先校验并自动备份当前版本；支持粘贴 JSON 导入 |
+| 备份 | 列出自动备份（每次写配置都会生成 `.bak-<时间戳>`）与手动备份，可下载、恢复、删除；恢复前先校验并自动备份当前版本；支持粘贴 JSON 导入；**保留策略** `backups.keep`（默认 20，0 = 不清理）每次写入后自动裁剪 |
 | 用户 | 表格（状态/到期/配额/入站/订阅 token）+ 新增/编辑/删除 |
 | 配置 | `config.json` 原始文本编辑器，保存前跑 `validate`，写入前自动备份 |
 | 操作 | `validate` / `doctor` / `plan`（只预览）/ `apply`（需输入确认词） |

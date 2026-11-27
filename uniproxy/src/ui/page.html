@@ -149,7 +149,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 </section>
 <section id="tab-backups">
   <div class="card"><h2>配置备份（每次保存都会自动生成一份）</h2>
-  <div class="row" style="margin-bottom:10px"><button class="act" id="createBackup">立即备份</button><span id="backupMsg" class="muted"></span></div>
+  <div class="row" style="margin-bottom:10px"><button class="act" id="createBackup">立即备份</button><label>保留最近<input id="backupKeep" type="number" min="0" value="20" style="width:80px"></label><button class="ghost" id="saveKeep">保存策略</button><span id="backupMsg" class="muted"></span></div>
   <div id="backupTable"></div></div>
   <div class="card"><h2>导入配置</h2>
   <div class="muted">粘贴一份 config.json 覆盖当前配置（会先自动备份当前版本并校验）。</div>
@@ -742,6 +742,7 @@ document.getElementById('deployAll').onclick = async function () {
 async function loadBackups() {
   const r = await api('GET', '/api/backups');
   const list = (r.data && r.data.backups) || [];
+  if (r.data && r.data.keep != null) document.getElementById('backupKeep').value = r.data.keep;
   document.getElementById('backupTable').innerHTML = list.length
     ? '<table><thead><tr><th>文件</th><th>大小</th><th>时间</th><th>操作</th></tr></thead><tbody>' +
       list.map(function (b) {
@@ -788,6 +789,15 @@ document.getElementById('importConfig').onclick = async function () {
   msg.textContent = r.status === 200 ? '已导入（已自动备份旧配置）' : ((r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''));
   msg.className = r.status === 200 ? 'ok' : 'err';
   if (r.status === 200) { await refresh(); await loadBackups(); }
+};
+
+document.getElementById('saveKeep').onclick = async function () {
+  const msg = document.getElementById('backupMsg');
+  const keep = Number(document.getElementById('backupKeep').value);
+  const r = await api('PUT', '/api/settings', { backupKeep: keep });
+  msg.textContent = r.status === 200 ? ('已保存：保留最近 ' + keep + ' 份（0 = 不清理）') : (r.data.error || '失败');
+  msg.className = r.status === 200 ? 'ok' : 'err';
+  await loadBackups();
 };
 
 refresh();

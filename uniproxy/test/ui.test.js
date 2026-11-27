@@ -10,7 +10,7 @@ import { buildCommand, validDomain, certStatus } from '../src/certs.js';
 import { normalizeNodes, probeCommand, deployCommands, deploy, deployBatch, probeBatch, localChecksum } from '../src/nodes.js';
 import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
 import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup, pruneBackups } from '../src/backups.js';
-import { runMenu, renderMenu, box, buildMenu, unitFiles, installSystem, installPlan } from '../src/menu.js';
+import { runMenu, renderMenu, box, buildMenu, unitFiles, installSystem, installPlan, uninstallSystem } from '../src/menu.js';
 import { randomPassword, randomPort, runSetup } from '../src/setup.js';
 import { verifyPassword } from '../src/auth.js';
 
@@ -584,9 +584,10 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
     print: function (s) { printed.push(String(s)); },
     question: async function () { return answers.length ? answers.shift() : '0'; },
   };
-  await runMenu({ configPath: ctx.cfgPath, io: io });
+  await runMenu({ configPath: ctx.cfgPath, io: io, pause: false });
   const text = printed.join('\n');
   assert.ok(text.includes('u-ui · uniproxy'));
+  assert.ok(text.includes('U. 更新到最新版本'));
   assert.ok(text.includes('0. 退出菜单'));
   assert.ok(text.includes('17. 校验配置 validate'));
   assert.ok(text.includes('26. 申请 / 续期证书'));
@@ -599,7 +600,7 @@ test('menu: box helper and section count', function () {
   const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
   const sections = buildMenu(ctx);
   assert.equal(sections.length, 6);
-  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 28);
+  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 29);
   const rendered = box('面板', ['0. 退出菜单']);
   assert.ok(rendered.startsWith('┌─ 面板'));
   assert.ok(rendered.includes('│ 0. 退出菜单'));
@@ -624,6 +625,28 @@ test('menu: installPlan describes a 3x-ui style layout', function () {
   assert.ok(plan.units['uniproxy-ui.service'].includes('ExecStart=node /usr/local/uniproxy/src/index.js ui -c /etc/uniproxy/config.json'));
 });
 
+test('menu: pauses after an action until Enter', async function () {
+  const ctx = setup();
+  const printed = [];
+  const answers = ['13', '', '0'];
+  const io = {
+    print: function (s) { printed.push(String(s)); },
+    question: async function () { return answers.length ? answers.shift() : '0'; },
+  };
+  await runMenu({ configPath: ctx.cfgPath, io: io });
+  assert.ok(printed.join('\n').includes('按回车返回主菜单'));
+  fs.rmSync(ctx.dir, { recursive: true, force: true });
+});
+
+test('menu: installPlan for a SEA binary ships the executable, not the source tree', function () {
+  const plan = installPlan({ prefix: '/opt/uniproxy', binDir: '/usr/local/bin', etcDir: '/etc/uniproxy', unitDir: '/etc/systemd/system', sea: true });
+  assert.equal(plan.binary, process.execPath);
+  assert.deepEqual(plan.copy, []);
+  assert.ok(plan.launchers['/usr/local/bin/uniproxy'].includes('exec "/opt/uniproxy/uniproxy"'));
+  assert.ok(plan.launchers['/usr/local/bin/u-ui'].includes('menu'));
+  assert.ok(plan.units['uniproxy-ui.service'].includes('ExecStart=/opt/uniproxy/uniproxy ui'));
+});
+
 test('menu: install lays out prefix, launchers, config and units', async function () {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'install-'));
   const keys = ['UNIPROXY_PREFIX', 'UNIPROXY_BIN_DIR', 'UNIPROXY_ETC_DIR', 'UNIPROXY_UNIT_DIR'];
@@ -643,6 +666,34 @@ test('menu: install lays out prefix, launchers, config and units', async functio
     assert.ok(fs.existsSync(path.join(dir, 'etc', 'config.json')));
     assert.ok(fs.existsSync(path.join(dir, 'units', 'uniproxy-ui.service')));
     assert.ok(printed.join('\n').includes('安装完成'));
+  } finally {
+    for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('menu: uninstall removes prefix, launchers and units', async function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uninstall-'));
+  const keys = ['UNIPROXY_PREFIX', 'UNIPROXY_BIN_DIR', 'UNIPROXY_ETC_DIR', 'UNIPROXY_UNIT_DIR'];
+  const saved = {};
+  for (const k of keys) saved[k] = process.env[k];
+  process.env.UNIPROXY_PREFIX = path.join(dir, 'prefix');
+  process.env.UNIPROXY_BIN_DIR = path.join(dir, 'bin');
+  process.env.UNIPROXY_ETC_DIR = path.join(dir, 'etc');
+  process.env.UNIPROXY_UNIT_DIR = path.join(dir, 'units');
+  try {
+    fs.mkdirSync(path.join(dir, 'prefix', 'src'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'prefix', 'uniproxy'), 'binary');
+    fs.mkdirSync(path.join(dir, 'bin'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'bin', 'uniproxy'), 'x');
+    fs.writeFileSync(path.join(dir, 'bin', 'u-ui'), 'x');
+    fs.mkdirSync(path.join(dir, 'units'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'units', 'uniproxy-ui.service'), 'unit');
+    await uninstallSystem({ configPath: path.join(dir, 'etc', 'config.json'), io: { print: function () {} } });
+    assert.equal(fs.existsSync(path.join(dir, 'prefix')), false);
+    assert.equal(fs.existsSync(path.join(dir, 'bin', 'uniproxy')), false);
+    assert.equal(fs.existsSync(path.join(dir, 'bin', 'u-ui')), false);
+    assert.equal(fs.existsSync(path.join(dir, 'units', 'uniproxy-ui.service')), false);
   } finally {
     for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
     fs.rmSync(dir, { recursive: true, force: true });

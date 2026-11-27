@@ -31,6 +31,17 @@ const YELLOW = COLOR ? '\x1b[33m' : '';
 const RED = COLOR ? '\x1b[31m' : '';
 const RESET = COLOR ? '\x1b[0m' : '';
 
+const INSTALL_URL = 'https://raw.githubusercontent.com/yangxiaobai118/DeepSeek/feature/uniproxy/uniproxy/install.sh';
+
+function isSea() {
+  try {
+    const sea = process.getBuiltinModule && process.getBuiltinModule('node:sea');
+    return Boolean(sea && sea.isSea && sea.isSea());
+  } catch (e) {
+    return false;
+  }
+}
+
 function run(command) {
   const res = spawnSync(command, { shell: true, timeout: 20000, encoding: 'utf8' });
   return { ok: res.status === 0, output: String((res.stdout || '') + (res.stderr || '')).trim(), error: res.error ? res.error.code : null };
@@ -70,7 +81,7 @@ function pad(text, width) {
 }
 
 function colorMenuItem(text) {
-  const match = String(text).match(/^(\d+\.)\s/);
+  const match = String(text).match(/^([0-9A-Za-z]+\.)\s/);
   if (!match) return text;
   return GREEN + match[1] + RESET + ' ' + String(text).slice(match[0].length);
 }
@@ -139,6 +150,7 @@ export function buildMenu(ctx) {
     { key: '1', label: '安装到系统路径', run: function () { return installSystem(ctx); } },
     { key: '2', label: '卸载系统安装', run: function () { return uninstallSystem(ctx); } },
     { key: '3', label: '初始化向导', run: function () { return runSetupItem(ctx); } },
+    { key: 'U', label: '更新到最新版本 (Update)', run: function () { return updateSystem(ctx); } },
   ];
 
   const panel = [
@@ -196,7 +208,9 @@ function posix(s) { return String(s).replace(/\\/g, '/'); }
 function pjoin(...parts) { return path.posix.join.apply(path.posix, parts.map(posix)); }
 
 function pkgRoot() {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const url = import.meta.url;
+  if (!url) throw new Error('source tree is not available in this build');
+  return path.resolve(path.dirname(fileURLToPath(url)), '..');
 }
 
 function paths() {
@@ -211,12 +225,18 @@ function paths() {
 /** Describe a system install without touching the filesystem. */
 export function installPlan(opts = {}) {
   const p = Object.assign(paths(), opts);
-  const root = opts.sourceDir || pkgRoot();
+  const sea = opts.sea != null ? Boolean(opts.sea) : isSea();
+  const root = opts.sourceDir || (sea ? null : pkgRoot());
   const configPath = pjoin(p.etcDir, 'config.json');
-  const exe = (opts.exe || 'node ' + pjoin(p.prefix, 'src', 'index.js'));
-  const launcher = function (target) {
-    return ['#!/bin/sh', '# uniproxy launcher', 'exec node "' + pjoin(p.prefix, target) + '" "$@"', ''].join('\n');
-  };
+  const exe = opts.exe || (sea ? pjoin(p.prefix, 'uniproxy') : ('node ' + pjoin(p.prefix, 'src', 'index.js')));
+  const launchers = {};
+  if (sea) {
+    launchers[pjoin(p.binDir, 'uniproxy')] = '#!/bin/sh\n# uniproxy launcher\nexec "' + pjoin(p.prefix, 'uniproxy') + '" "$@"\n';
+    launchers[pjoin(p.binDir, 'u-ui')] = '#!/bin/sh\n# uniproxy menu launcher\nexec "' + pjoin(p.prefix, 'uniproxy') + '" menu "$@"\n';
+  } else {
+    launchers[pjoin(p.binDir, 'uniproxy')] = '#!/bin/sh\n# uniproxy launcher\nexec node "' + pjoin(p.prefix, 'src', 'index.js') + '" "$@"\n';
+    launchers[pjoin(p.binDir, 'u-ui')] = '#!/bin/sh\n# uniproxy menu launcher\nexec node "' + pjoin(p.prefix, 'src', 'u-ui.js') + '" "$@"\n';
+  }
   return {
     prefix: p.prefix,
     binDir: p.binDir,
@@ -224,11 +244,9 @@ export function installPlan(opts = {}) {
     unitDir: p.unitDir,
     configPath: configPath,
     sourceDir: root,
-    copy: ['src', 'package.json', 'README.md', 'CHANGELOG.md', 'DISCLAIMER.md', 'LICENSE', 'config.example.json'],
-    launchers: {
-      [pjoin(p.binDir, 'uniproxy')]: launcher('src/index.js'),
-      [pjoin(p.binDir, 'u-ui')]: launcher('src/u-ui.js'),
-    },
+    binary: sea ? process.execPath : null,
+    copy: sea ? [] : ['src', 'package.json', 'README.md', 'CHANGELOG.md', 'DISCLAIMER.md', 'LICENSE', 'config.example.json'],
+    launchers: launchers,
     units: unitFiles({ configPath: configPath, exe: exe }),
   };
 }
@@ -238,10 +256,19 @@ export async function installSystem(ctx) {
   ctx.io.print('目标目录: ' + plan.prefix);
   try {
     fs.mkdirSync(plan.prefix, { recursive: true });
-    for (const item of plan.copy) {
-      const from = path.join(plan.sourceDir, item);
-      if (!fs.existsSync(from)) continue;
-      fs.cpSync(from, pjoin(plan.prefix, item), { recursive: true });
+    if (plan.binary) {
+      const target = pjoin(plan.prefix, 'uniproxy');
+      const staging = target + '.new';
+      fs.copyFileSync(plan.binary, staging);
+      fs.chmodSync(staging, 0o755);
+      fs.renameSync(staging, target);
+      ctx.io.print('写入 ' + target);
+    } else {
+      for (const item of plan.copy) {
+        const from = path.join(plan.sourceDir, item);
+        if (!fs.existsSync(from)) continue;
+        fs.cpSync(from, pjoin(plan.prefix, item), { recursive: true });
+      }
     }
     fs.mkdirSync(plan.binDir, { recursive: true });
     for (const file of Object.keys(plan.launchers)) {
@@ -266,25 +293,42 @@ export async function installSystem(ctx) {
   }
 }
 
+async function updateSystem(ctx) {
+  const answer = String((await ctx.io.question('从 GitHub 安装最新版本? [y/N]: ')) || '').trim().toLowerCase();
+  if (answer !== 'y' && answer !== 'yes') return ctx.io.print('已取消');
+  ctx.io.print('正在下载并安装最新版本（完成后会重启面板服务）…');
+  const result = spawnSync('sh', ['-c', 'curl -fsSL ' + INSTALL_URL + ' | sh'], {
+    stdio: 'inherit',
+    timeout: 600000,
+    env: Object.assign({}, process.env, { UNIPROXY_NO_MENU: '1' }),
+  });
+  if (result.error) return ctx.io.print('更新失败: ' + result.error.message);
+  ctx.io.print(result.status === 0 ? '更新完成' : ('更新失败: exit ' + result.status));
+}
+
 export async function runSetupItem(ctx) {
   const mod = await import('./setup.js');
   await mod.runSetup({ configPath: ctx.configPath, io: ctx.io });
 }
 
-async function uninstallSystem(ctx) {
-  const plan = installPlan();
+export async function uninstallSystem(ctx) {
+  const p = paths();
+  const configPath = pjoin(p.etcDir, 'config.json');
   for (const name of ['uniproxy-ui.service', 'uniproxy-sub.service']) {
     run('systemctl disable --now ' + name);
-    try { fs.unlinkSync(path.join(plan.unitDir, name)); } catch (e) { /* missing */ }
+    try { fs.unlinkSync(path.join(p.unitDir, name)); } catch (e) { /* missing */ }
   }
   run('systemctl daemon-reload');
-  for (const file of Object.keys(plan.launchers)) { try { fs.unlinkSync(file); } catch (e) { /* missing */ } }
-  try { fs.rmSync(plan.prefix, { recursive: true, force: true }); } catch (e) { /* missing */ }
-  ctx.io.print('已卸载程序与 unit；配置目录 ' + path.dirname(plan.configPath) + ' 保留（需要时手动删除）');
+  for (const name of ['uniproxy', 'u-ui']) {
+    try { fs.unlinkSync(pjoin(p.binDir, name)); ctx.io.print('已删除 ' + pjoin(p.binDir, name)); } catch (e) { /* missing */ }
+  }
+  try { fs.rmSync(p.prefix, { recursive: true, force: true }); } catch (e) { /* missing */ }
+  ctx.io.print('已卸载程序与 unit；配置目录 ' + path.dirname(configPath) + ' 保留（需要时手动删除）');
 }
 
 /** Where the service should point: a node script needs the interpreter in front. */
 export function executable() {
+  if (isSea()) return process.execPath;
   const script = process.argv[1] || '';
   if (/\.(js|mjs|cjs)$/.test(script)) return process.execPath + ' ' + script;
   return script || 'uniproxy';
@@ -534,6 +578,7 @@ function defaultIO() {
 }
 
 export async function runMenu(options = {}) {
+  const pause = options.pause !== false;
   const ctx = {
     configPath: options.configPath || 'config.json',
     io: options.io || defaultIO(),
@@ -541,7 +586,7 @@ export async function runMenu(options = {}) {
   const items = buildMenu(ctx).reduce(function (acc, s) { return acc.concat(s.items); }, []);
   for (;;) {
     ctx.io.print(renderMenu(ctx));
-    const answer = String((await ctx.io.question('\n' + GREEN + '请选择 [0-28]: ' + RESET)) || '').trim();
+    const answer = String((await ctx.io.question('\n' + GREEN + '请选择 [0-28/U]: ' + RESET)) || '').trim();
     if (answer === '0' || answer.toLowerCase() === 'q') { ctx.io.print('已退出'); break; }
     const item = items.find(function (i) { return i.key === answer; });
     if (!item) { ctx.io.print('无效选项: ' + answer); continue; }
@@ -549,6 +594,10 @@ export async function runMenu(options = {}) {
       await item.run();
     } catch (e) {
       ctx.io.print('执行失败: ' + e.message);
+    }
+    if (pause && answer !== '0') {
+      ctx.io.print('\n' + YELLOW + '按回车返回主菜单' + RESET);
+      await ctx.io.question('');
     }
   }
   if (ctx.io.close) ctx.io.close();

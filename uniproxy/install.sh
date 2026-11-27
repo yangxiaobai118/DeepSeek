@@ -187,7 +187,9 @@ fetch_to "$ASSET" "$tmp/asset" || die "download failed: $ASSET"
 mkdir -p "$PREFIX" "$BIN_DIR" "$ETC_DIR" "$UNIT_DIR"
 
 if [ "$MODE" = "sea" ]; then
-  install -m 755 "$tmp/asset" "$PREFIX/uniproxy"
+  # atomic replace: the binary may be running (menu update) and cannot be truncated in place
+  install -m 755 "$tmp/asset" "$PREFIX/.uniproxy.new"
+  mv -f "$PREFIX/.uniproxy.new" "$PREFIX/uniproxy"
 else
   tar -xzf "$tmp/asset" -C "$(dirname "$PREFIX")"
   [ -f "$PREFIX/src/index.js" ] || die "unexpected archive layout (expected $PREFIX/src/index.js)"
@@ -241,7 +243,7 @@ say "  panel:  http://127.0.0.1:$UI_PORT  (tunnel: ssh -L $UI_PORT:127.0.0.1:$UI
 say "  config: $ETC_DIR/config.json  (edit it, then: u-ui -> 17 validate / 19 apply)"
 say "  menu:   u-ui"
 
-if [ -t 0 ] && [ -t 1 ]; then
+if [ -t 0 ] && [ -t 1 ] && [ "${UNIPROXY_NO_MENU:-0}" != "1" ]; then
   say ""
   say "opening the menu (Ctrl-C to leave)"
   exec "$BIN_DIR/u-ui"

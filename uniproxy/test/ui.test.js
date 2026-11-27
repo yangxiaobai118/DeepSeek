@@ -627,7 +627,7 @@ test('menu: box helper and section count', function () {
   const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
   const sections = buildMenu(ctx);
   assert.equal(sections.length, 6);
-  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 40);
+  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 41);
   const rendered = box('面板', ['0. 退出菜单']);
   assert.ok(rendered.startsWith('┌─ 面板'));
   assert.ok(rendered.includes('│ 0. 退出菜单'));

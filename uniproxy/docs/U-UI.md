@@ -151,7 +151,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 分区 | 动作 |
 |---|---|
 | 面板 | 查看设置、改面板端口、**修改访问路径（B，webBasePath）**、重置管理员/只读密码 |
-| 服务 | **安装/卸载 systemd 单元**（`uniproxy-ui` + `uniproxy-sub`）、启动/停止/重启、状态、日志、开机自启 |
+| 服务 | **安装/卸载 systemd 单元**（`uniproxy-ui` + `uniproxy-sub`）、启动/停止/重启、状态、**完整 systemctl status（S）**、日志、开机自启 |
 | 配置 | validate、doctor、apply、立即备份、恢复备份 |
 | 内核 | 重启 / 停止 / 启动 xray、sing-box、nginx；**安装/升级/卸载 xray、sing-box** |
 | 其他 | 证书状态、申请/续期、告警、节点列表 |

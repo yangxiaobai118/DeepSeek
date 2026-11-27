@@ -187,6 +187,7 @@ export function buildMenu(ctx) {
     { key: '11', label: '停止面板 (Stop Panel)', run: function () { return systemctl(ctx, 'stop'); } },
     { key: '12', label: '重启面板 (Restart Panel)', run: function () { return systemctl(ctx, 'restart'); } },
     { key: '13', label: '查看状态 (Check Status)', run: function () { return showStatus(ctx); } },
+    { key: 'S', label: '查看服务详情 (systemctl Status)', run: function () { return showSystemdStatus(ctx); } },
     { key: '14', label: '查看日志 (Check Logs)', run: function () { return showLogs(ctx); } },
     { key: '15', label: '启用开机自启 (Enable Autostart)', run: function () { return systemctl(ctx, 'enable'); } },
     { key: '16', label: '关闭开机自启 (Disable Autostart)', run: function () { return systemctl(ctx, 'disable'); } },
@@ -578,6 +579,14 @@ function systemctl(ctx, action) {
   ctx.io.print(res.ok ? (action + ' 成功') : (action + ' 失败: ' + (res.output || res.error)));
 }
 
+function showSystemdStatus(ctx) {
+  const res = run('systemctl status ' + UI_UNIT + ' --no-pager');
+  ctx.io.print(res.output || '(无输出)');
+  if (/status=1\/FAILURE|failed/i.test(res.output)) {
+    ctx.io.print('提示: 查看详细日志请按 14（journalctl -u ' + UI_UNIT + ' -n 60）');
+  }
+}
+
 function showStatus(ctx) {
   const lines = ['面板(' + UI_UNIT + '): ' + unitState(UI_UNIT), '开机自启: ' + (run('systemctl is-enabled ' + UI_UNIT).output || 'unknown')];
   for (const name of Object.keys(CORE_UNITS)) lines.push(CORE_UNITS[name] + ': ' + unitState(CORE_UNITS[name]));
@@ -729,7 +738,7 @@ export async function runMenu(options = {}) {
   const items = buildMenu(ctx).reduce(function (acc, s) { return acc.concat(s.items); }, []);
   for (;;) {
     ctx.io.print(renderMenu(ctx));
-    const answer = String((await ctx.io.question('\n' + GREEN + '请选择 [0-38/B/U]: ' + RESET)) || '').trim();
+    const answer = String((await ctx.io.question('\n' + GREEN + '请选择 [0-38/B/S/U]: ' + RESET)) || '').trim();
     if (answer === '0' || answer.toLowerCase() === 'q') { ctx.io.print('已退出'); break; }
     const item = items.find(function (i) { return i.key === answer; });
     if (!item) { ctx.io.print('无效选项: ' + answer); continue; }

@@ -4,7 +4,7 @@
 body{font-family:system-ui,Segoe UI,sans-serif;margin:0;background:#0f1115;color:#e6e6e6}
 header{display:flex;align-items:center;gap:16px;padding:14px 22px;background:#171a21;border-bottom:1px solid #2a2f3a}
 header h1{margin:0;font-size:16px}
-nav{display:flex;gap:8px;flex:1}
+nav{display:flex;gap:8px;flex:1;flex-wrap:wrap}
 nav button{background:#0b0d12;border:1px solid #2a2f3a;color:#c9d1d9;padding:6px 12px;border-radius:6px;cursor:pointer}
 nav button.on{background:#3b6cf6;border-color:#3b6cf6;color:#fff}
 header a{color:#8b93a3;text-decoration:none;font-size:13px}
@@ -26,11 +26,15 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 .row label{display:grid;gap:4px;font-size:12px;color:#8b93a3}
 .err{color:#ff6b6b}.warn{color:#ffd166}.ok{color:#3ddc84}
 .muted{color:#8b93a3;font-size:12px}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid #2a2f3a}
+.pill.on{color:#3ddc84;border-color:#1f6f43}.pill.off{color:#ff6b6b;border-color:#7f1d1d}
 </style></head><body>
 <header><h1>u-ui</h1>
 <nav>
 <button data-tab="overview" class="on">概览</button>
+<button data-tab="inbounds">入站</button>
 <button data-tab="users">用户</button>
+<button data-tab="cores">内核</button>
 <button data-tab="config">配置</button>
 <button data-tab="actions">操作</button>
 </nav><a href="/logout">退出</a></header>
@@ -38,11 +42,18 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <section id="tab-overview" class="on">
   <div class="card"><h2>状态</h2><div id="overview"></div></div>
   <div class="card"><h2>端口</h2><div id="ports"></div></div>
-  <div class="card"><h2>用户</h2><div id="usersPreview"></div></div>
+</section>
+<section id="tab-inbounds">
+  <div class="card"><h2>入站（同时管理 xray 与 sing-box）</h2><div id="inboundTable"></div></div>
+  <div class="card"><h2 id="inboundFormTitle">新增入站</h2><div id="inboundForm"></div></div>
 </section>
 <section id="tab-users">
   <div class="card"><h2>用户注册表</h2><div id="userTable"></div></div>
   <div class="card"><h2 id="userFormTitle">新增用户</h2><div id="userForm"></div></div>
+</section>
+<section id="tab-cores">
+  <div class="card"><h2>内核与服务</h2><div id="coreTable"></div>
+  <div class="muted" style="margin-top:10px">开关控制的是 uniproxy 是否生成该内核的配置；启动/停止/重启走 systemctl。</div></div>
 </section>
 <section id="tab-config">
   <div class="card"><h2>config.json（保存前会跑 validate，并自动备份）</h2>
@@ -63,7 +74,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 </main>
 <script>
 const csrf = () => { const m = document.cookie.match(/(?:^|; )uui_csrf=([^;]+)/); return m ? m[1] : ''; };
-let state = null; let editing = null;
+let state = null; let cores = []; let editingUser = null; let editingInbound = null;
 async function api(method, path, body) {
   const opts = { method, headers: { 'x-uui-csrf': csrf() } };
   if (body !== undefined) { opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
@@ -73,26 +84,120 @@ async function api(method, path, body) {
   return { status: res.status, data };
 }
 async function refresh() {
-  const r = await api('GET', '/api/state');
-  if (r.status === 401) { location.href = '/login'; return; }
-  state = r.data; renderOverview(); renderUsers(); renderPorts();
+  const a = await api('GET', '/api/state');
+  if (a.status === 401) { location.href = '/login'; return; }
+  state = a.data;
+  const b = await api('GET', '/api/cores');
+  cores = (b.data && b.data.cores) || [];
+  renderOverview(); renderPorts(); renderInbounds(); renderUsers(); renderCores();
 }
 function h(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function gb(n) { return n ? (n / 1073741824).toFixed(1) + ' GB' : '-'; }
 function renderOverview() {
   document.getElementById('overview').innerHTML =
     '<div class="muted">配置：' + h(state.configPath) + '　模式：' + h(state.nginxMode) + '　公网 IP：' + h(state.publicIp || '未设置') + '</div>' +
-    '<div style="margin-top:8px">用户 ' + state.users.length + ' 个，订阅 ' + state.subscriptions.length + ' 个</div>' +
+    '<div style="margin-top:8px">入站 ' + state.inbounds.length + ' 个，用户 ' + state.users.length + ' 个，订阅 ' + state.subscriptions.length + ' 个</div>' +
     (state.errors.length ? '<div class="err">' + state.errors.map(e => '- ' + h(e)).join('<br>') + '</div>' : '<div class="ok">校验通过</div>') +
     (state.warnings.length ? '<div class="warn">' + state.warnings.map(e => '- ' + h(e)).join('<br>') + '</div>' : '');
-  document.getElementById('usersPreview').innerHTML = state.users.length
-    ? '<table><thead><tr><th>用户</th><th>状态</th><th>到期</th><th>配额</th><th>订阅 token</th></tr></thead><tbody>' +
-      state.users.map(u => '<tr><td>' + h(u.name) + '</td><td>' + h(u.status) + '</td><td>' + h(u.expireAt || '-') + '</td><td>' + gb(u.dataLimitBytes) + '</td><td><code>' + h(u.token || '-') + '</code></td></tr>').join('') + '</tbody></table>'
-    : '<div class="muted">还没有用户</div>';
 }
 function renderPorts() {
   document.getElementById('ports').innerHTML = '<table><thead><tr><th>端口</th><th>组件</th><th>监听</th></tr></thead><tbody>' +
     state.ports.map(p => '<tr><td>' + h(p.port) + '</td><td>' + h(p.label) + '</td><td>' + h(p.listen || '0.0.0.0') + '</td></tr>').join('') + '</tbody></table>';
+}
+function renderInbounds() {
+  const t = document.getElementById('inboundTable');
+  t.innerHTML = state.inbounds.length
+    ? '<table><thead><tr><th>内核</th><th>tag</th><th>协议</th><th>监听</th><th>网络</th><th>安全</th><th>操作</th></tr></thead><tbody>' +
+      state.inbounds.map(ib => '<tr><td>' + h(ib.kind) + '</td><td><code>' + h(ib.tag) + '</code></td><td>' + h(ib.protocol) + '</td><td>' + h(ib.listen + ':' + ib.port) + '</td><td>' + h(ib.network) + '</td><td>' + h(ib.security) + '</td>' +
+      '<td><button class="ghost" onclick="editInbound(\'' + h(ib.kind) + '\',\'' + h(ib.tag) + '\')">编辑</button> <button class="ghost danger" onclick="delInbound(\'' + h(ib.kind) + '\',\'' + h(ib.tag) + '\')">删除</button></td></tr>').join('') + '</tbody></table>'
+    : '<div class="muted">还没有入站</div>';
+  renderInboundForm(editingInbound);
+}
+function renderInboundForm(editable) {
+  const ib = editable || { kind: 'xray', tag: '', protocol: 'vless', listen: '127.0.0.1', port: 10443, network: 'tcp', security: 'none', sni: '', wsPath: '/ws', reality: {} };
+  const r = ib.reality || {};
+  document.getElementById('inboundFormTitle').textContent = editable ? ('编辑入站：' + editable.tag) : '新增入站';
+  document.getElementById('inboundForm').innerHTML =
+    '<div class="row">' +
+    '<label>内核<select id="i_kind"><option value="xray"' + (ib.kind === 'xray' ? ' selected' : '') + '>xray</option><option value="singbox"' + (ib.kind === 'singbox' ? ' selected' : '') + '>singbox</option></select></label>' +
+    '<label>tag<input id="i_tag" value="' + h(ib.tag) + '"></label>' +
+    '<label>协议<select id="i_proto">' + ['vless','vmess','trojan'].map(p => '<option' + (ib.protocol === p ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label>' +
+    '<label>监听<input id="i_listen" value="' + h(ib.listen) + '"></label>' +
+    '<label>端口<input id="i_port" type="number" value="' + h(ib.port) + '"></label>' +
+    '<label>网络<select id="i_net">' + ['tcp','ws','grpc','h2'].map(p => '<option' + (ib.network === p ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label>' +
+    '<label>安全<select id="i_sec">' + ['none','tls','reality'].map(p => '<option' + (ib.security === p ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label>' +
+    '<label>SNI<input id="i_sni" value="' + h(ib.sni || '') + '"></label>' +
+    '<label>WS 路径<input id="i_ws" value="' + h(ib.wsPath || '/ws') + '"></label>' +
+    '</div>' +
+    '<div class="row" style="margin-top:10px">' +
+    '<label>Reality dest<input id="i_rdest" value="' + h(r.dest || '') + '" placeholder="www.bing.com:443"></label>' +
+    '<label>Reality serverNames<input id="i_rnames" value="' + h((r.serverNames || []).join(',')) + '" placeholder="www.bing.com"></label>' +
+    '<label>Reality privateKey<input id="i_rkey" value="' + h(r.privateKey || '') + '"></label>' +
+    '<label>Reality shortIds<input id="i_rsid" value="' + h((r.shortIds || []).join(',')) + '" placeholder="0123456789abcdef"></label>' +
+    '</div>' +
+    '<div class="row" style="margin-top:12px"><button class="act" id="saveInbound">' + (editable ? '保存修改' : '创建入站') + '</button>' +
+    (editable ? '<button class="ghost" onclick="cancelInbound()">取消</button>' : '') + '<span id="inboundMsg" class="muted"></span></div>';
+  document.getElementById('saveInbound').onclick = saveInbound;
+}
+function collectInbound() {
+  return {
+    kind: document.getElementById('i_kind').value,
+    tag: document.getElementById('i_tag').value.trim(),
+    protocol: document.getElementById('i_proto').value,
+    listen: document.getElementById('i_listen').value.trim(),
+    port: Number(document.getElementById('i_port').value),
+    network: document.getElementById('i_net').value,
+    security: document.getElementById('i_sec').value,
+    sni: document.getElementById('i_sni').value.trim(),
+    wsPath: document.getElementById('i_ws').value.trim(),
+    realityDest: document.getElementById('i_rdest').value.trim(),
+    realityServerNames: document.getElementById('i_rnames').value.trim(),
+    realityPrivateKey: document.getElementById('i_rkey').value.trim(),
+    realityShortIds: document.getElementById('i_rsid').value.trim(),
+  };
+}
+async function saveInbound() {
+  const body = collectInbound();
+  const msg = document.getElementById('inboundMsg');
+  if (!body.tag) { msg.textContent = 'tag 必填'; msg.className = 'err'; return; }
+  const r = editingInbound
+    ? await api('PUT', '/api/inbounds/' + editingInbound.kind + '/' + encodeURIComponent(editingInbound.tag), body)
+    : await api('POST', '/api/inbounds', body);
+  if (r.status === 200) { editingInbound = null; msg.textContent = '已保存'; await refresh(); }
+  else { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'err'; }
+}
+function editInbound(kind, tag) {
+  const found = state.inbounds.find(i => i.kind === kind && i.tag === tag);
+  if (!found) return;
+  editingInbound = Object.assign({}, found, { reality: found.reality || {} });
+  renderInbounds();
+}
+function cancelInbound() { editingInbound = null; renderInbounds(); }
+async function delInbound(kind, tag) {
+  if (!confirm('删除入站 ' + tag + ' ?')) return;
+  const r = await api('DELETE', '/api/inbounds/' + kind + '/' + encodeURIComponent(tag));
+  if (r.status === 200) { editingInbound = null; await refresh(); } else alert(r.data.error || '删除失败');
+}
+function renderCores() {
+  document.getElementById('coreTable').innerHTML = '<table><thead><tr><th>内核</th><th>单元</th><th>生成配置</th><th>运行状态</th><th>操作</th></tr></thead><tbody>' +
+    cores.map(c => '<tr><td>' + h(c.kind) + '</td><td><code>' + h(c.unit) + '</code></td>' +
+    '<td><span class="pill ' + (c.enabled ? 'on' : 'off') + '">' + (c.enabled ? 'enabled' : 'disabled') + '</span></td>' +
+    '<td><span class="pill ' + (c.active ? 'on' : 'off') + '">' + (c.active ? 'active' : 'inactive') + '</span> <span class="muted">' + h(c.probe || '') + '</span></td>' +
+    '<td><button class="ghost" onclick="coreAct(\'' + c.kind + '\',\'start\')">start</button> ' +
+    '<button class="ghost" onclick="coreAct(\'' + c.kind + '\',\'stop\')">stop</button> ' +
+    '<button class="ghost" onclick="coreAct(\'' + c.kind + '\',\'restart\')">restart</button> ' +
+    (c.kind !== 'nginx' ? '<button class="ghost" onclick="toggleCore(\'' + c.kind + '\',' + (!c.enabled) + ')">' + (c.enabled ? '停用配置' : '启用配置') + '</button>' : '') +
+    '</td></tr>').join('') + '</tbody></table>';
+}
+async function coreAct(kind, action) {
+  const r = await api('POST', '/api/cores/' + kind + '/' + action);
+  if (r.status !== 200) alert((r.data.error || 'failed') + '\n' + (r.data.output || ''));
+  await refresh();
+}
+async function toggleCore(kind, enabled) {
+  const r = await api('PUT', '/api/cores/' + kind, { enabled: enabled });
+  if (r.status !== 200) alert(r.data.error || 'failed');
+  await refresh();
 }
 function renderUsers() {
   const t = document.getElementById('userTable');
@@ -100,8 +205,8 @@ function renderUsers() {
     ? '<table><thead><tr><th>用户</th><th>状态</th><th>到期</th><th>用量/配额</th><th>入站</th><th>操作</th></tr></thead><tbody>' +
       state.users.map(u => '<tr><td>' + h(u.name) + '</td><td>' + h(u.status) + '</td><td>' + h(u.expireAt || '-') + '</td><td>' + gb(u.usedBytes) + ' / ' + gb(u.dataLimitBytes) + '</td><td>' + h(u.inbounds.join(', ') || '-') + '</td>' +
       '<td><button class="ghost" onclick="editUser(\'' + h(u.name) + '\')">编辑</button> <button class="ghost danger" onclick="delUser(\'' + h(u.name) + '\')">删除</button></td></tr>').join('') + '</tbody></table>'
-    : '<div class="muted">还没有用户，用下面的表单新增</div>';
-  renderUserForm(editing);
+    : '<div class="muted">还没有用户</div>';
+  renderUserForm(editingUser);
 }
 function renderUserForm(user) {
   const u = user || { name: '', inbounds: [], expireAt: '', dataLimitBytes: 0, enabled: true, note: '' };
@@ -115,13 +220,13 @@ function renderUserForm(user) {
     '<label><span>启用</span><input id="f_enabled" type="checkbox" ' + (u.enabled !== false ? 'checked' : '') + '></label>' +
     '</div>' +
     '<div class="muted" style="margin:10px 0 6px">入站</div><div id="f_inbounds" class="row">' +
-    state.inbounds.map(ib => '<label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" value="' + h(ib.tag) + '" ' + (u.inbounds.includes(ib.tag) ? 'checked' : '') + '>' + h(ib.tag) + ' <span class="muted">(' + h(ib.kind) + ':' + h(ib.protocol) + ')</span></label>').join('') +
+    state.inbounds.map(ib => '<label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" value="' + h(ib.tag) + '" ' + (u.inbounds.includes(ib.tag) ? 'checked' : '') + '>' + h(ib.tag) + ' <span class="muted">(' + h(ib.kind) + ')</span></label>').join('') +
     '</div>' +
     '<div class="row" style="margin-top:12px"><button class="act" id="saveUser">' + (user ? '保存修改' : '创建用户') + '</button>' +
     (user ? '<button class="ghost" onclick="cancelEdit()">取消</button>' : '') + '<span id="userMsg" class="muted"></span></div>';
   document.getElementById('saveUser').onclick = saveUser;
 }
-function collect() {
+function collectUser() {
   const tags = Array.from(document.querySelectorAll('#f_inbounds input:checked')).map(i => i.value);
   const gbValue = Number(document.getElementById('f_quota').value || 0);
   return {
@@ -134,19 +239,19 @@ function collect() {
   };
 }
 async function saveUser() {
-  const body = collect();
+  const body = collectUser();
   const msg = document.getElementById('userMsg');
   if (!body.name) { msg.textContent = '用户名必填'; msg.className = 'err'; return; }
-  const r = editing ? await api('PUT', '/api/users/' + encodeURIComponent(editing.name), body) : await api('POST', '/api/users', body);
-  if (r.status === 200) { editing = null; msg.textContent = '已保存'; await refresh(); }
+  const r = editingUser ? await api('PUT', '/api/users/' + encodeURIComponent(editingUser.name), body) : await api('POST', '/api/users', body);
+  if (r.status === 200) { editingUser = null; msg.textContent = '已保存'; await refresh(); }
   else { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'err'; }
 }
-function editUser(name) { editing = state.users.find(u => u.name === name); renderUsers(); }
-function cancelEdit() { editing = null; renderUsers(); }
+function editUser(name) { editingUser = state.users.find(u => u.name === name); renderUsers(); }
+function cancelEdit() { editingUser = null; renderUsers(); }
 async function delUser(name) {
   if (!confirm('删除用户 ' + name + ' ?')) return;
   const r = await api('DELETE', '/api/users/' + encodeURIComponent(name));
-  if (r.status === 200) { editing = null; await refresh(); } else alert(r.data.error || '删除失败');
+  if (r.status === 200) { editingUser = null; await refresh(); } else alert(r.data.error || '删除失败');
 }
 async function loadConfig() {
   const r = await api('GET', '/api/config');

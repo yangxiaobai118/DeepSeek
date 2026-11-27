@@ -8,6 +8,10 @@
   dashboard - password login with signed session cookies and CSRF double
   submit, user registry CRUD, raw config editing with validation and backup,
   and validate / doctor / plan / apply actions. Design notes in `docs/U-UI.md`.
+- u-ui inbound management: create, edit and delete inbounds for both xray and
+  sing-box from one form (protocol, listen, port, network, TLS/Reality, SNI).
+- u-ui core control: show the systemd state of xray, sing-box and nginx, start /
+  stop / restart them, and toggle whether uniproxy generates each core's config.
 
 ### Fixed
 

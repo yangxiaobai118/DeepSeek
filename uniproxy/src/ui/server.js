@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { applyDefaults, validateConfig } from '../config.js';
 import { analyzePorts } from '../ports.js';
 import { resolveUsers } from '../users.js';
@@ -72,6 +73,18 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     if (userMatch && req.method === 'DELETE') return deleteUser(res, abs, decodeURIComponent(userMatch[1]));
     const actionMatch = url.pathname.match(/^\/api\/actions\/([a-z]+)$/);
     if (actionMatch && req.method === 'POST') return runAction(req, res, abs, actionMatch[1]);
+
+    if (url.pathname === '/api/inbounds' && req.method === 'GET') return listInbounds(res, abs);
+    if (url.pathname === '/api/inbounds' && req.method === 'POST') return createInbound(req, res, abs);
+    const ibMatch = url.pathname.match(/^\/api\/inbounds\/([a-z]+)\/(.+)$/);
+    if (ibMatch && req.method === 'PUT') return updateInbound(req, res, abs, ibMatch[1], decodeURIComponent(ibMatch[2]));
+    if (ibMatch && req.method === 'DELETE') return deleteInbound(res, abs, ibMatch[1], decodeURIComponent(ibMatch[2]));
+
+    if (url.pathname === '/api/cores' && req.method === 'GET') return listCores(res, abs);
+    const coreMatch = url.pathname.match(/^\/api\/cores\/([a-z]+)\/(start|stop|restart)$/);
+    if (coreMatch && req.method === 'POST') return coreAction(res, coreMatch[1], coreMatch[2]);
+    const corePut = url.pathname.match(/^\/api\/cores\/([a-z]+)$/);
+    if (corePut && req.method === 'PUT') return setCoreEnabled(req, res, abs, corePut[1]);
 
     return json(res, 404, { error: 'not found' });
   }
@@ -148,7 +161,18 @@ function allInbounds(c) {
   const out = [];
   for (const kind of ['xray', 'singbox']) {
     for (const ib of c[kind].inbounds || []) {
-      out.push({ kind: kind, tag: ib.tag, protocol: ib.protocol, listen: ib.listen, port: ib.port, security: ib.security || 'none' });
+      out.push({
+        kind: kind,
+        tag: ib.tag,
+        protocol: ib.protocol,
+        listen: ib.listen,
+        port: ib.port,
+        network: ib.network || 'tcp',
+        security: ib.security || 'none',
+        sni: ib.sni || '',
+        wsPath: ib.wsPath || '',
+        reality: ib.reality || null,
+      });
     }
   }
   return out;
@@ -281,6 +305,141 @@ function readJson(req, cb) {
     if (err) return cb(err);
     if (!text) return cb(null, {});
     try { cb(null, JSON.parse(text)); } catch (e) { cb(new Error('invalid JSON body')); }
+  });
+}
+
+const UNITS = { xray: 'xray', singbox: 'sing-box', nginx: 'nginx' };
+const KINDS = ['xray', 'singbox'];
+
+function runCmd(command) {
+  const res = spawnSync(command, { shell: true, timeout: 15000, encoding: 'utf8' });
+  return {
+    ok: res.status === 0,
+    status: res.status,
+    error: res.error ? res.error.code : null,
+    output: String((res.stdout || '') + (res.stderr || '')).trim(),
+  };
+}
+
+function readRaw(cfgPath) {
+  return JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+}
+
+function listInbounds(res, cfgPath) {
+  const c = derive(readRaw(cfgPath));
+  return json(res, 200, { inbounds: allInbounds(c) });
+}
+
+function normalizeInbound(body) {
+  const out = {
+    tag: String(body.tag || '').trim(),
+    protocol: body.protocol || 'vless',
+    listen: body.listen || '127.0.0.1',
+    port: Number(body.port),
+    network: body.network || 'tcp',
+    security: body.security || 'none',
+  };
+  if (body.sni) out.sni = String(body.sni);
+  if (out.network === 'ws') out.wsPath = body.wsPath || '/ws';
+  if (out.network === 'grpc') out.grpcService = body.grpcService || 'grpc';
+  if (out.security === 'reality') {
+    out.reality = {
+      dest: String(body.realityDest || ''),
+      serverNames: String(body.realityServerNames || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean),
+      privateKey: String(body.realityPrivateKey || ''),
+      shortIds: String(body.realityShortIds || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean),
+    };
+  }
+  return out;
+}
+
+function inboundList(raw, kind) {
+  raw[kind] = raw[kind] || {};
+  if (!Array.isArray(raw[kind].inbounds)) raw[kind].inbounds = [];
+  return raw[kind].inbounds;
+}
+
+function createInbound(req, res, cfgPath) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    const kind = KINDS.includes(body.kind) ? body.kind : 'xray';
+    const raw = readRaw(cfgPath);
+    const inbound = normalizeInbound(body);
+    if (!inbound.tag) return json(res, 400, { error: 'tag is required' });
+    if (!Number.isInteger(inbound.port) || inbound.port < 1 || inbound.port > 65535) return json(res, 400, { error: 'port must be 1..65535' });
+    const list = inboundList(raw, kind);
+    if (list.some(function (ib) { return ib.tag === inbound.tag; })) return json(res, 409, { error: 'inbound tag already exists' });
+    list.push(inbound);
+    const check = validateConfig(derive(raw));
+    if (check.errors.length) return json(res, 400, { error: 'validation failed', errors: check.errors });
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, kind: kind, inbound: inbound, warnings: check.warnings });
+  });
+}
+
+function updateInbound(req, res, cfgPath, kind, tag) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    if (!KINDS.includes(kind)) return json(res, 400, { error: 'unknown kind' });
+    const raw = readRaw(cfgPath);
+    const list = inboundList(raw, kind);
+    const idx = list.findIndex(function (ib) { return ib.tag === tag; });
+    if (idx < 0) return json(res, 404, { error: 'inbound not found' });
+    // keep fields the form does not manage (e.g. explicit clients) across edits
+    const merged = Object.assign({}, list[idx], normalizeInbound(Object.assign({}, list[idx], body)));
+    if (merged.tag !== tag && list.some(function (ib) { return ib.tag === merged.tag; })) return json(res, 409, { error: 'target tag already exists' });
+    list[idx] = merged;
+    const check = validateConfig(derive(raw));
+    if (check.errors.length) return json(res, 400, { error: 'validation failed', errors: check.errors });
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, kind: kind, inbound: merged, warnings: check.warnings });
+  });
+}
+
+function deleteInbound(res, cfgPath, kind, tag) {
+  if (!KINDS.includes(kind)) return json(res, 400, { error: 'unknown kind' });
+  const raw = readRaw(cfgPath);
+  const list = inboundList(raw, kind);
+  const next = list.filter(function (ib) { return ib.tag !== tag; });
+  if (next.length === list.length) return json(res, 404, { error: 'inbound not found' });
+  raw[kind].inbounds = next;
+  saveRaw(cfgPath, raw);
+  return json(res, 200, { ok: true });
+}
+
+function listCores(res, cfgPath) {
+  const raw = readRaw(cfgPath);
+  const cores = KINDS.map(function (kind) {
+    const probe = runCmd('systemctl is-active ' + UNITS[kind]);
+    const enabled = raw[kind] ? raw[kind].enabled !== false : true;
+    return {
+      kind: kind,
+      unit: UNITS[kind],
+      enabled: enabled,
+      active: probe.output === 'active',
+      probe: probe.output || (probe.error || ''),
+    };
+  });
+  cores.push({ kind: 'nginx', unit: 'nginx', enabled: true, active: runCmd('systemctl is-active nginx').output === 'active', probe: '' });
+  return json(res, 200, { cores: cores });
+}
+
+function coreAction(res, kind, action) {
+  const unit = UNITS[kind];
+  if (!unit) return json(res, 400, { error: 'unknown core' });
+  const result = runCmd('systemctl ' + action + ' ' + unit);
+  return json(res, result.ok ? 200 : 500, { ok: result.ok, unit: unit, action: action, output: result.output, error: result.error });
+}
+
+function setCoreEnabled(req, res, cfgPath, kind) {
+  readJson(req, function (err, body) {
+    if (err) return json(res, 400, { error: err.message });
+    if (!KINDS.includes(kind)) return json(res, 400, { error: 'unknown core' });
+    const raw = readRaw(cfgPath);
+    raw[kind] = raw[kind] || {};
+    raw[kind].enabled = body.enabled !== false;
+    saveRaw(cfgPath, raw);
+    return json(res, 200, { ok: true, kind: kind, enabled: raw[kind].enabled });
   });
 }
 

@@ -9,7 +9,7 @@ import { runDoctor, formatDoctor } from './doctor.js';
 import { buildPlan, applyPlan, formatPlan } from './apply.js';
 import { analyzePorts } from './ports.js';
 import { resolveUsers } from './users.js';
-import { certStatus, issue } from './certs.js';
+import { certStatus, issue, normalizeCerts, providerAvailable, ensureCertbot } from './certs.js';
 import { listBackups, createBackup, restoreBackup } from './backups.js';
 import { collectAlerts } from './alerts.js';
 import { normalizeNodes } from './nodes.js';
@@ -711,7 +711,38 @@ function issueCert(ctx) {
   return async function (c) {
     const answer = (await ctx.io.question('i=申请  r=续期  (回车取消): ')).trim().toLowerCase();
     if (answer !== 'i' && answer !== 'r') return ctx.io.print('已取消');
-    const result = issue(c, { mode: answer === 'r' ? 'renew' : 'issue' });
+
+    const cfg = normalizeCerts(c);
+    if (cfg.provider === 'certbot' && !cfg.command && !providerAvailable('certbot')) {
+      const auto = String((await ctx.io.question('未安装 certbot，是否自动安装? [Y/n]: ')) || '').trim().toLowerCase();
+      if (auto === 'n' || auto === 'no') return ctx.io.print('已取消：请先安装 certbot');
+      const installed = ensureCertbot(function (s) { ctx.io.print(s); });
+      if (!installed.ok) return ctx.io.print('失败: certbot 安装失败: ' + (installed.error || ''));
+    }
+
+    if (cfg.challenge !== 'standalone' && cfg.webroot) {
+      try { fs.mkdirSync(cfg.webroot, { recursive: true }); } catch (e) { /* existing or not permitted */ }
+    }
+
+    const standalone = cfg.challenge === 'standalone';
+    let nginxWasActive = false;
+    if (standalone) {
+      nginxWasActive = run('systemctl is-active nginx').output === 'active';
+      if (nginxWasActive) {
+        ctx.io.print('停止 nginx 以释放 80 端口…');
+        run('systemctl stop nginx');
+      }
+    }
+
+    let result;
+    try {
+      result = issue(c, { mode: answer === 'r' ? 'renew' : 'issue', reload: standalone ? false : undefined });
+    } finally {
+      if (standalone && nginxWasActive) {
+        ctx.io.print('恢复 nginx…');
+        run('systemctl start nginx');
+      }
+    }
     ctx.io.print((result.command ? '$ ' + result.command + '\n' : '') + (result.output || '') + '\n' + (result.ok ? 'OK' : ('FAILED ' + (result.error || ''))));
   };
 }

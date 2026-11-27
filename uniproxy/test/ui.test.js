@@ -6,7 +6,7 @@ import path from 'node:path';
 import { startUi } from '../src/ui/server.js';
 import { parseXrayStatNames, parseClashConnections, mergeUsage } from '../src/stats.js';
 import { shouldSend, markSent, alertsFromDoctor, alertsFromPorts } from '../src/alerts.js';
-import { buildCommand, validDomain, certStatus } from '../src/certs.js';
+import { buildCommand, validDomain, certStatus, providerAvailable } from '../src/certs.js';
 import { normalizeNodes, probeCommand, deployCommands, deploy, deployBatch, probeBatch, localChecksum } from '../src/nodes.js';
 import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
 import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup, pruneBackups } from '../src/backups.js';
@@ -632,6 +632,10 @@ test('menu: box helper and section count', function () {
   assert.ok(rendered.startsWith('┌─ 面板'));
   assert.ok(rendered.includes('│ 0. 退出菜单'));
   assert.ok(rendered.trimEnd().endsWith('┘'));
+});
+
+test('certs: detects missing provider commands', function () {
+  assert.equal(providerAvailable('uniproxy-no-such-command'), false);
 });
 
 test('cores: sing-box asset names follow the release layout', function () {

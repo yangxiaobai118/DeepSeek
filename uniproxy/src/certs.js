@@ -44,6 +44,46 @@ function liveDirFor(cfg) {
   return '/etc/letsencrypt/live/' + first.replace(/^\*\./, '');
 }
 
+export function providerAvailable(name) {
+  const res = spawnSync('sh', ['-c', 'command -v ' + String(name)], { encoding: 'utf8' });
+  return res.status === 0 && String(res.stdout || '').trim() !== '';
+}
+
+/** Install certbot with the system package manager (root required). */
+export function installCertbot(log) {
+  const say = typeof log === 'function' ? log : function () {};
+  const managers = [
+    { name: 'apt-get', update: ['apt-get', 'update'], install: ['apt-get', 'install', '-y', 'certbot'] },
+    { name: 'dnf', install: ['dnf', 'install', '-y', 'certbot'] },
+    { name: 'yum', install: ['yum', 'install', '-y', 'certbot'] },
+    { name: 'apk', install: ['apk', 'add', 'certbot'] },
+    { name: 'zypper', install: ['zypper', '--non-interactive', 'install', 'certbot'] },
+  ];
+  const manager = managers.find(function (m) { return providerAvailable(m.name); });
+  if (!manager) return { ok: false, error: 'no supported package manager (apt/dnf/yum/apk/zypper)' };
+
+  say('使用 ' + manager.name + ' 安装 certbot…');
+  const runLive = function (argv) {
+    const res = spawnSync(argv[0], argv.slice(1), { stdio: ['ignore', 'inherit', 'inherit'], timeout: 600000 });
+    return { ok: res.status === 0, error: res.error ? res.error.message : '', status: res.status };
+  };
+  if (manager.update) {
+    say('更新软件包索引（可能要一会儿）…');
+    runLive(manager.update);
+  }
+  say('安装 certbot…');
+  const res = runLive(manager.install);
+  if (!res.ok) return { ok: false, error: res.error || ('package manager exit ' + res.status) };
+  if (!providerAvailable('certbot')) return { ok: false, error: 'certbot is still not in PATH after installation' };
+  say('certbot 安装完成');
+  return { ok: true };
+}
+
+export function ensureCertbot(log) {
+  if (providerAvailable('certbot')) return { ok: true, installed: false };
+  return installCertbot(log);
+}
+
 export function buildCommand(c, mode) {
   const cfg = normalizeCerts(c);
   if (cfg.command) return { argv: [cfg.command], shell: true, cfg: cfg };

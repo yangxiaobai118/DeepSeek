@@ -590,8 +590,10 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
   assert.ok(text.includes('u-ui · uniproxy'));
   assert.ok(text.includes('U. 更新到最新版本'));
   assert.ok(text.includes('0. 退出菜单'));
-  assert.ok(text.includes('17. 校验配置 (Validate)'));
-  assert.ok(text.includes('26. 申请 / 续期证书'));
+  assert.ok(text.includes('17. 校验配置 (Validate Config)'));
+  assert.ok(text.includes('32. 申请 / 续期证书 (Issue / Renew Cert)'));
+  assert.ok(text.includes('25. 停止 xray (Stop Xray)'));
+  assert.ok(text.includes('28. 启动 xray (Start Xray)'));
   assert.ok(text.includes('无效选项: 99'));
   assert.ok(text.includes('已退出'));
   fs.rmSync(ctx.dir, { recursive: true, force: true });
@@ -614,7 +616,7 @@ test('menu: box helper and section count', function () {
   const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
   const sections = buildMenu(ctx);
   assert.equal(sections.length, 6);
-  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 29);
+  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 35);
   const rendered = box('面板', ['0. 退出菜单']);
   assert.ok(rendered.startsWith('┌─ 面板'));
   assert.ok(rendered.includes('│ 0. 退出菜单'));

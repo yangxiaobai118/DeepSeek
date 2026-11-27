@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.4
+
+### Added
+
+- `install.sh`: one-line installer like 3x-ui. Detects the architecture, fetches
+  the latest release, prefers the self-contained binary and falls back to the
+  Node bundle, installs `uniproxy` / `u-ui`, seeds `/etc/uniproxy/config.json`,
+  writes the systemd units and starts the panel. `UNIPROXY_DRY_RUN=1` prints the
+  plan without touching the system; paths and ports are overridable by env.
+- the release workflow now runs `sh -n install.sh` plus a dry run, so a broken
+  installer cannot ship.
+
 ## 0.4.3
 
 ### Added

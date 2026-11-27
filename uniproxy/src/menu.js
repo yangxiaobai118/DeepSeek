@@ -13,6 +13,7 @@ import { listBackups, createBackup, restoreBackup } from './backups.js';
 import { collectAlerts } from './alerts.js';
 import { normalizeNodes } from './nodes.js';
 import { syncUnitPorts } from './units.js';
+import { isPlaceholderAddress } from './util.js';
 
 /**
  * Terminal menu, modelled on the 3x-ui management script: boxed sections,
@@ -415,7 +416,7 @@ function showSettings(ctx) {
     ctx.io.print([
       '配置: ' + ctx.configPath,
       'nginx 模式: ' + c.nginx.mode,
-      '公网 IP: ' + (c.server.publicIp || '(未设置)'),
+      '公网 IP: ' + (isPlaceholderAddress(c.server.publicIp) ? (YELLOW + (c.server.publicIp || '(未设置)') + '（占位符，请先运行 3. 初始化向导）' + RESET) : c.server.publicIp),
       '面板端口: ' + ((c.ui && c.ui.port) || 8788),
       '监听端口: ' + ports.entries.length + ' 个',
       '用户: ' + users.length + ' 个',

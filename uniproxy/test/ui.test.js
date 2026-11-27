@@ -597,6 +597,19 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
   fs.rmSync(ctx.dir, { recursive: true, force: true });
 });
 
+test('menu: settings flags a placeholder public IP', async function () {
+  const ctx = setup();
+  const printed = [];
+  const answers = ['4', '', '0'];
+  const io = {
+    print: function (s) { printed.push(String(s)); },
+    question: async function () { return answers.length ? answers.shift() : '0'; },
+  };
+  await runMenu({ configPath: ctx.cfgPath, io: io });
+  assert.ok(printed.join('\n').includes('占位符'));
+  fs.rmSync(ctx.dir, { recursive: true, force: true });
+});
+
 test('menu: box helper and section count', function () {
   const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
   const sections = buildMenu(ctx);

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.5
+
+### Added
+
+- first-run wizard (`uniproxy setup`, menu entry 3): asks only what cannot be
+  guessed - the domain (or IP-only mode), the public IP (auto-detected) and the
+  ACME e-mail - and randomises the rest. Ports accept `r` for a random value;
+  the admin password is random on Enter and printed once. `--yes` plus flags
+  makes it scriptable.
+- `ui.port` and `subscription.port` in the config are now honoured by `ui` and
+  `serve`, so the wizard's port choices actually take effect.
+- `install.sh` opens the menu at the end when run from an interactive terminal.
+
 ## 0.4.4
 
 ### Added

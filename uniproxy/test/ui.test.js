@@ -11,6 +11,7 @@ import { normalizeNodes, probeCommand, deployCommands, deploy, deployBatch, prob
 import { protocolList, validateChoice, defaultCore } from '../src/protocols.js';
 import { listBackups, createBackup, restoreBackup, readBackup, deleteBackup, pruneBackups } from '../src/backups.js';
 import { runMenu, renderMenu, box, buildMenu, unitFiles, installSystem, installPlan } from '../src/menu.js';
+import { randomPassword, randomPort, runSetup } from '../src/setup.js';
 
 function cookieHeader(res) {
   const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
@@ -586,8 +587,8 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
   const text = printed.join('\n');
   assert.ok(text.includes('u-ui · uniproxy'));
   assert.ok(text.includes('0. 退出菜单'));
-  assert.ok(text.includes('16. 校验配置 validate'));
-  assert.ok(text.includes('25. 申请 / 续期证书'));
+  assert.ok(text.includes('17. 校验配置 validate'));
+  assert.ok(text.includes('26. 申请 / 续期证书'));
   assert.ok(text.includes('无效选项: 99'));
   assert.ok(text.includes('已退出'));
   fs.rmSync(ctx.dir, { recursive: true, force: true });
@@ -597,7 +598,7 @@ test('menu: box helper and section count', function () {
   const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
   const sections = buildMenu(ctx);
   assert.equal(sections.length, 6);
-  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 27);
+  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 28);
   const rendered = box('面板', ['0. 退出菜单']);
   assert.ok(rendered.startsWith('┌─ 面板'));
   assert.ok(rendered.includes('│ 0. 退出菜单'));
@@ -645,4 +646,42 @@ test('menu: install lays out prefix, launchers, config and units', async functio
     for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('setup: random password and port generators', function () {
+  const a = randomPassword();
+  const b = randomPassword();
+  assert.equal(a.length, 16);
+  assert.notEqual(a, b);
+  assert.match(a, /^[A-Za-z0-9]+$/);
+  const p = randomPort();
+  assert.ok(p >= 40000 && p < 60000);
+});
+
+test('setup: asks for the domain, randomises the rest', async function () {
+  const ctx = setup();
+  const raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
+  raw.ui = {};
+  fs.writeFileSync(ctx.cfgPath, JSON.stringify(raw, null, 2));
+
+  const answers = ['example.org', '203.0.113.7', 'r', 'r', '', 'r', 'ops@example.org'];
+  const printed = [];
+  const io = {
+    print: function (s) { printed.push(String(s)); },
+    question: async function () { return answers.length ? answers.shift() : ''; },
+  };
+  const res = await runSetup({ configPath: ctx.cfgPath, io: io, detectIp: false });
+  assert.equal(res.ok, true);
+
+  const cfg = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
+  assert.equal(cfg.server.domains.web, 'example.org');
+  assert.equal(cfg.panels.xui.domain, 'xui.example.org');
+  assert.equal(cfg.server.publicIp, '203.0.113.7');
+  assert.ok(cfg.ui.port >= 40000 && cfg.ui.port < 60000);
+  assert.ok(cfg.subscription.port >= 40000 && cfg.subscription.port < 60000);
+  assert.equal(cfg.ui.password.length, 16);
+  assert.equal(cfg.ui.viewerPassword.length, 16);
+  assert.equal(cfg.server.email, 'ops@example.org');
+  assert.ok(printed.join('\n').includes('管理员密码'));
+  fs.rmSync(ctx.dir, { recursive: true, force: true });
 });

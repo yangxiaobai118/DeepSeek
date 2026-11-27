@@ -32,6 +32,7 @@ function usage() {
     '  uniproxy doctor    -c <config.json>            pre-flight diagnostics',
     '  uniproxy alerts    -c <config.json> [--notify]  list alerts; --notify pushes due ones',
     '  uniproxy menu      -c <config.json>            open the terminal menu (like the x-ui script)',
+    '  uniproxy setup     -c <config.json> [--yes]    first-run wizard (random values by default)',
     '  uniproxy apply     -c <config.json> [--yes]    validate, install and reload services',
     '  uniproxy serve     -c <config.json> [-p 8787]  start the dashboard + subscription server',
     '  uniproxy ui        -c <config.json> [-p 8788]  start the u-ui management panel',
@@ -402,6 +403,29 @@ function cmdApply(args) {
   if (result.failed) process.exit(1);
 }
 
+async function cmdSetup(args) {
+  const mod = await import('./setup.js');
+  const flags = {};
+  const rest = args._.slice(1);
+  const yes = rest.includes('--yes');
+  const dryRun = rest.includes('--dry-run');
+  for (let i = 0; i < rest.length; i++) {
+    const token = rest[i];
+    if (!token.startsWith('--')) continue;
+    const name = token.slice(2);
+    const value = rest[i + 1] && !rest[i + 1].startsWith('--') ? rest[++i] : '';
+    if (name === 'domain') flags.domain = value;
+    else if (name === 'ip') flags.ip = value;
+    else if (name === 'email') flags.email = value;
+    else if (name === 'panel-port') flags.panelPort = value;
+    else if (name === 'sub-port') flags.subPort = value;
+    else if (name === 'password') flags.password = value;
+    else if (name === 'no-viewer') flags.viewer = false;
+  }
+  const result = await mod.runSetup({ configPath: args.config || 'config.json', yes: yes, flags: flags, detectIp: !yes });
+  if (!result.ok) process.exitCode = 1;
+}
+
 async function cmdMenu(args) {
   const mod = await import('./menu.js');
   await mod.runMenu({ configPath: args.config || 'config.json' });
@@ -426,12 +450,15 @@ async function cmdAlerts(args) {
 async function cmdServe(args) {
   const mod = await import('./server.js');
   const loaded = loadConfig(args.config || 'config.json');
-  mod.startDashboard(loaded.config, loaded.path, args.port || 8787);
+  const port = args.port || (loaded.config.subscription && loaded.config.subscription.port) || 8787;
+  mod.startDashboard(loaded.config, loaded.path, port);
 }
 
 async function cmdUi(args) {
   const mod = await import('./ui/server.js');
-  const inst = await mod.startUi(args.config || 'config.json', args.port || 8788);
+  const loaded = loadConfig(args.config || 'config.json');
+  const port = args.port || (loaded.config.ui && loaded.config.ui.port) || 8788;
+  const inst = await mod.startUi(args.config || 'config.json', port);
   console.log('u-ui -> ' + inst.url);
   console.log('password: UNIPROXY_UI_PASSWORD env var, or "ui": { "password": "..." } in the config');
 }
@@ -458,6 +485,7 @@ async function main() {
     else if (cmd === 'doctor') cmdDoctor(args);
     else if (cmd === 'alerts') await cmdAlerts(args);
     else if (cmd === 'menu') await cmdMenu(args);
+    else if (cmd === 'setup') await cmdSetup(args);
     else if (cmd === 'apply') cmdApply(args);
     else if (cmd === 'serve') await cmdServe(args);
     else if (cmd === 'ui') await cmdUi(args);

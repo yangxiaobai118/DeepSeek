@@ -106,46 +106,47 @@ export function buildMenu(ctx) {
   const install = [
     { key: '1', label: '安装到系统路径', run: function () { return installSystem(ctx); } },
     { key: '2', label: '卸载系统安装', run: function () { return uninstallSystem(ctx); } },
+    { key: '3', label: '初始化向导', run: function () { return runSetupItem(ctx); } },
   ];
 
   const panel = [
-    { key: '3', label: '查看当前设置', run: function () { return withCfg(showSettings(ctx)); } },
-    { key: '4', label: '修改面板端口', run: function () { return withCfg(changePort(ctx)); } },
-    { key: '5', label: '重置管理员密码', run: function () { return withCfg(setPassword(ctx, 'password')); } },
-    { key: '6', label: '重置只读密码', run: function () { return withCfg(setPassword(ctx, 'viewerPassword')); } },
+    { key: '4', label: '查看当前设置', run: function () { return withCfg(showSettings(ctx)); } },
+    { key: '5', label: '修改面板端口', run: function () { return withCfg(changePort(ctx)); } },
+    { key: '6', label: '重置管理员密码', run: function () { return withCfg(setPassword(ctx, 'password')); } },
+    { key: '7', label: '重置只读密码', run: function () { return withCfg(setPassword(ctx, 'viewerPassword')); } },
   ];
 
   const service = [
-    { key: '7', label: '安装服务单元', run: function () { return installService(ctx); } },
-    { key: '8', label: '卸载服务单元', run: function () { return uninstallService(ctx); } },
-    { key: '9', label: '启动面板', run: function () { return systemctl(ctx, 'start'); } },
-    { key: '10', label: '停止面板', run: function () { return systemctl(ctx, 'stop'); } },
-    { key: '11', label: '重启面板', run: function () { return systemctl(ctx, 'restart'); } },
-    { key: '12', label: '查看状态', run: function () { return showStatus(ctx); } },
-    { key: '13', label: '查看日志', run: function () { return showLogs(ctx); } },
-    { key: '14', label: '启用开机自启', run: function () { return systemctl(ctx, 'enable'); } },
-    { key: '15', label: '关闭开机自启', run: function () { return systemctl(ctx, 'disable'); } },
+    { key: '8', label: '安装服务单元', run: function () { return installService(ctx); } },
+    { key: '9', label: '卸载服务单元', run: function () { return uninstallService(ctx); } },
+    { key: '10', label: '启动面板', run: function () { return systemctl(ctx, 'start'); } },
+    { key: '11', label: '停止面板', run: function () { return systemctl(ctx, 'stop'); } },
+    { key: '12', label: '重启面板', run: function () { return systemctl(ctx, 'restart'); } },
+    { key: '13', label: '查看状态', run: function () { return showStatus(ctx); } },
+    { key: '14', label: '查看日志', run: function () { return showLogs(ctx); } },
+    { key: '15', label: '启用开机自启', run: function () { return systemctl(ctx, 'enable'); } },
+    { key: '16', label: '关闭开机自启', run: function () { return systemctl(ctx, 'disable'); } },
   ];
 
   const config = [
-    { key: '16', label: '校验配置 validate', run: function () { return withCfg(runValidate(ctx)); } },
-    { key: '17', label: '预检 doctor', run: function () { return withCfg(runDoctorItem(ctx)); } },
-    { key: '18', label: '生成并下发 apply', run: function () { return withCfg(runApply(ctx)); } },
-    { key: '19', label: '立即备份配置', run: function () { return withCfg(doBackup(ctx)); } },
-    { key: '20', label: '恢复备份', run: function () { return withCfg(restorePicker(ctx)); } },
+    { key: '17', label: '校验配置 validate', run: function () { return withCfg(runValidate(ctx)); } },
+    { key: '18', label: '预检 doctor', run: function () { return withCfg(runDoctorItem(ctx)); } },
+    { key: '19', label: '生成并下发 apply', run: function () { return withCfg(runApply(ctx)); } },
+    { key: '20', label: '立即备份配置', run: function () { return withCfg(doBackup(ctx)); } },
+    { key: '21', label: '恢复备份', run: function () { return withCfg(restorePicker(ctx)); } },
   ];
 
   const cores = [
-    { key: '21', label: '重启 xray', run: function () { return restartCore(ctx, 'xray'); } },
-    { key: '22', label: '重启 sing-box', run: function () { return restartCore(ctx, 'singbox'); } },
-    { key: '23', label: '重启 nginx', run: function () { return restartCore(ctx, 'nginx'); } },
+    { key: '22', label: '重启 xray', run: function () { return restartCore(ctx, 'xray'); } },
+    { key: '23', label: '重启 sing-box', run: function () { return restartCore(ctx, 'singbox'); } },
+    { key: '24', label: '重启 nginx', run: function () { return restartCore(ctx, 'nginx'); } },
   ];
 
   const extra = [
-    { key: '24', label: '证书状态', run: function () { return withCfg(showCert(ctx)); } },
-    { key: '25', label: '申请 / 续期证书', run: function () { return withCfg(issueCert(ctx)); } },
-    { key: '26', label: '查看告警', run: function () { return withCfg(showAlerts(ctx)); } },
-    { key: '27', label: '节点列表', run: function () { return withCfg(showNodes(ctx)); } },
+    { key: '25', label: '证书状态', run: function () { return withCfg(showCert(ctx)); } },
+    { key: '26', label: '申请 / 续期证书', run: function () { return withCfg(issueCert(ctx)); } },
+    { key: '27', label: '查看告警', run: function () { return withCfg(showAlerts(ctx)); } },
+    { key: '28', label: '节点列表', run: function () { return withCfg(showNodes(ctx)); } },
   ];
 
   return [
@@ -233,7 +234,12 @@ export async function installSystem(ctx) {
   }
 }
 
-export async function uninstallSystem(ctx) {
+export async function runSetupItem(ctx) {
+  const mod = await import('./setup.js');
+  await mod.runSetup({ configPath: ctx.configPath, io: ctx.io });
+}
+
+async function uninstallSystem(ctx) {
   const plan = installPlan();
   for (const name of ['uniproxy-ui.service', 'uniproxy-sub.service']) {
     run('systemctl disable --now ' + name);
@@ -467,7 +473,7 @@ export async function runMenu(options = {}) {
   const items = buildMenu(ctx).reduce(function (acc, s) { return acc.concat(s.items); }, []);
   for (;;) {
     ctx.io.print(renderMenu(ctx));
-    const answer = String((await ctx.io.question('\n请选择 [0-27]: ')) || '').trim();
+    const answer = String((await ctx.io.question('\n请选择 [0-28]: ')) || '').trim();
     if (answer === '0' || answer.toLowerCase() === 'q') { ctx.io.print('已退出'); break; }
     const item = items.find(function (i) { return i.key === answer; });
     if (!item) { ctx.io.print('无效选项: ' + answer); continue; }

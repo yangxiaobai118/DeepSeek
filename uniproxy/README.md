@@ -168,6 +168,7 @@ out/
 | `apply` | dry-run by default; `--yes` installs and reloads |
 | `serve` | start the dashboard and subscription endpoints |
 | `menu` / `u-ui` | open the terminal menu (3x-ui style); also what a bare `uniproxy` opens on a TTY |
+| `setup` | first-run wizard: asks only the domain/IP/ports/passwords, randomises the rest (`--yes` for non-interactive) |
 | `ui` | start the u-ui management panel (login, inbounds, clients, users, cores, traffic, logs, settings, config, actions) |
 
 ### Subscriptions

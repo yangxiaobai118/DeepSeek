@@ -14,6 +14,10 @@
   stop / restart them, and toggle whether uniproxy generates each core's config.
 - u-ui traffic accounting: collect per-user counters from the Xray stats API and
   the sing-box Clash API, show them per user, and sync them into `users[].usage`.
+- generated configs now expose those endpoints: Xray `stats` + `api` on
+  `xray.apiPort` (127.0.0.1:10085) and sing-box `experimental.clash_api` on
+  `singbox.clashPort` (127.0.0.1:9090). Both appear in the port map and can be
+  turned off with `xray.stats: false` / `singbox.clashApi: false`.
 - u-ui logs: tail `journalctl` for xray, sing-box, nginx and uniproxy-sub.
 - u-ui client management: add and remove clients per inbound; credentials are
   derived from `server.secret` when left blank.

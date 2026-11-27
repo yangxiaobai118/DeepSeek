@@ -63,7 +63,8 @@ export async function collectStats(c, deps = {}) {
   const out = { xray: {}, singbox: {}, errors: [] };
 
   if (c.xray && c.xray.enabled) {
-    const cmd = (c.stats && c.stats.xray && c.stats.xray.command) || 'xray api statsquery --server=127.0.0.1:10085';
+    const apiPort = Number((c.xray && c.xray.apiPort) || 10085);
+    const cmd = (c.stats && c.stats.xray && c.stats.xray.command) || ('xray api statsquery --server=127.0.0.1:' + apiPort);
     try {
       const res = run(cmd);
       if (res.ok) {
@@ -78,7 +79,8 @@ export async function collectStats(c, deps = {}) {
   }
 
   if (c.singbox && c.singbox.enabled) {
-    const url = (c.stats && c.stats.singbox && c.stats.singbox.url) || 'http://127.0.0.1:9090/connections';
+    const clashPort = Number((c.singbox && c.singbox.clashPort) || 9090);
+    const url = (c.stats && c.stats.singbox && c.stats.singbox.url) || ('http://127.0.0.1:' + clashPort + '/connections');
     try {
       out.singbox = parseClashConnections(await fetchJson(url));
     } catch (e) {

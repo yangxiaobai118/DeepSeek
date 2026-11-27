@@ -9,17 +9,39 @@ export function generateXray(c) {
     keyFile: c.server.cert.keyFile,
   };
 
+  const statsOn = c.xray.stats !== false;
+  const apiPort = Number(c.xray.apiPort || 10085);
+  const inbounds = (c.xray.inbounds || []).map((ib) => buildInbound(ib, ctx));
+  if (statsOn) {
+    inbounds.push({
+      tag: 'api',
+      listen: '127.0.0.1',
+      port: apiPort,
+      protocol: 'dokodemo-door',
+      settings: { address: '127.0.0.1' },
+      sniffing: { enabled: false },
+    });
+  }
+  const rules = [];
+  if (statsOn) rules.push({ type: 'field', inboundTag: ['api'], outboundTag: 'api' });
+  rules.push({ type: 'field', ip: ['geoip:private'], outboundTag: 'block' });
+
   return stripUndefined({
     log: { loglevel: c.xray.logLevel || 'warning' },
-    inbounds: (c.xray.inbounds || []).map((ib) => buildInbound(ib, ctx)),
+    stats: statsOn ? {} : undefined,
+    api: statsOn ? { tag: 'api', services: ['StatsService'] } : undefined,
+    policy: statsOn
+      ? {
+          levels: { '0': { statsUserUplink: true, statsUserDownlink: true } },
+          system: { statsInboundUplink: true, statsInboundDownlink: true },
+        }
+      : undefined,
+    inbounds,
     outbounds: [
       { tag: 'direct', protocol: 'freedom' },
       { tag: 'block', protocol: 'blackhole' },
     ],
-    routing: {
-      domainStrategy: 'AsIs',
-      rules: [{ type: 'field', ip: ['geoip:private'], outboundTag: 'block' }],
-    },
+    routing: { domainStrategy: 'AsIs', rules },
   });
 }
 

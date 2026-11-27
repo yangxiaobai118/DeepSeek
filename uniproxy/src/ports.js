@@ -35,6 +35,14 @@ export function collectPorts(c) {
     add(ib.port, `singbox:${ib.tag || i}`, { listen: ib.listen }),
   );
 
+  // control-plane listeners emitted by the generators for traffic accounting
+  if (c.xray.enabled !== false && c.xray.stats !== false) {
+    add(c.xray.apiPort || 10085, 'xray:api', { listen: '127.0.0.1' });
+  }
+  if (c.singbox.enabled !== false && c.singbox.clashApi !== false) {
+    add(c.singbox.clashPort || 9090, 'singbox:clash', { listen: '127.0.0.1' });
+  }
+
   return entries;
 }
 

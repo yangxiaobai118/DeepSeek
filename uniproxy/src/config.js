@@ -68,10 +68,14 @@ export function applyDefaults(c) {
   c.xray = c.xray || {};
   if (c.xray.inbounds == null) c.xray.inbounds = [];
   if (c.xray.logLevel == null) c.xray.logLevel = 'warning';
+  if (c.xray.stats == null) c.xray.stats = true;
+  if (c.xray.apiPort == null) c.xray.apiPort = 10085;
 
   c.singbox = c.singbox || {};
   if (c.singbox.inbounds == null) c.singbox.inbounds = [];
   if (c.singbox.logLevel == null) c.singbox.logLevel = 'warn';
+  if (c.singbox.clashApi == null) c.singbox.clashApi = true;
+  if (c.singbox.clashPort == null) c.singbox.clashPort = 9090;
 
   for (const kind of PROXY_KINDS) {
     for (const ib of c[kind].inbounds) {

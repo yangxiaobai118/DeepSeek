@@ -33,7 +33,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 概览 | 配置路径、nginx 模式、公网 IP、端口表、校验结果、入站/用户/订阅计数 |
 | 入站 | 表格 + 表单，两套内核共用一套界面：新增/编辑/删除 xray 与 sing-box 入站（协议、监听、端口、网络、TLS/Reality、SNI、WS 路径、Reality 参数）；每个入站可单独管理客户端（凭据留空则按 `server.secret` 派生） |
 | 内核 | xray / sing-box / nginx 的运行状态（systemctl），start / stop / restart，以及「是否让 uniproxy 生成该内核配置」的开关 |
-| 流量 | 从 Xray stats API 与 sing-box（Clash API）采集按用户的上行/下行，支持一键同步到 `users[].usage`（订阅的 `subscription-userinfo` 随之变化） |
+| 流量 | 从 Xray stats API 与 sing-box（Clash API）采集按用户的上行/下行，支持一键同步到 `users[].usage`（订阅的 `subscription-userinfo` 随之变化）。生成配置时会**自动开启**统计端点：Xray `stats` + `api`（`xray.apiPort`，默认 10085）、sing-box `experimental.clash_api`（`singbox.clashPort`，默认 9090）；两者都进端口表，可用 `xray.stats: false` / `singbox.clashApi: false` 关闭 |
 | 日志 | `journalctl` 查看 xray / sing-box / nginx / uniproxy-sub，可选行数 |
 | 设置 | 公网 IP、邮箱、网站域名、证书/私钥路径、80/443/内部 TLS 端口、nginx 模式、两个面板的域名与端口 |
 | 用户 | 表格（状态/到期/配额/入站/订阅 token）+ 新增/编辑/删除 |

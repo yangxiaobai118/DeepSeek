@@ -9,11 +9,17 @@ export function generateSingbox(c) {
     keyFile: c.server.cert.keyFile,
   };
 
+  const clashOn = c.singbox.clashApi !== false;
+  const clashPort = Number(c.singbox.clashPort || 9090);
+
   return stripUndefined({
     log: { level: c.singbox.logLevel || 'warn', timestamp: true },
     inbounds: (c.singbox.inbounds || []).map((ib) => buildInbound(ib, ctx)),
     outbounds: [{ type: 'direct', tag: 'direct' }],
     route: { rules: [{ ip_is_private: true, outbound: 'direct' }] },
+    experimental: clashOn
+      ? { clash_api: { external_controller: '127.0.0.1:' + clashPort, default_mode: 'direct' } }
+      : undefined,
   });
 }
 

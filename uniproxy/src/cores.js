@@ -31,58 +31,48 @@ export function isRoot() {
   return typeof process.getuid === 'function' ? process.getuid() === 0 : true;
 }
 
-function curlWrapperDir() {
-  const probe = run('bash', ['-lc', 'command -v curl'], 10000);
-  const real = probe.output.split('\n')[0].trim();
-  if (!real) return '';
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uniproxy-curl-'));
-  const bin = path.join(dir, 'curl');
-  fs.writeFileSync(bin, [
-    '#!/bin/sh',
-    'ADD=""',
-    'for a in "$@"; do',
-    '  case "$a" in',
-    '    *releases/download/*.zip*) ADD="--progress-bar" ;;',
-    '  esac',
-    'done',
-    'exec "' + real + '" --http1.1 --retry 5 --retry-delay 3 $ADD "$@"',
-    '',
-  ].join('\n'));
-  fs.chmodSync(bin, 0o755);
-  return dir;
+const XRAY_SCRIPT_URL = 'https://github.com/XTLS/Xray-install/raw/main/install-release.sh';
+
+function fetchXrayScript(dir) {
+  const file = path.join(dir, 'install-release.sh');
+  const mirror = process.env.UNIPROXY_MIRROR || '';
+  const res = run('curl', ['-fsSL', '--retry', '5', '--retry-delay', '3', '--http1.1', mirror + XRAY_SCRIPT_URL, '-o', file], 120000);
+  if (!res.ok) throw new Error(res.error || res.output || 'cannot download the Xray install script');
+  let text = fs.readFileSync(file, 'utf8');
+  text = text.replace('"$(type -P curl)" -q -L', '"$(type -P curl)" --http1.1 -q -L');
+  text = text.replace(`curl -f -H 'Cache-Control: no-cache' -o "$ZIP_FILE"`, `curl -f --progress-bar -H 'Cache-Control: no-cache' -o "$ZIP_FILE"`);
+  fs.writeFileSync(file, text);
+  fs.chmodSync(file, 0o755);
+  return file;
 }
 
 export function installXray(log) {
   const say = typeof log === 'function' ? log : function () {};
-  say('1/2 下载并运行 Xray 官方安装脚本（下面是脚本的实时输出）…');
-  const curlDir = curlWrapperDir();
-  const env = Object.assign({}, process.env);
-  if (curlDir) env.PATH = curlDir + ':' + (env.PATH || '');
-  let res;
+  say('1/2 下载并准备 Xray 官方安装脚本…');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'uniproxy-xray-'));
   try {
-    res = runLive('bash', ['-lc', XRAY_INSTALL + 'install'], 900000, env);
+    const script = fetchXrayScript(tmp);
+    say('2/2 运行官方安装脚本（下载 zip 时会显示进度条）…');
+    const res = runLive('bash', [script, 'install'], 900000, process.env);
+    if (!res.ok) return { ok: false, error: res.error || ('install script exit ' + res.status) };
+    const version = run('xray', ['version'], 10000).output.split('\n')[0] || '';
+    return { ok: true, version: version };
   } finally {
-    if (curlDir) fs.rmSync(curlDir, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
-  if (!res.ok) return { ok: false, error: res.error || ('install script exit ' + res.status) };
-  say('2/2 检查已安装版本…');
-  const version = run('xray', ['version'], 10000).output.split('\n')[0] || '';
-  return { ok: true, version: version };
 }
 
 export function uninstallXray(log) {
   const say = typeof log === 'function' ? log : function () {};
   say('下载并运行 Xray 官方卸载脚本…');
-  const curlDir = curlWrapperDir();
-  const env = Object.assign({}, process.env);
-  if (curlDir) env.PATH = curlDir + ':' + (env.PATH || '');
-  let res;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'uniproxy-xray-'));
   try {
-    res = runLive('bash', ['-lc', XRAY_INSTALL + 'remove'], 900000, env);
+    const script = fetchXrayScript(tmp);
+    const res = runLive('bash', [script, 'remove'], 900000, process.env);
+    return { ok: res.ok, error: res.error || ('remove script exit ' + res.status) };
   } finally {
-    if (curlDir) fs.rmSync(curlDir, { recursive: true, force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
-  return { ok: res.ok, error: res.error || ('remove script exit ' + res.status) };
 }
 
 export function singboxAsset(version, arch) {

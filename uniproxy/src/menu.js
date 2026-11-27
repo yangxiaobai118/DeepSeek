@@ -16,6 +16,7 @@ import { normalizeNodes } from './nodes.js';
 import { syncUnitPorts } from './units.js';
 import { isPlaceholderAddress, normalizeBasePath } from './util.js';
 import { version } from './version.js';
+import { installXray, uninstallXray, installSingbox, uninstallSingbox, isRoot } from './cores.js';
 
 /**
  * Terminal menu, modelled on the 3x-ui management script: boxed sections,

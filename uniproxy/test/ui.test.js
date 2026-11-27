@@ -676,6 +676,26 @@ test('menu: installPlan describes a 3x-ui style layout', function () {
   assert.ok(plan.units['uniproxy-ui.service'].includes('ExecStart=node /usr/local/uniproxy/src/index.js ui -c /etc/uniproxy/config.json'));
 });
 
+test('menu: core install stops without root', async function () {
+  const ctx = setup();
+  const saved = process.getuid;
+  process.getuid = function () { return 1000; };
+  const printed = [];
+  const answers = ['33', 'y', '0'];
+  try {
+    await runMenu({
+      configPath: ctx.cfgPath,
+      pause: false,
+      io: { print: function (s) { printed.push(String(s)); }, question: async function () { return answers.length ? answers.shift() : '0'; } },
+    });
+    assert.ok(printed.join('\n').includes('需要 root'));
+    assert.ok(!printed.join('\n').includes('isRoot is not defined'));
+  } finally {
+    if (saved === undefined) delete process.getuid; else process.getuid = saved;
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
 test('menu: changes the u-ui base path', async function () {
   const ctx = setup();
   const answers = ['B', '/panel/', '', '0'];

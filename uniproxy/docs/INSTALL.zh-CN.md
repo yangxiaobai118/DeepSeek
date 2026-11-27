@@ -336,6 +336,9 @@ ln -s /opt/xray/xray /usr/local/bin/xray
 
 ### 3.0.1 已经装了 3x-ui / s-ui 怎么办？
 
+> 初始化向导现在默认关闭 x-ui / s-ui 面板反代（只用 u-ui）。走模式 B 时需要手动把 `panels.xui.enabled` / `panels.sui.enabled` 改回 `true` 并填写面板域名。
+
+
 3x-ui 和 s-ui 会**各自带一份内核**（3x-ui 带 Xray、s-ui 带 sing-box），并由面板自己启动。它们通常装在面板目录里（如 `/usr/local/x-ui/bin/`、`/usr/local/s-ui/bin/`），**不在 PATH**，所以 `xray version` / `sing-box version` 会报 `command not found`——这不代表没装。
 
 **不能两边都管**：面板会写自己的配置并拉起内核，uniproxy 的 `apply` 也会写配置并 `systemctl restart xray` / `sing-box`，两者会互相覆盖、抢同一个端口。先选一种模式：

@@ -333,6 +333,9 @@ ln -s /opt/xray/xray /usr/local/bin/xray
 
 ### 3.0.1 Already running 3x-ui / s-ui?
 
+> The setup wizard now disables the x-ui / s-ui proxying by default (u-ui only). For Mode B, set `panels.xui.enabled` / `panels.sui.enabled` back to `true` and fill in their domains manually.
+
+
 3x-ui and s-ui **ship their own core** (3x-ui bundles Xray, s-ui bundles sing-box) and start it themselves. The core usually lives inside the panel directory (for example `/usr/local/x-ui/bin/`, `/usr/local/s-ui/bin/`) and is **not on PATH**, so `xray version` / `sing-box version` report `command not found` even though it is installed.
 
 **Do not let both sides manage the core**: the panel writes its own config and starts the core, while uniproxy `apply` also writes a config and runs `systemctl restart xray` / `sing-box`; they overwrite each other and fight for the same port. Pick one mode first:

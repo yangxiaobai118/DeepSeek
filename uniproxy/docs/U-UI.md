@@ -164,7 +164,8 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 | 项 | 能否随机 | 默认 | 说明 |
 |---|---|---|---|
-| 域名 | ❌ 必须你提供，或跳过走仅 IP | 无 | 决定证书、SNI 分流、面板子域名 |
+| 域名 | ❌ 必须你提供，或跳过走仅 IP | 无 | 决定证书、网站 server_name、SNI 分流 |
+| u-ui 域名 | ✅ `r` 随机前缀，`-` 跳过 | `uui.<域名>` | 面板访问地址；自动写入证书 SAN |
 | 公网 IP | 自动探测，可覆盖 | 探测结果 | 用于生成客户端链接 |
 | 面板端口 | ✅ 输入 `r` 随机 | 8788 | |
 | 订阅端口 | ✅ 输入 `r` 随机 | 8787 | |
@@ -174,4 +175,4 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | `server.secret` | ✅ 自动 | 随机 | 所有凭据都由它派生 |
 | VLESS UUID / Reality 密钥 / shortId / 用户 UUID | ✅ 自动 | 随机 | |
 
-初始化只创建**一个管理员账号**（用户名 + 密码），其他账号在面板「账号」页添加。非交互用法：`uniproxy setup --yes --domain example.com --username admin --password '...' --email a@b.c`。
+初始化只创建**一个管理员账号**（用户名 + 密码），其他账号在面板「账号」页添加。向导不再配置 x-ui / s-ui 面板反代（默认 `panels.xui.enabled=false`、`panels.sui.enabled=false`）；需要时可在 `config.json` 里手动打开。非交互用法：`uniproxy setup --yes --domain example.com --username admin --password '...' --email a@b.c`。

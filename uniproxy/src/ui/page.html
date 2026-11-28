@@ -70,6 +70,7 @@ nav#sideNav button[data-tab="backups"]::before{content:'⤓'}
 nav#sideNav button[data-tab="accounts"]::before{content:'☺'}
 nav#sideNav button[data-tab="audit"]::before{content:'◷'}
 nav#sideNav button[data-tab="alerts"]::before{content:'!'}
+.side-close{display:none;margin-left:auto;background:#11141f;border:1px solid #2b3145;color:#c9d1d9;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:16px;line-height:20px}
 .side-foot{padding:12px 18px;border-top:1px solid #262b3d;color:#6f7690;font-size:11px}
 .shell{flex:1;min-width:0;display:flex;flex-direction:column}
 header.topbar{display:flex;align-items:center;gap:14px;padding:14px 24px;background:rgba(23,26,38,.88);border-bottom:1px solid #262b3d;position:sticky;top:0;z-index:30;backdrop-filter:blur(8px)}
@@ -90,12 +91,13 @@ th{color:#8b90a5}
   aside.sidebar{position:fixed;left:0;top:0;transform:translateX(-100%);transition:transform .2s;height:100vh}
   body.nav-open aside.sidebar{transform:none;box-shadow:0 0 40px rgba(0,0,0,.5)}
   #menuToggle{display:inline-flex}
+  .side-close{display:block}
   header.topbar{padding:12px 14px}
   main{padding:14px}
 }
 </style></head><body>
 <aside class="sidebar" id="sidebar">
-  <div class="brand"><div class="logo">U</div><div class="brand-text"><strong>u-ui</strong><span>uniproxy panel</span></div></div>
+  <div class="brand"><div class="logo">U</div><div class="brand-text"><strong>u-ui</strong><span>uniproxy panel</span></div><button class="side-close" id="sideClose" title="关闭菜单">×</button></div>
   <nav id="sideNav">
     <div class="nav-group"><div class="nav-title">面板</div>
       <button data-tab="overview" class="on">概览</button>
@@ -541,6 +543,8 @@ const PAGE_META = {
 };
 const menuToggle = document.getElementById('menuToggle');
 if (menuToggle) menuToggle.onclick = function () { document.body.classList.toggle('nav-open'); };
+const sideClose = document.getElementById('sideClose');
+if (sideClose) sideClose.onclick = function () { document.body.classList.remove('nav-open'); };
 document.querySelectorAll('nav button').forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('on'));

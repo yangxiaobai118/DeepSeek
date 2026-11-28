@@ -50,10 +50,11 @@ export function generateNginx(c) {
     indent + 'add_header Referrer-Policy "no-referrer" always;',
   ];
 
-  const listenLines = () => {
-    if (http2Style === 'listen') return ['        listen ' + tlsListen + ' ssl http2;'];
-    if (http2Style === 'directive') return ['        listen ' + tlsListen + ' ssl;', '        http2 on;'];
-    return ['        listen ' + tlsListen + ' ssl;'];
+  const listenLines = (defaultServer = false) => {
+    const suffix = defaultServer ? ' default_server' : '';
+    if (http2Style === 'listen') return ['        listen ' + tlsListen + ' ssl http2' + suffix + ';'];
+    if (http2Style === 'directive') return ['        listen ' + tlsListen + ' ssl' + suffix + ';', '        http2 on;'];
+    return ['        listen ' + tlsListen + ' ssl' + suffix + ';'];
   };
 
   w('# ============================================================');
@@ -128,6 +129,42 @@ export function generateNginx(c) {
   let subBasePath = (subscription && subscription.basePath) || '/sub/';
   if (subBasePath[0] !== '/') subBasePath = '/' + subBasePath;
   if (!subBasePath.endsWith('/')) subBasePath += '/';
+
+  const fallback = (nginx && nginx.fallback) || {};
+  let fallbackUrl = null;
+  try { fallbackUrl = fallback.upstream ? new URL(String(fallback.upstream)) : null; } catch (e) { fallbackUrl = null; }
+  const fallbackHost = fallbackUrl ? fallbackUrl.host : '';
+  if (fallback.upstream || fallback.root) {
+    w('    # ---- fallback/decoy: unknown SNI or direct-IP probes -> blog ----');
+    w('    server {');
+    for (const line of listenLines(true)) w(line);
+    w('        server_name _;');
+    for (const line of tlsLines()) w(line);
+    for (const line of securityHeaders()) w(line);
+    if (fallback.upstream) {
+      w('        location / {');
+      w('            proxy_pass ' + fallback.upstream + ';');
+      w('            proxy_http_version 1.1;');
+      w('            proxy_set_header Host ' + fallbackHost + ';');
+      w('            proxy_set_header X-Forwarded-Host $host;');
+      w('            proxy_set_header X-Real-IP $remote_addr;');
+      w('            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;');
+      w('            proxy_set_header X-Forwarded-Proto $scheme;');
+      if (fallbackUrl && fallbackUrl.protocol === 'https:') {
+        w('            proxy_ssl_server_name on;');
+        w('            proxy_ssl_name ' + fallbackHost + ';');
+      }
+      w('            proxy_set_header Upgrade $http_upgrade;');
+      w('            proxy_set_header Connection $connection_upgrade;');
+      w('        }');
+    } else {
+      w('        root ' + fallback.root + ';');
+      w('        index index.html;');
+      w('        location / { try_files $uri $uri/ =404; }');
+    }
+    w('    }');
+    w('');
+  }
 
   if (mode === 'http') {
     // In http mode nginx terminates TLS itself, so ACME HTTP-01 can also work

@@ -46,7 +46,8 @@
         "index": "index.html"
       }
     ],
-    "extraSites": []
+    "extraSites": [],
+    "fallback": { "upstream": "", "root": "" }
   },
   "subscription": {
     "enabled": true,

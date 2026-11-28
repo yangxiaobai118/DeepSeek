@@ -877,6 +877,17 @@ test('setup: u-ui domain without x-ui/s-ui panels', async function () {
   }
 });
 
+test('nginx: fallback proxies unknown SNI probes to the blog', function () {
+  const cfg = JSON.parse(fs.readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'));
+  cfg.nginx.fallback = { upstream: 'https://blog.example.org', root: '' };
+  const nginx = generateNginx(cfg);
+  assert.ok(nginx.includes('default_server'));
+  assert.ok(nginx.includes('server_name _;'));
+  assert.ok(nginx.includes('proxy_pass https://blog.example.org;'));
+  assert.ok(nginx.includes('proxy_set_header Host blog.example.org;'));
+  assert.ok(nginx.includes('proxy_ssl_server_name on;'));
+});
+
 test('u-ui: basePath prefixes pages, login and API routes', async function () {
   const ctx = setup();
   const raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));

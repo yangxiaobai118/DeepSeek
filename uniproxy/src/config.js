@@ -54,6 +54,10 @@ export function applyDefaults(c) {
   if (c.nginx.sites == null) c.nginx.sites = [];
   if (c.nginx.http2 == null) c.nginx.http2 = 'listen';
   if (c.nginx.extraSites == null) c.nginx.extraSites = [];
+  if (c.nginx.fallback == null) c.nginx.fallback = { upstream: '', root: '' };
+  if (typeof c.nginx.fallback === 'string') c.nginx.fallback = { upstream: c.nginx.fallback, root: '' };
+  if (c.nginx.fallback.upstream == null) c.nginx.fallback.upstream = '';
+  if (c.nginx.fallback.root == null) c.nginx.fallback.root = '';
 
   c.subscription = c.subscription || {};
   if (c.subscription.enabled == null) c.subscription.enabled = true;
@@ -193,6 +197,13 @@ export function validateConfig(c) {
     }
   }
 
+  const fallback = c.nginx.fallback || {};
+  if (fallback.upstream && !/^https?:\/\//i.test(fallback.upstream)) {
+    errors.push('nginx.fallback.upstream must start with http:// or https://');
+  }
+  if (!fallback.upstream && fallback.root && !String(fallback.root).startsWith('/')) {
+    errors.push('nginx.fallback.root must be an absolute path');
+  }
   (c.nginx.sites || []).forEach((s, i) => {
     if (!s.serverName) errors.push(`nginx.sites[${i}].serverName is required`);
   });

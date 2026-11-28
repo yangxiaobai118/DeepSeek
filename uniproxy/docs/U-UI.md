@@ -162,6 +162,32 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 菜单申请/续期证书时，如果系统没有 `certbot`，会先询问并自动用 apt/dnf/yum/apk/zypper 安装，再执行申请；`standalone` 验证会临时停止 nginx、申请完成后自动启动，`webroot` 验证保持 nginx 运行。
 
+## 9.2 探测流量回落到博客
+
+未知 SNI、直接访问 IP:443 的探测流量会进入 nginx 的默认 TLS server。想让它显示博客而不是 u-ui 面板，配置 `nginx.fallback`：
+
+外站博客：
+
+```json
+"nginx": {
+  "fallback": { "upstream": "https://blog.example.com" }
+}
+```
+
+本机静态博客：
+
+```json
+"nginx": { "fallback": { "root": "/var/www/blog" } }
+```
+
+本机其他端口：
+
+```json
+"nginx": { "fallback": { "upstream": "http://127.0.0.1:8080" } }
+```
+
+保存后菜单 19 validate、21 apply。已知域名（站点、u-ui、订阅）仍按各自 vhost 处理；只有未知域名/无 SNI/直接 IP 会落到 fallback。HTTP 80 仍先 301 到 HTTPS。
+
 ## 10. 初始化向导
 
 `u-ui` 菜单的 **3. 初始化向导**（或 `uniproxy setup`）只问你真正需要决定的东西，其余全部随机：

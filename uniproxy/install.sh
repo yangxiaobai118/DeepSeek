@@ -90,7 +90,7 @@ fetch_to() {
   if have curl; then
     _total=$(curl -fsIL --retry 3 --retry-delay 3 --connect-timeout 15 --max-time 60 --http1.1 $CURL_RETRY_ALL "$_url" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { v = $2 } END { print v + 0 }')
     if [ -t 2 ]; then
-      curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 --http1.1 $CURL_RETRY_ALL "$_url" -o "$_dest" &
+      curl -fsSL --retry 5 --retry-delay 3 --retry-max-time 1200 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 --http1.1 -C - $CURL_RETRY_ALL "$_url" -o "$_dest" &
       _pid=$!
       _last_bytes=0
       _last_time=$(date +%s)
@@ -128,7 +128,7 @@ fetch_to() {
       printf '\n'
       return 1
     fi
-    curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 --http1.1 $CURL_RETRY_ALL "$_url" -o "$_dest"
+    curl -fsSL --retry 5 --retry-delay 3 --retry-max-time 1200 --connect-timeout 15 --speed-limit 1024 --speed-time 60 --max-time 1800 --http1.1 -C - $CURL_RETRY_ALL "$_url" -o "$_dest"
   elif have wget; then
     wget -qO "$_dest" "$_url"
   else
@@ -241,11 +241,13 @@ if ! fetch_to "$ASSET" "$tmp/asset"; then
         warn "binary download failed; falling back to the ~50 KiB JS bundle (Node.js 18+ detected)"
         MODE=tar
         ASSET="$BASE/$TAR_NAME"
+        rm -f "$tmp/asset"
         fetch_to "$ASSET" "$tmp/asset" || die "download failed: $ASSET (set UNIPROXY_MIRROR or retry later)"
       elif [ "$MODE" = "sea-gz" ]; then
         warn "compressed binary download failed; trying the raw binary"
         MODE=sea
         ASSET="$BASE/$SEA_NAME"
+        rm -f "$tmp/asset"
         fetch_to "$ASSET" "$tmp/asset" || die "download failed: $ASSET (set UNIPROXY_MIRROR or retry later)"
       else
         die "download failed: $ASSET (retry, set UNIPROXY_MIRROR=https://ghfast.top/ , or install Node.js >= 18 and use UNIPROXY_MODE=js)"

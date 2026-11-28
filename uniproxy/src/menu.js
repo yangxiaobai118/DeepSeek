@@ -323,11 +323,13 @@ export async function installSystem(ctx) {
   }
 }
 
-function runInstaller() {
+function runInstaller(mirror) {
   return new Promise(function (resolve) {
+    const env = Object.assign({}, process.env, { UNIPROXY_NO_MENU: '1' });
+    if (mirror) env.UNIPROXY_MIRROR = mirror;
     const child = spawn('sh', ['-c', 'curl -fsSL --retry 3 --http1.1 ' + INSTALL_URL + ' | sh'], {
       stdio: 'inherit',
-      env: Object.assign({}, process.env, { UNIPROXY_NO_MENU: '1' }),
+      env: env,
     });
     child.on('error', function (e) { resolve({ ok: false, error: e.message }); });
     child.on('close', function (code) { resolve({ ok: code === 0, code: code }); });
@@ -337,8 +339,12 @@ function runInstaller() {
 async function updateSystem(ctx) {
   const answer = String((await ctx.io.question('从 GitHub 安装最新版本? [Y/n]: ')) || '').trim().toLowerCase();
   if (answer === 'n' || answer === 'no') return ctx.io.print('已取消');
+  const currentMirror = process.env.UNIPROXY_MIRROR || '';
+  const input = String((await ctx.io.question('镜像前缀（如 https://ghfast.top/；回车=' + (currentMirror || '直连') + '）: ')) || '').trim();
+  const mirror = input || currentMirror;
+  if (mirror) ctx.io.print('使用镜像: ' + mirror);
   ctx.io.print('正在下载并安装最新版本（完成后会重启面板服务）…');
-  const result = await runInstaller();
+  const result = await runInstaller(mirror);
   if (result.error) return ctx.io.print('更新失败: ' + result.error);
   ctx.io.print(result.ok ? '更新完成' : ('更新失败: exit ' + result.code));
 }

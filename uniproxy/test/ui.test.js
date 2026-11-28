@@ -970,7 +970,7 @@ test('setup: creates a default config when the file is missing', async function 
 test('setup: invalid answers are asked again', async function () {
   const ctx = setup();
   const printed = [];
-  const answers = ['bad domain', 'example.org', '', '', '999.1.1.1', '203.0.113.7', 'r', 'r', 'sub.example.org', 'https://sub.example.org', 'admin', '', 'ops@example.org'];
+  const answers = ['bad domain', 'example.org', '', '', '999.1.1.1', '203.0.113.7', 'r', 'r', 'ftp://sub.example.org', 'sub.example.org', 'admin', '', 'ops@example.org'];
   try {
     const res = await runSetup({
       configPath: ctx.cfgPath,
@@ -985,7 +985,8 @@ test('setup: invalid answers are asked again', async function () {
     const text = printed.join('\n');
     assert.ok(text.includes('域名格式不正确'));
     assert.ok(text.includes('IP 地址格式不正确'));
-    assert.ok(text.includes('订阅地址必须带 http:// 或 https://'));
+    assert.ok(text.includes('订阅地址只填域名'));
+    assert.ok(text.includes('已按 HTTPS 补全为 https://sub.example.org'));
   } finally {
     fs.rmSync(ctx.dir, { recursive: true, force: true });
   }
@@ -1049,7 +1050,6 @@ test('u-ui: accounts can be added, updated and deleted', async function () {
     assert.equal(raw.ui.users[0].username, 'boss');
     assert.ok(verifyPassword('p1', raw.ui.users[0].hash));
     assert.equal(raw.ui.users[0].hash.indexOf('p1'), -1);
-
     const list = await fetch(inst.url + '/api/accounts', { headers: { cookie: auth.cookie } });
     assert.deepEqual((await list.json()).users, [{ username: 'boss', role: 'admin' }]);
 

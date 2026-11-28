@@ -209,11 +209,16 @@ export async function runSetup(opts = {}) {
   let subBase = currentBase;
   if (!yes) {
     for (;;) {
-      const input = String(await rawAsk('订阅公开地址（如 https://sub.example.com；回车=' + (currentBase || '自动') + '；- = 自动）', currentBase)).trim();
+      const input = String(await rawAsk('订阅公开地址（如 https://sub.example.com；只填域名会自动补 https://；回车=' + (currentBase || '自动') + '；- = 自动）', currentBase)).trim();
       if (input === '-') { subBase = ''; break; }
       if (input === '') { subBase = currentBase; break; }
-      if (/^https?:\/\/[^\s/]+$/i.test(input)) { subBase = input.replace(/\/+$/, ''); break; }
-      io.print('输入不合法：订阅地址必须带 http:// 或 https://，只填域名，不要带路径；请重新输入');
+      let candidate = input;
+      if (!/^https?:\/\//i.test(candidate) && /^[A-Za-z0-9.-]+(:\d+)?$/.test(candidate)) {
+        candidate = 'https://' + candidate;
+        io.print('已按 HTTPS 补全为 ' + candidate);
+      }
+      if (/^https?:\/\/[^\s/]+$/i.test(candidate)) { subBase = candidate.replace(/\/+$/, ''); break; }
+      io.print('输入不合法：订阅地址只填域名（会自动补 https://）或完整的 http(s):// 地址，不要带路径；请重新输入');
     }
   }
   cfg.subscription.publicBase = subBase;

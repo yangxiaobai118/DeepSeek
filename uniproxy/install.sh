@@ -80,7 +80,7 @@ draw_progress() {
   _spaces=$(printf '%*s' "$_empty" '')
   _speed=''
   if [ "$_rate" -ge 0 ] 2>/dev/null; then _speed=$(human_rate "$_rate"); fi
-  printf '\r%s  [%s%s] %3d%%  %s / %s MiB  %s%s' \
+  printf '\r%s  [%s%s] %3d%%  %s / %s MiB  %s%s\033[K' \
     "$GREEN" "$_bar" "$_spaces" "$_pct" "$(human_mib "$_now")" "$(human_mib "$_total")" "$_speed" "$RESET"
 }
 
@@ -116,7 +116,7 @@ fetch_to() {
         else
           _speed=''
           if [ "$_rate" -ge 0 ] 2>/dev/null; then _speed=$(human_rate "$_rate"); fi
-          printf '\r%s  downloading ... %s MiB  %s%s' "$GREEN" "$(human_mib "$_now")" "$_speed" "$RESET"
+          printf '\r%s  downloading ... %s MiB  %s%s\033[K' "$GREEN" "$(human_mib "$_now")" "$_speed" "$RESET"
         fi
         sleep 0.2
       done

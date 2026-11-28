@@ -1184,28 +1184,43 @@ function stamp() {
 
 function loginPage(message, action) {
   const css = '*{box-sizing:border-box}' +
-    'body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0e17;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans","PingFang SC","Microsoft YaHei",sans-serif;color:#e8ebf3;' +
-    'background-image:radial-gradient(900px 500px at 15% 10%,rgba(59,108,246,.22),transparent),radial-gradient(700px 450px at 85% 90%,rgba(124,92,255,.16),transparent)}' +
-    'body.light{background:#eef1f7;color:#1f2430;background-image:none}' +
-    'body.ultra{background:#000;color:#f2f2f3;background-image:none}' +
-    '.card{position:relative;width:360px;background:#151a28;border:1px solid #28304a;border-radius:16px;padding:28px;box-shadow:0 24px 80px rgba(0,0,0,.5)}' +
-    'body.light .card{background:#fff;border-color:#dfe3ec;box-shadow:0 20px 60px rgba(16,24,40,.12)}' +
-    'body.ultra .card{background:#101013;border-color:rgba(255,255,255,.04);box-shadow:0 24px 80px rgba(0,0,0,.8)}' +
-    '.tools{position:absolute;top:14px;right:14px;display:flex;gap:6px}' +
-    '.tools button{background:#0f1420;border:1px solid #2b3145;color:#aab2c5;border-radius:7px;padding:4px 8px;font-size:11px;cursor:pointer}' +
-    'body.light .tools button{background:#f4f6fb;border-color:#dfe3ec;color:#4b5563}' +
-    'body.ultra .tools button{background:#1a1a1e;border-color:#2a2a30;color:#9a9aa2}' +
-    '.logo{height:44px;padding:0 14px;border-radius:13px;background:linear-gradient(135deg,#3f6fff,#7c5cff);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px;letter-spacing:.4px;box-shadow:0 8px 22px rgba(63,111,255,.35)}' +
-    'h1{font-size:20px;margin:14px 0 4px}.sub{font-size:12px;color:#8b90a5;margin:0 0 6px}' +
-    'label{display:block;font-size:12px;color:#8b90a5;margin:14px 0 6px}' +
-    'input{width:100%;padding:11px 12px;border-radius:9px;border:1px solid #2b3145;background:#0f1420;color:#e8ebf3;font-size:14px;outline:none}' +
-    'body.light input{background:#f8fafc;border-color:#dfe3ec;color:#1f2430}' +
-    'body.ultra input{background:#1a1a1e;border-color:#2a2a30;color:#f2f2f3}' +
-    'input:focus{border-color:#3f6fff;box-shadow:0 0 0 3px rgba(63,111,255,.18)}' +
-    'button.submit{width:100%;margin-top:20px;padding:11px;border:0;border-radius:9px;background:linear-gradient(90deg,#3f6fff,#5a54d8);color:#fff;font-size:14px;font-weight:600;cursor:pointer}' +
+    'body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;background:radial-gradient(at 25% 20%,#152038 0%,#0d1117 60%);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans","PingFang SC","Microsoft YaHei",sans-serif;color:#ffffffeb}' +
+    'body.light{background:linear-gradient(135deg,#eef2ff 0%,#fdf2f8 50%,#ecfeff 100%);color:#1f2430}' +
+    'body.ultra{background:radial-gradient(at 25% 20%,#0a0a1a 0%,#000 60%);color:#f2f2f3}' +
+    '.bg-blobs,.bg-grid{position:fixed;inset:0;pointer-events:none;overflow:hidden}' +
+    '.bg-blobs::before,.bg-blobs::after{content:"";position:absolute;border-radius:50%;filter:blur(100px);will-change:transform}' +
+    '.bg-blobs::before{width:70vw;height:70vw;max-width:900px;max-height:900px;background:radial-gradient(circle,rgba(96,165,250,.42),transparent 65%);top:-25vw;left:-20vw;animation:blobA 24s ease-in-out infinite alternate}' +
+    '.bg-blobs::after{width:70vw;height:70vw;max-width:900px;max-height:900px;background:radial-gradient(circle,rgba(236,72,153,.32),transparent 65%);bottom:-25vw;right:-20vw;animation:blobB 30s ease-in-out infinite alternate}' +
+    'body.light .bg-blobs::before{background:radial-gradient(circle,rgba(99,102,241,.45),transparent 65%)}' +
+    'body.light .bg-blobs::after{background:radial-gradient(circle,rgba(236,72,153,.35),transparent 65%)}' +
+    'body.ultra .bg-blobs::before{background:radial-gradient(circle,rgba(99,102,241,.28),transparent 65%)}' +
+    '@keyframes blobA{0%{transform:translate(0) scale(1)}50%{transform:translate(18vw,10vh) scale(1.15)}100%{transform:translate(34vw,22vh) scale(1.25)}}' +
+    '@keyframes blobB{0%{transform:translate(0) scale(1)}50%{transform:translate(-16vw,-10vh) scale(1.12)}100%{transform:translate(-30vw,-22vh) scale(1.2)}}' +
+    '.bg-grid{background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:48px 48px;background-position:50%;-webkit-mask-image:radial-gradient(#000 30%,transparent 75%);mask-image:radial-gradient(#000 30%,transparent 75%)}' +
+    'body.light .bg-grid{background-image:linear-gradient(rgba(99,102,241,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,.08) 1px,transparent 1px)}' +
+    '.card{position:relative;z-index:2;width:100%;max-width:400px;background:rgba(28,30,34,.55);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:40px 32px 28px;box-shadow:0 1px 3px rgba(0,0,0,.4),0 20px 60px rgba(59,130,246,.22);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%)}' +
+    'body.light .card{background:rgba(255,255,255,.72);border-color:rgba(255,255,255,.6);box-shadow:0 1px 3px rgba(0,0,0,.04),0 18px 50px rgba(99,102,241,.18)}' +
+    'body.ultra .card{background:rgba(15,17,28,.6);border-color:rgba(255,255,255,.06)}' +
+    '.tools{position:absolute;top:14px;right:14px;display:flex;gap:8px}' +
+    '.tools button{width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.1);color:#ffffffb3;font-size:12px;cursor:pointer}' +
+    'body.light .tools button{background:rgba(255,255,255,.8);border-color:rgba(0,0,0,.08);color:#4b5563}' +
+    '.logo{display:block;text-align:center;font-size:28px;font-weight:700;letter-spacing:1.5px;background:linear-gradient(135deg,#60a5fa,#1d4ed8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;box-shadow:none;padding:0;height:auto;border-radius:0}' +
+    'body.light .logo{background:linear-gradient(135deg,#6366f1,#ec4899);-webkit-background-clip:text;background-clip:text}' +
+    'h1{font-size:32px;line-height:1.2;font-weight:700;text-align:center;margin:12px 0 6px;letter-spacing:.3px}' +
+    '.sub{text-align:center;font-size:13px;color:#ffffff8c;margin:0 0 22px}' +
+    'body.light .sub{color:#0000008c}body.ultra .sub{color:#ffffff70}' +
+    'label{display:block;font-size:13px;font-weight:500;color:#ffffffd9;margin:16px 0 7px}' +
+    'body.light label{color:#1f2430}' +
+    'input{width:100%;padding:10px 12px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:#1c1e22;color:#ffffffeb;font-size:14px;outline:none}' +
+    'body.light input{background:#fff;border-color:#d7dce7;color:#1f2430}' +
+    'body.ultra input{background:#101013;border-color:rgba(255,255,255,.06)}' +
+    'input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.18)}' +
+    'button.submit{width:100%;margin-top:22px;padding:11px;border:0;border-radius:10px;background:#3b82f6;color:#fff;font-size:14px;font-weight:600;cursor:pointer}' +
     'button.submit:hover{filter:brightness(1.08)}.err{color:#ff7b72;background:rgba(255,123,114,.1);border:1px solid rgba(255,123,114,.25);padding:8px 10px;border-radius:8px;font-size:12px;margin:0 0 8px}' +
-    'body.light .err{background:#fff1f0;border-color:#ffccc7;color:#b42318}';
+    'body.light .err{background:#fff1f0;border-color:#ffccc7;color:#b42318}' +
+    '@media (max-width:480px){.card{padding:32px 20px 24px}.tools{top:10px;right:10px}}';
   return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>U-UI login</title><style>' + css + '</style></head><body>' +
+    '<div class="bg-blobs"></div><div class="bg-grid"></div>' +
     '<form class="card" method="post" action="' + (action || '/login') + '">' +
     '<div class="tools"><button type="button" id="langBtn">EN</button><button type="button" id="themeBtn">☀</button></div>' +
     '<div class="logo">U-UI</div><h1 id="title">欢迎回来</h1><p class="sub" id="subtitle">登录 U-UI 控制面板</p>' +

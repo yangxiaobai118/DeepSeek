@@ -228,12 +228,22 @@ test('u-ui: nginx management and viewer role', async function () {
     assert.ok(nginxJson.preview.includes('server {') || nginxJson.preview.includes('server{'));
 
     const headers = { cookie: auth.cookie, 'x-uui-csrf': auth.csrf, 'content-type': 'application/json' };
-    const saved = await fetch(base + '/api/nginx', { method: 'PUT', headers: headers, body: JSON.stringify({ mode: 'http', sites: [{ serverName: 'a.example.com', root: '/srv/www' }], extraSites: [{ serverName: 'b.example.com', upstream: '127.0.0.1:8787' }] }) });
+    const saved = await fetch(base + '/api/nginx', { method: 'PUT', headers: headers, body: JSON.stringify({
+      mode: 'http',
+      sites: [{ serverName: 'a.example.com', upstream: 'https://blog.example.org', subFilter: true }],
+      extraSites: [{ serverName: 'b.example.com', upstream: '127.0.0.1:8787' }],
+      locations: [{ serverName: 'a.example.com', path: '/xray', upstream: '127.0.0.1:55555', exact: true, websocket: true }],
+      fallback: { upstream: 'https://blog.example.org', root: '' },
+    }) });
     assert.equal(saved.status, 200);
     const raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
     assert.equal(raw.nginx.mode, 'http');
     assert.equal(raw.nginx.sites[0].serverName, 'a.example.com');
+    assert.equal(raw.nginx.sites[0].upstream, 'https://blog.example.org');
     assert.equal(raw.nginx.extraSites[0].upstream, '127.0.0.1:8787');
+    assert.equal(raw.nginx.locations[0].path, '/xray');
+    assert.equal(raw.nginx.locations[0].websocket, true);
+    assert.equal(raw.nginx.fallback.upstream, 'https://blog.example.org');
 
     const tested = await fetch(base + '/api/nginx/test', { method: 'POST', headers: headers });
     assert.ok([200, 500].includes(tested.status));
@@ -901,6 +911,24 @@ test('nginx: fallback proxies unknown SNI probes to the blog', function () {
   assert.ok(nginx.includes('proxy_pass https://blog.example.org;'));
   assert.ok(nginx.includes('proxy_set_header Host blog.example.org;'));
   assert.ok(nginx.includes('proxy_ssl_server_name on;'));
+});
+
+test('nginx: site upstream, path locations and websocket', function () {
+  const cfg = JSON.parse(fs.readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'));
+  cfg.nginx.sites = [{ serverName: 'www.example.com', upstream: 'https://blog.example.org', subFilter: true }];
+  cfg.nginx.locations = [
+    { serverName: 'www.example.com', path: '/xray', upstream: '127.0.0.1:55555', exact: true, websocket: true },
+    { serverName: 'www.example.com', path: '/managerxui/', upstream: 'http://127.0.0.1:30580' },
+  ];
+  const nginx = generateNginx(cfg);
+  assert.ok(nginx.includes('location = /xray'));
+  assert.ok(nginx.includes('location ^~ /managerxui/'));
+  assert.ok(nginx.includes('proxy_pass http://127.0.0.1:55555;'));
+  assert.ok(nginx.includes('proxy_set_header Upgrade $http_upgrade;'));
+  assert.ok(nginx.includes('proxy_pass https://blog.example.org;'));
+  assert.ok(nginx.includes('proxy_set_header Host blog.example.org;'));
+  assert.ok(nginx.includes('sub_filter "blog.example.org" $host;'));
+  assert.ok(nginx.includes('location / {'));
 });
 
 test('u-ui: basePath prefixes pages, login and API routes', async function () {

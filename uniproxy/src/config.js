@@ -54,6 +54,13 @@ export function applyDefaults(c) {
   if (c.nginx.sites == null) c.nginx.sites = [];
   if (c.nginx.http2 == null) c.nginx.http2 = 'listen';
   if (c.nginx.extraSites == null) c.nginx.extraSites = [];
+  if (c.nginx.locations == null) c.nginx.locations = [];
+  for (const s of c.nginx.sites) {
+    if (s.upstream && !/^https?:\/\//i.test(s.upstream)) s.upstream = 'http://' + s.upstream;
+  }
+  for (const loc of c.nginx.locations) {
+    if (loc.upstream && !/^https?:\/\//i.test(loc.upstream)) loc.upstream = 'http://' + loc.upstream;
+  }
   if (c.nginx.fallback == null) c.nginx.fallback = { upstream: '', root: '' };
   if (typeof c.nginx.fallback === 'string') c.nginx.fallback = { upstream: c.nginx.fallback, root: '' };
   if (c.nginx.fallback.upstream == null) c.nginx.fallback.upstream = '';
@@ -203,6 +210,21 @@ export function validateConfig(c) {
   }
   if (!fallback.upstream && fallback.root && !String(fallback.root).startsWith('/')) {
     errors.push('nginx.fallback.root must be an absolute path');
+  }
+  const siteNames = new Set((c.nginx.sites || []).map(function (s) { return s.serverName; }));
+  for (const s of c.nginx.sites || []) {
+    if (s.upstream) {
+      try { new URL(s.upstream); } catch (e) { errors.push('nginx.sites[' + s.serverName + '].upstream is not a valid URL'); }
+    }
+  }
+  for (const loc of c.nginx.locations || []) {
+    if (!loc.serverName || !siteNames.has(loc.serverName)) errors.push('nginx.locations serverName must match a site');
+    if (!loc.path || loc.path[0] !== '/') errors.push('nginx.locations path must start with /');
+    else if (!/^\/[A-Za-z0-9._~!$&'()*+,;=:@%\/-]*$/.test(loc.path)) errors.push('nginx.locations path contains unsupported characters');
+    if (!loc.upstream) errors.push('nginx.locations upstream is required');
+    else {
+      try { new URL(loc.upstream); } catch (e) { errors.push('nginx.locations upstream is not a valid URL'); }
+    }
   }
   (c.nginx.sites || []).forEach((s, i) => {
     if (!s.serverName) errors.push(`nginx.sites[${i}].serverName is required`);

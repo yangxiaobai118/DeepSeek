@@ -8,6 +8,18 @@
  *              nginx's http servers move to 127.0.0.1:<nginxInternalTls>.
  *              Proxy inbounds bind loopback and are reached through the map.
  */
+function parseUpstream(value) {
+  let raw = String(value || '').trim();
+  if (!raw) return null;
+  if (!/^https?:\/\//i.test(raw)) raw = 'http://' + raw;
+  try {
+    const u = new URL(raw);
+    return { url: raw, host: u.host, hostname: u.hostname, https: u.protocol === 'https:' };
+  } catch (e) {
+    return null;
+  }
+}
+
 function httpsHost(value) {
   try {
     const u = new URL(String(value || ''));
@@ -196,15 +208,61 @@ export function generateNginx(c) {
   }
 
   for (const site of nginx.sites || []) {
+    const siteUpstream = parseUpstream(site.upstream);
+    const siteLocations = (nginx.locations || []).filter(function (loc) { return loc.serverName === site.serverName; });
     w('    # ---- website: ' + site.serverName + ' ----');
     w('    server {');
     for (const line of listenLines()) w(line);
     w('        server_name ' + site.serverName + ';');
     for (const line of tlsLines()) w(line);
     for (const line of securityHeaders()) w(line);
-    w('        root  ' + (site.root || '/var/www/html') + ';');
-    w('        index ' + (site.index || 'index.html') + ';');
-    w('        location / { try_files $uri $uri/ =404; }');
+    for (const loc of siteLocations) {
+      const up = parseUpstream(loc.upstream);
+      if (!up) continue;
+      w('        location ' + (loc.exact ? '= ' : '^~ ') + loc.path + ' {');
+      w('            proxy_pass ' + up.url + ';');
+      w('            proxy_http_version 1.1;');
+      w('            proxy_set_header Host $host;');
+      w('            proxy_set_header X-Real-IP $remote_addr;');
+      w('            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;');
+      w('            proxy_set_header X-Forwarded-Host $host;');
+      w('            proxy_set_header X-Forwarded-Proto $scheme;');
+      if (up.https) {
+        w('            proxy_ssl_server_name on;');
+        w('            proxy_ssl_name ' + up.hostname + ';');
+      }
+      if (loc.websocket) {
+        w('            proxy_set_header Upgrade $http_upgrade;');
+        w('            proxy_set_header Connection $connection_upgrade;');
+        w('            proxy_read_timeout 3600s;');
+        w('            proxy_send_timeout 3600s;');
+        w('            proxy_buffering off;');
+      }
+      w('        }');
+    }
+    if (siteUpstream) {
+      if (site.subFilter) w('        sub_filter_once off;');
+      if (site.subFilter) w('        sub_filter "' + siteUpstream.host + '" $host;');
+      w('        location / {');
+      w('            proxy_pass ' + siteUpstream.url + ';');
+      w('            proxy_http_version 1.1;');
+      w('            proxy_set_header Host ' + siteUpstream.host + ';');
+      w('            proxy_set_header X-Real-IP $remote_addr;');
+      w('            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;');
+      w('            proxy_set_header X-Forwarded-Host $host;');
+      w('            proxy_set_header X-Forwarded-Proto $scheme;');
+      if (site.subFilter) w('            proxy_set_header Accept-Encoding "";');
+      w('            proxy_redirect off;');
+      if (siteUpstream.https) {
+        w('            proxy_ssl_server_name on;');
+        w('            proxy_ssl_name ' + siteUpstream.hostname + ';');
+      }
+      w('        }');
+    } else {
+      w('        root  ' + (site.root || '/var/www/html') + ';');
+      w('        index ' + (site.index || 'index.html') + ';');
+      w('        location / { try_files $uri $uri/ =404; }');
+    }
     w('    }');
     w('');
   }

@@ -739,6 +739,8 @@ function getNginx(res, cfgPath) {
     mode: c.nginx.mode,
     sites: c.nginx.sites || [],
     extraSites: c.nginx.extraSites || [],
+    locations: c.nginx.locations || [],
+    fallback: c.nginx.fallback || { upstream: '', root: '' },
     preview: generateNginx(c),
     sni: sniRoutes(c),
   });
@@ -752,8 +754,33 @@ function putNginx(req, res, cfgPath) {
     if (body.mode) raw.nginx.mode = String(body.mode);
     if (Array.isArray(body.sites)) {
       raw.nginx.sites = body.sites.map(function (s) {
-        return { serverName: String(s.serverName || '').trim(), root: String(s.root || '/var/www/html'), index: String(s.index || 'index.html') };
+        const site = { serverName: String(s.serverName || '').trim(), index: String(s.index || 'index.html') };
+        const upstream = String(s.upstream || '').trim();
+        if (upstream) {
+          site.upstream = upstream;
+          if (s.subFilter) site.subFilter = true;
+        } else {
+          site.root = String(s.root || '/var/www/html');
+        }
+        return site;
       }).filter(function (s) { return s.serverName; });
+    }
+    if (Array.isArray(body.locations)) {
+      raw.nginx.locations = body.locations.map(function (l) {
+        return {
+          serverName: String(l.serverName || '').trim(),
+          path: String(l.path || '').trim(),
+          upstream: String(l.upstream || '').trim(),
+          exact: Boolean(l.exact),
+          websocket: Boolean(l.websocket),
+        };
+      }).filter(function (l) { return l.serverName && l.path && l.upstream; });
+    }
+    if (body.fallback && typeof body.fallback === 'object') {
+      raw.nginx.fallback = {
+        upstream: String(body.fallback.upstream || '').trim(),
+        root: String(body.fallback.root || '').trim(),
+      };
     }
     if (Array.isArray(body.extraSites)) {
       raw.nginx.extraSites = body.extraSites.map(function (s) {

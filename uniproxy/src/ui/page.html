@@ -83,11 +83,13 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <section id="tab-nginx">
   <div class="card"><h2>nginx 站点</h2>
   <div class="row"><label>模式<select id="nginxMode"><option value="stream">stream（443 按 SNI 分流）</option><option value="http">http（nginx 直接占 443）</option></select></label>
-  <button class="ghost" id="addSite">添加站点</button><button class="ghost" id="addExtra">添加反代</button>
+  <button class="ghost" id="addSite">添加站点</button><button class="ghost" id="addExtra">添加反代</button><button class="ghost" id="addLocation">添加路径反代</button>
   <button class="act" id="saveNginx">保存 nginx 配置</button>
   <button class="ghost" id="testNginx">nginx -t</button><button class="ghost" id="reloadNginx">reload</button></div>
   <div class="muted" style="margin:12px 0 6px">静态站点</div><div id="nginxSites"></div>
   <div class="muted" style="margin:12px 0 6px">反向代理（extraSites）</div><div id="nginxExtra"></div>
+  <div class="muted" style="margin:12px 0 6px">路径反代（同一域名下按 path 分流，支持 WebSocket）</div><div id="nginxLocations"></div>
+  <div class="row" style="margin-top:12px"><label>探测回落博客（URL 或本机绝对目录）<input id="nginxFallback" placeholder="https://blog.example.com 或 /var/www/blog"></label></div>
   <pre id="nginxOut" style="margin-top:12px">(idle)</pre></div>
   <div class="card"><h2>SNI 路由</h2><div id="nginxSni"></div></div>
   <div class="card"><h2>生成的 nginx.conf</h2><pre id="nginxPreview">(loading)</pre></div>
@@ -526,9 +528,11 @@ async function saveSettings() {
   else { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'err'; }
 }
 
-function nginxSiteRow(name, root) {
+function nginxSiteRow(name, root, upstream, subFilter) {
+  const value = upstream || root || '/var/www/html';
   return '<div class="row nginx-row" style="margin-bottom:6px"><label>域名<input class="n_site" value="' + h(name) + '"></label>' +
-    '<label>站点根目录<input class="n_root" value="' + h(root || '/var/www/html') + '"></label>' +
+    '<label>根目录 / 反代 URL<input class="n_root" value="' + h(value) + '" placeholder="/var/www/html 或 https://blog.example.com"></label>' +
+    '<label style="flex:0 0 auto"><input type="checkbox" class="n_subfilter"' + (subFilter ? ' checked' : '') + '> 改写域名</label>' +
     '<button class="ghost danger n_del">删除</button></div>';
 }
 function nginxExtraRow(name, up) {
@@ -536,12 +540,23 @@ function nginxExtraRow(name, up) {
     '<label>上游<input class="n_up" value="' + h(up) + '" placeholder="127.0.0.1:8787"></label>' +
     '<button class="ghost danger n_del">删除</button></div>';
 }
+function nginxLocationRow(serverName, path, upstream, exact, websocket) {
+  return '<div class="row nginx-row" style="margin-bottom:6px"><label>域名<input class="n_lsite" value="' + h(serverName) + '" placeholder="www.example.com"></label>' +
+    '<label>路径<input class="n_lpath" value="' + h(path) + '" placeholder="/xray"></label>' +
+    '<label>后端<input class="n_lup" value="' + h(upstream) + '" placeholder="127.0.0.1:55555"></label>' +
+    '<label style="flex:0 0 auto"><input type="checkbox" class="n_lexact"' + (exact ? ' checked' : '') + '> 精确</label>' +
+    '<label style="flex:0 0 auto"><input type="checkbox" class="n_lws"' + (websocket ? ' checked' : '') + '> WebSocket</label>' +
+    '<button class="ghost danger n_del">删除</button></div>';
+}
 async function loadNginx() {
   const r = await api('GET', '/api/nginx');
   const d = r.data || {};
   document.getElementById('nginxMode').value = d.mode || 'http';
-  document.getElementById('nginxSites').innerHTML = (d.sites || []).map(function (s) { return nginxSiteRow(s.serverName, s.root); }).join('');
+  document.getElementById('nginxSites').innerHTML = (d.sites || []).map(function (s) { return nginxSiteRow(s.serverName, s.root, s.upstream, s.subFilter); }).join('');
   document.getElementById('nginxExtra').innerHTML = (d.extraSites || []).map(function (s) { return nginxExtraRow(s.serverName, s.upstream); }).join('');
+  document.getElementById('nginxLocations').innerHTML = (d.locations || []).map(function (l) { return nginxLocationRow(l.serverName, l.path, l.upstream, l.exact, l.websocket); }).join('');
+  const fb = d.fallback || {};
+  document.getElementById('nginxFallback').value = fb.upstream || fb.root || '';
   document.getElementById('nginxPreview').textContent = d.preview || '';
   const sni = d.sni || [];
   document.getElementById('nginxSni').innerHTML = sni.length
@@ -550,7 +565,11 @@ async function loadNginx() {
 }
 function collectNginxSites() {
   return Array.from(document.querySelectorAll('#nginxSites .nginx-row')).map(function (row) {
-    return { serverName: row.querySelector('.n_site').value.trim(), root: row.querySelector('.n_root').value.trim() || '/var/www/html' };
+    const value = row.querySelector('.n_root').value.trim();
+    if (value && value[0] !== '/') {
+      return { serverName: row.querySelector('.n_site').value.trim(), upstream: value, subFilter: row.querySelector('.n_subfilter').checked };
+    }
+    return { serverName: row.querySelector('.n_site').value.trim(), root: value || '/var/www/html' };
   }).filter(function (s) { return s.serverName; });
 }
 function collectNginxExtra() {
@@ -558,16 +577,39 @@ function collectNginxExtra() {
     return { serverName: row.querySelector('.n_site').value.trim(), upstream: row.querySelector('.n_up').value.trim() };
   }).filter(function (s) { return s.serverName && s.upstream; });
 }
+function collectNginxLocations() {
+  return Array.from(document.querySelectorAll('#nginxLocations .nginx-row')).map(function (row) {
+    return {
+      serverName: row.querySelector('.n_lsite').value.trim(),
+      path: row.querySelector('.n_lpath').value.trim(),
+      upstream: row.querySelector('.n_lup').value.trim(),
+      exact: row.querySelector('.n_lexact').checked,
+      websocket: row.querySelector('.n_lws').checked,
+    };
+  }).filter(function (l) { return l.serverName && l.path && l.upstream; });
+}
+function collectNginxFallback() {
+  const value = document.getElementById('nginxFallback').value.trim();
+  if (!value) return { upstream: '', root: '' };
+  if (value[0] === '/') return { upstream: '', root: value };
+  return { upstream: value, root: '' };
+}
 document.getElementById('addSite').onclick = function () {
   document.getElementById('nginxSites').insertAdjacentHTML('beforeend', nginxSiteRow('', '/var/www/html'));
 };
 document.getElementById('addExtra').onclick = function () {
   document.getElementById('nginxExtra').insertAdjacentHTML('beforeend', nginxExtraRow('', '127.0.0.1:8787'));
 };
+document.getElementById('addLocation').onclick = function () {
+  document.getElementById('nginxLocations').insertAdjacentHTML('beforeend', nginxLocationRow('', '/', '127.0.0.1:8080'));
+};
 document.getElementById('nginxSites').addEventListener('click', function (e) {
   if (e.target.classList.contains('n_del')) e.target.closest('.nginx-row').remove();
 });
 document.getElementById('nginxExtra').addEventListener('click', function (e) {
+  if (e.target.classList.contains('n_del')) e.target.closest('.nginx-row').remove();
+});
+document.getElementById('nginxLocations').addEventListener('click', function (e) {
   if (e.target.classList.contains('n_del')) e.target.closest('.nginx-row').remove();
 });
 document.getElementById('saveNginx').onclick = async function () {
@@ -576,15 +618,17 @@ document.getElementById('saveNginx').onclick = async function () {
     mode: document.getElementById('nginxMode').value,
     sites: collectNginxSites(),
     extraSites: collectNginxExtra(),
+    locations: collectNginxLocations(),
+    fallback: collectNginxFallback(),
   });
-  out.textContent = r.status === 200 ? '已保存（记得 nginx -t 再 reload）' : ('error: ' + (r.data.error || r.status) + (r.data.errors ? '\n' + r.data.errors.join('\n') : ''));
+  out.textContent = r.status === 200 ? '已保存到 config.json；需在“操作”页 apply 或菜单 21 才会写入 /etc/nginx/nginx.conf' : ('error: ' + (r.data.error || r.status) + (r.data.errors ? '\n' + r.data.errors.join('\n') : ''));
   await refresh(); await loadNginx();
 };
 document.getElementById('testNginx').onclick = async function () {
   const out = document.getElementById('nginxOut');
   out.textContent = 'running nginx -t ...';
   const r = await api('POST', '/api/nginx/test');
-  out.textContent = (r.data.output || '') + (r.data.ok ? '\nOK' : '\nFAILED');
+  out.textContent = (r.data.output || '') + (r.data.ok ? '\nOK（这是预览配置的测试结果）' : '\nFAILED');
 };
 document.getElementById('reloadNginx').onclick = async function () {
   const out = document.getElementById('nginxOut');

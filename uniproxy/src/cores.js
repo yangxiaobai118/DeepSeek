@@ -46,17 +46,33 @@ function fetchXrayScript(dir) {
   return file;
 }
 
+function latestXray() {
+  const res = run('curl', ['-fsSL', '--retry', '5', '--retry-delay', '3', '--http1.1', 'https://api.github.com/repos/XTLS/Xray-core/releases/latest'], 30000);
+  if (!res.ok) throw new Error(res.error || res.output || 'cannot query the Xray release');
+  const data = JSON.parse(res.output);
+  if (!data.tag_name) throw new Error('Xray release response has no tag_name');
+  return data.tag_name;
+}
+
 export function installXray(log) {
   const say = typeof log === 'function' ? log : function () {};
-  say('1/2 下载并准备 Xray 官方安装脚本…');
+  say('1/3 查询 Xray 最新版本…');
+  let version;
+  try {
+    version = latestXray();
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  say('最新版本: ' + version);
+  say('2/3 下载并准备 Xray 官方安装脚本…');
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'uniproxy-xray-'));
   try {
     const script = fetchXrayScript(tmp);
-    say('2/2 运行官方安装脚本（下载 zip 时会显示进度条）…');
-    const res = runLive('bash', [script, 'install'], 900000, process.env);
+    say('3/3 安装 ' + version + '（下载 zip 时会显示进度条）…');
+    const res = runLive('bash', [script, 'install', '--version', version], 900000, process.env);
     if (!res.ok) return { ok: false, error: res.error || ('install script exit ' + res.status) };
-    const version = run('xray', ['version'], 10000).output.split('\n')[0] || '';
-    return { ok: true, version: version };
+    const installed = run('xray', ['version'], 10000).output.split('\n')[0] || '';
+    return { ok: true, version: installed || version };
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
   }

@@ -40,6 +40,8 @@ export function applyDefaults(c) {
   if (c.ports.http == null) c.ports.http = 80;
   if (c.ports.https == null) c.ports.https = 443;
   if (c.ports.nginxInternalTls == null) c.ports.nginxInternalTls = 8443;
+  if (!Array.isArray(c.ports.extra)) c.ports.extra = [];
+  if (!c.ports.owners || typeof c.ports.owners !== 'object' || Array.isArray(c.ports.owners)) c.ports.owners = {};
 
   c.panels = c.panels || {};
   for (const key of PANELS) {
@@ -213,6 +215,10 @@ export function validateConfig(c) {
     }
   }
 
+  for (const extra of c.ports.extra || []) {
+    if (!Number.isInteger(Number(extra.port))) errors.push('ports.extra entries need an integer port');
+    if (!extra.owner) errors.push('ports.extra entries need an owner');
+  }
   const fallback = c.nginx.fallback || {};
   if (fallback.upstream && !/^https?:\/\//i.test(fallback.upstream)) {
     errors.push('nginx.fallback.upstream must start with http:// or https://');

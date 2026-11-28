@@ -9,42 +9,50 @@
 
 export function collectPorts(c) {
   const entries = [];
+  const ownerMap = (c.ports && c.ports.owners) || {};
+  const ownerOf = (port, fallback) => String(ownerMap[String(port)] || fallback || 'u-ui');
   const add = (port, label, meta = {}) => {
     if (port === undefined || port === null || port === '') return;
-    entries.push({ port: Number(port), label, ...meta });
+    entries.push({ port: Number(port), label, ...meta, owner: ownerOf(port, meta.owner) });
   };
 
-  add((c.ui && c.ui.port) || 8788, 'u-ui:panel', { listen: '127.0.0.1', group: 'u-ui' });
+  // Everything uniproxy/u-ui exposes is owned by u-ui unless explicitly mapped.
+  add((c.ui && c.ui.port) || 8788, 'u-ui:panel', { listen: '127.0.0.1', owner: 'u-ui' });
   if (c.subscription && c.subscription.enabled) {
-    add(c.subscription.port || 8787, 'uniproxy:subscription', { listen: '127.0.0.1', group: 'subscription' });
+    add(c.subscription.port || 8787, 'uniproxy:subscription', { listen: '127.0.0.1', owner: 'u-ui' });
   }
-  add(c.ports.http, 'nginx:http', { group: 'nginx' });
-  add(c.ports.https, 'nginx:https', { group: 'nginx' });
-  if (c.nginx.mode === 'stream') add(c.ports.nginxInternalTls, 'nginx:internal-tls', { listen: '127.0.0.1', group: 'nginx' });
+  add(c.ports.http, 'nginx:http', { owner: 'u-ui' });
+  add(c.ports.https, 'nginx:https', { owner: 'u-ui' });
+  if (c.nginx.mode === 'stream') add(c.ports.nginxInternalTls, 'nginx:internal-tls', { listen: '127.0.0.1', owner: 'u-ui' });
 
   if (c.panels.xui && c.panels.xui.enabled && c.panels.xui.domain) {
-    add(c.panels.xui.port, 'panel:x-ui', { listen: c.panels.xui.listen, group: '3x-ui' });
+    add(c.panels.xui.port, 'x-ui:panel', { listen: c.panels.xui.listen, owner: '3x-ui' });
   }
   if (c.panels.sui && c.panels.sui.enabled && c.panels.sui.domain) {
-    add(c.panels.sui.port, 'panel:s-ui', { listen: c.panels.sui.listen, group: 's-ui' });
+    add(c.panels.sui.port, 's-ui:panel', { listen: c.panels.sui.listen, owner: 's-ui' });
     if (c.panels.sui.sub && c.panels.sui.sub.enabled && c.panels.sui.sub.domain) {
-      add(c.panels.sui.sub.port, 'panel:s-ui-sub', { listen: c.panels.sui.listen, group: 's-ui' });
+      add(c.panels.sui.sub.port, 's-ui:subscription', { listen: c.panels.sui.listen, owner: 's-ui' });
     }
   }
 
   (c.xray.inbounds || []).forEach((ib, i) =>
-    add(ib.port, `xray:${ib.tag || i}`, { listen: ib.listen, group: 'xray' }),
+    add(ib.port, `xray:${ib.tag || i}`, { listen: ib.listen, owner: 'u-ui' }),
   );
   (c.singbox.inbounds || []).forEach((ib, i) =>
-    add(ib.port, `singbox:${ib.tag || i}`, { listen: ib.listen, group: 'sing-box' }),
+    add(ib.port, `singbox:${ib.tag || i}`, { listen: ib.listen, owner: 'u-ui' }),
   );
 
   // control-plane listeners emitted by the generators for traffic accounting
   if (c.xray.enabled !== false && c.xray.stats !== false) {
-    add(c.xray.apiPort || 10085, 'xray:api', { listen: '127.0.0.1', group: 'xray' });
+    add(c.xray.apiPort || 10085, 'xray:api', { listen: '127.0.0.1', owner: 'u-ui' });
   }
   if (c.singbox.enabled !== false && c.singbox.clashApi !== false) {
-    add(c.singbox.clashPort || 9090, 'singbox:clash', { listen: '127.0.0.1', group: 'sing-box' });
+    add(c.singbox.clashPort || 9090, 'singbox:clash', { listen: '127.0.0.1', owner: 'u-ui' });
+  }
+
+  // manually declared listeners (for example xray processes owned by 3x-ui/s-ui)
+  for (const extra of (c.ports && c.ports.extra) || []) {
+    add(extra.port, extra.label || 'extra', { listen: extra.listen || '0.0.0.0', owner: extra.owner || '其他' });
   }
 
   return entries;

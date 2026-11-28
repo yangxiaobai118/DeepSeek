@@ -60,7 +60,7 @@ test('port planner flags two wildcard listeners on the same port', () => {
 test('port planner counts the s-ui subscription port', () => {
   const c = makeConfig();
   const report = analyzePorts(c);
-  assert.ok(report.entries.some((e) => e.label === 'panel:s-ui-sub' && e.port === 2096));
+  assert.ok(report.entries.some((e) => e.label === 's-ui:subscription' && e.port === 2096));
 });
 
 test('port planner reports the internal TLS listener on loopback', () => {
@@ -73,13 +73,25 @@ test('port planner reports the internal TLS listener on loopback', () => {
 
 test('port planner groups listeners by owner', () => {
   const report = analyzePorts(makeConfig());
-  const groups = new Set(report.entries.map(function (e) { return e.group; }));
-  for (const g of ['u-ui', 'subscription', 'nginx', '3x-ui', 's-ui', 'xray', 'sing-box']) {
-    assert.ok(groups.has(g), g);
+  const owners = new Set(report.entries.map(function (e) { return e.owner; }));
+  for (const g of ['u-ui', '3x-ui', 's-ui']) {
+    assert.ok(owners.has(g), g);
   }
   const ui = report.entries.find(function (e) { return e.label === 'u-ui:panel'; });
   assert.equal(ui.port, 8788);
   assert.equal(ui.listen, '127.0.0.1');
+  assert.equal(ui.owner, 'u-ui');
+});
+
+test('port planner assigns specific ports to other owners', () => {
+  const c = makeConfig();
+  c.ports.owners = { 10443: '3x-ui' };
+  c.ports.extra = [{ port: 55555, label: '3x-ui xray ws', listen: '127.0.0.1', owner: '3x-ui' }];
+  const report = analyzePorts(c);
+  const inbound = report.entries.find(function (e) { return e.port === 10443; });
+  assert.equal(inbound.owner, '3x-ui');
+  const extra = report.entries.find(function (e) { return e.port === 55555; });
+  assert.equal(extra.owner, '3x-ui');
 });
 
 test('stream mode warns about inbounds without sni', () => {

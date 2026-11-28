@@ -14,7 +14,9 @@
   "ports": {
     "http": 80,
     "https": 443,
-    "nginxInternalTls": 8443
+    "nginxInternalTls": 8443,
+    "owners": {},
+    "extra": []
   },
   "panels": {
     "xui": {

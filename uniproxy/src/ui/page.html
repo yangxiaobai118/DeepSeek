@@ -63,7 +63,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 <main>
 <section id="tab-overview" class="on">
   <div class="card"><h2>状态</h2><div id="overview"></div></div>
-  <div class="card"><h2>端口</h2><div id="ports"></div></div>
+  <div class="card"><h2>端口<button class="help" data-help="ports" title="帮助">?</button></h2><div id="ports"></div></div>
 </section>
 <section id="tab-inbounds">
   <div class="card"><h2>入站（同时管理 xray 与 sing-box）<button class="help" data-help="inbounds" title="帮助">?</button></h2><div id="inboundTable"></div></div>
@@ -216,6 +216,7 @@ const HELP = {
   users: { title: '用户注册表', html: '<p>用户是订阅的主体：一个用户可绑定多个入站，共享一个订阅链接和流量/到期。</p><pre>name: bob\ninbounds: [xray-vless-reality, singbox-vless-ws-tls]\nexpireAt: 2027-06-01T00:00:00Z</pre><p>保存后客户端链接会出现在「订阅」输出中；到期/超流量会自动拒绝。</p>' },
   cores: { title: '内核与服务', html: '<p><code>start / stop / restart</code> 直接操作 systemd 服务，立即生效但重启后可能恢复。</p><p><code>启用/停用配置</code> 控制 uniproxy 是否生成该内核的配置；停用后不会下发，服务即使启动也没有有效配置。</p><p>例：xray 配置报错时，先点 <code>restart</code> 看状态，再回到「操作」页 apply。</p>' },
   settings: { title: '设置', html: '<p>这里写入 config.json，保存只校验不立即 apply。常见字段：</p><pre>网站域名 = nginx 站点域名（如 www.example.com）\n证书/私钥 = TLS 证书路径\nnginx 内部 TLS = 只监听 127.0.0.1</pre><p>x-ui / s-ui 域名和端口是给已安装 3x-ui / s-ui 的反代用的；<b>不用就留空</b>，留空不会生成任何反代，也不占端口。</p>' },
+  ports: { title: '端口归属', html: '<p>默认所有由 uniproxy / u-ui 管理的监听都归 <b>u-ui</b>：面板 8788、订阅 8787、nginx 80/443/8443、xray / sing-box 入站与统计端口。</p><p>3x-ui / s-ui 自己的面板端口归各自。如果某个 xray / sing-box 端口其实由 3x-ui 或 s-ui 使用，在 config 的 <code>ports.owners</code> 里按端口指定：</p><pre>"ports": { "owners": { "10443": "3x-ui", "2052": "s-ui" } }</pre><p>外部进程的端口不在配置里时，可登记到 <code>ports.extra</code>：</p><pre>"ports": { "extra": [ { "port": 30580, "label": "3x-ui xray", "owner": "3x-ui" } ] }</pre>' },
   nginx: { title: 'nginx 站点', html: '<p><b>站点</b>：一个域名填根目录（静态网站）或反代 URL（博客）。<b>改写域名</b>：把上游页面里的域名替换成访问域名。</p><p><b>路径反代</b>：同一域名按路径分流，例：<code>/xray</code> → 127.0.0.1:55555（WebSocket 勾选），<code>/managerxui/</code> → 127.0.0.1:30580。</p><p><b>探测回落</b>：未知域名/直接 IP 的流量落到这个站点。</p><p>保存只写 config.json；点「操作」页 apply 才会写入 /etc/nginx/nginx.conf。页面的 nginx -t 测试的是预览配置。</p>' },
 };
 function showHelpById(key) {
@@ -239,18 +240,19 @@ function renderOverview() {
     (state.warnings.length ? '<div class="warn">' + state.warnings.map(e => '- ' + h(e)).join('<br>') + '</div>' : '');
 }
 function renderPorts() {
-  const names = { 'u-ui': 'u-ui', '3x-ui': '3x-ui', 's-ui': 's-ui', nginx: 'nginx', xray: 'Xray', 'sing-box': 'sing-box', subscription: '订阅服务', other: '其他' };
-  const order = ['u-ui', '3x-ui', 's-ui', 'nginx', 'xray', 'sing-box', 'subscription', 'other'];
+  const names = { 'u-ui': 'u-ui', '3x-ui': '3x-ui', 's-ui': 's-ui', '其他': '其他', other: '其他' };
+  const order = ['u-ui', '3x-ui', 's-ui', '其他'];
   const groups = {};
   (state.ports || []).forEach(function (p) {
-    const g = p.group || 'other';
-    (groups[g] = groups[g] || []).push(p);
+    const owner = p.owner || '其他';
+    (groups[owner] = groups[owner] || []).push(p);
   });
   let html = '<table><thead><tr><th>端口</th><th>组件</th><th>监听</th></tr></thead><tbody>';
-  for (const g of order.concat(Object.keys(groups).filter(function (k) { return !order.includes(k); }))) {
-    const list = (groups[g] || []).slice().sort(function (a, b) { return a.port - b.port; });
+  const keys = order.concat(Object.keys(groups).filter(function (k) { return !order.includes(k); }));
+  for (const owner of keys) {
+    const list = (groups[owner] || []).slice().sort(function (a, b) { return a.port - b.port; });
     if (!list.length) continue;
-    html += '<tr><td colspan="3" style="background:#0b0d12;color:#9fb3ff;font-weight:600">' + h(names[g] || g) + '（' + list.length + '）</td></tr>';
+    html += '<tr><td colspan="3" style="background:#0b0d12;color:#9fb3ff;font-weight:600">' + h(names[owner] || owner) + '（' + list.length + '）</td></tr>';
     html += list.map(function (p) { return '<tr><td>' + h(p.port) + '</td><td>' + h(p.label) + '</td><td>' + h(p.listen || '0.0.0.0') + '</td></tr>'; }).join('');
   }
   html += '</tbody></table>';

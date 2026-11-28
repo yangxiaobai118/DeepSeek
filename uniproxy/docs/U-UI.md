@@ -30,7 +30,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 | 页面 | 内容 |
 |---|---|
-| 概览 | 配置路径、nginx 模式、公网 IP、按归属分组的端口表（u-ui / 3x-ui / s-ui / nginx / Xray / sing-box / 订阅 / 其他）、校验结果、入站/用户/订阅计数 |
+| 概览 | 配置路径、nginx 模式、公网 IP、按使用者分组的端口表（u-ui / 3x-ui / s-ui / 其他）、校验结果、入站/用户/订阅计数 |
 | 入站 | 表格 + 表单，两套内核共用一套界面：新增/编辑/删除 xray 与 sing-box 入站（协议、监听、端口、网络、TLS/Reality、SNI、WS 路径、Reality 参数）；每个入站可单独管理客户端（凭据留空则按 `server.secret` 派生） |
 | 内核 | xray / sing-box / nginx 的运行状态（systemctl），start / stop / restart，以及「是否让 uniproxy 生成该内核配置」的开关 |
 | 流量 | 从 Xray stats API 与 sing-box（Clash API）采集按用户的上行/下行，支持一键同步到 `users[].usage`（订阅的 `subscription-userinfo` 随之变化）。生成配置时会**自动开启**统计端点：Xray `stats` + `api`（`xray.apiPort`，默认 10085）、sing-box `experimental.clash_api`（`singbox.clashPort`，默认 9090）；两者都进端口表，可用 `xray.stats: false` / `singbox.clashApi: false` 关闭 |
@@ -206,6 +206,32 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 保存只会写入 `config.json`。要让配置真正进入 `/etc/nginx/nginx.conf`，还需要菜单 21 apply，或在 u-ui「操作」页执行 apply；之后再用 nginx -t / reload。
 
 如果 u-ui 域名与某个站点域名相同（例如都用 `www.yangxiaobaicdn.top`），不会生成两个互相冲突的 vhost，而是在该站点 vhost 内只把访问路径（如 `/manageruui/`）反代到 8788，其他路径继续走站点自己的静态目录或反代。此时 `ui.basePath` 不能是 `/`。访问不带结尾斜杠的路径（如 `/manageruui`）会 301 到 `https://<你的域名>/manageruui/`，不会带内部 `:8443`。
+
+## 9.4 端口归属
+
+端口表按“谁在用”分组，而不是按 nginx/xray/sing-box 分组：
+
+- 默认：uniproxy / u-ui 生成的监听都归 **u-ui**（包括 nginx、xray、sing-box、订阅、统计端口）。
+- 3x-ui / s-ui 的面板与订阅端口归各自。
+- 如果某个 xray / sing-box 端口实际由 3x-ui 或 s-ui 使用，在配置里覆盖归属：
+
+```json
+"ports": {
+  "owners": { "10443": "3x-ui", "2052": "s-ui" }
+}
+```
+
+- 外部进程的端口不在配置里时，可以登记：
+
+```json
+"ports": {
+  "extra": [
+    { "port": 30580, "label": "3x-ui xray", "listen": "127.0.0.1", "owner": "3x-ui" }
+  ]
+}
+```
+
+保存后刷新概览即可看到对应分组。
 
 ## 10. 初始化向导
 

@@ -138,6 +138,7 @@ export function generateNginx(c) {
   w('    sendfile      on;');
   w('    keepalive_timeout 65;');
   w('    server_tokens off;');
+  w('    absolute_redirect off;');
   w('');
   w('    # websocket upgrade: only send "upgrade" when the client asked for it');
   w('    map $http_upgrade $connection_upgrade {');
@@ -259,7 +260,7 @@ export function generateNginx(c) {
     for (const line of tlsLines()) w(line);
     for (const line of securityHeaders()) w(line);
     if (uiOnSite && c.ui.domain === site.serverName && uiBasePath !== '/') {
-      w('        location = ' + uiBasePath.slice(0, -1) + ' { return 301 ' + uiBasePath + '; }');
+      w('        location = ' + uiBasePath.slice(0, -1) + ' { return 301 https://$host' + uiBasePath + '; }');
       w('        location ^~ ' + uiBasePath + ' {');
       w('            proxy_pass http://127.0.0.1:' + uiPort + ';');
       w('            proxy_http_version 1.1;');

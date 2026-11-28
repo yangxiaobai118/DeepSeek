@@ -946,7 +946,8 @@ test('nginx: u-ui basePath on the same domain as the site', function () {
   cfg.nginx.sites = [{ serverName: 'www.example.com', upstream: 'https://blog.example.org' }];
   const nginx = generateNginx(cfg);
   assert.equal((nginx.match(/server_name www\.example\.com;/g) || []).length, 1);
-  assert.ok(nginx.includes('location = /manageruui { return 301 /manageruui/; }'));
+  assert.ok(nginx.includes('location = /manageruui { return 301 https://$host/manageruui/; }'));
+  assert.ok(!nginx.includes(':8443/manageruui'));
   assert.ok(nginx.includes('location ^~ /manageruui/ {'));
   assert.ok(nginx.includes('proxy_pass http://127.0.0.1:8788;'));
   assert.ok(nginx.includes('set $uniproxy_site_'));

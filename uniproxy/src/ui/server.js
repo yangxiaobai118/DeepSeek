@@ -1192,7 +1192,7 @@ function loginPage(message, action) {
     '.tools{position:absolute;top:14px;right:14px;display:flex;gap:6px}' +
     '.tools button{background:#0f1420;border:1px solid #2b3145;color:#aab2c5;border-radius:7px;padding:4px 8px;font-size:11px;cursor:pointer}' +
     'body.light .tools button{background:#f4f6fb;border-color:#dfe3ec;color:#4b5563}' +
-    '.logo{width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,#3f6fff,#7c5cff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px;box-shadow:0 8px 22px rgba(63,111,255,.35)}' +
+    '.logo{height:44px;padding:0 14px;border-radius:13px;background:linear-gradient(135deg,#3f6fff,#7c5cff);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px;letter-spacing:.4px;box-shadow:0 8px 22px rgba(63,111,255,.35)}' +
     'h1{font-size:20px;margin:14px 0 4px}.sub{font-size:12px;color:#8b90a5;margin:0 0 6px}' +
     'label{display:block;font-size:12px;color:#8b90a5;margin:14px 0 6px}' +
     'input{width:100%;padding:11px 12px;border-radius:9px;border:1px solid #2b3145;background:#0f1420;color:#e8ebf3;font-size:14px;outline:none}' +
@@ -1201,10 +1201,10 @@ function loginPage(message, action) {
     'button.submit{width:100%;margin-top:20px;padding:11px;border:0;border-radius:9px;background:linear-gradient(90deg,#3f6fff,#5a54d8);color:#fff;font-size:14px;font-weight:600;cursor:pointer}' +
     'button.submit:hover{filter:brightness(1.08)}.err{color:#ff7b72;background:rgba(255,123,114,.1);border:1px solid rgba(255,123,114,.25);padding:8px 10px;border-radius:8px;font-size:12px;margin:0 0 8px}' +
     'body.light .err{background:#fff1f0;border-color:#ffccc7;color:#b42318}';
-  return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>u-ui login</title><style>' + css + '</style></head><body>' +
+  return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>U-UI login</title><style>' + css + '</style></head><body>' +
     '<form class="card" method="post" action="' + (action || '/login') + '">' +
     '<div class="tools"><button type="button" id="langBtn">EN</button><button type="button" id="themeBtn">☀</button></div>' +
-    '<div class="logo">U</div><h1 id="title">欢迎回来</h1><p class="sub" id="subtitle">登录 u-ui 控制面板</p>' +
+    '<div class="logo">U-UI</div><h1 id="title">欢迎回来</h1><p class="sub" id="subtitle">登录 U-UI 控制面板</p>' +
     (message ? '<p class="err">' + message + '</p>' : '') +
     '<label id="userLabel">用户名</label><input type="text" name="username" id="username" placeholder="请输入用户名" autofocus>' +
     '<label id="passLabel">密码</label><input type="password" name="password" id="password" placeholder="请输入密码">' +

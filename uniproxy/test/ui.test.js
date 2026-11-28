@@ -727,7 +727,7 @@ test('menu: changes the u-ui base path', async function () {
 
 test('menu: sets the fallback site URL', async function () {
   const ctx = setup();
-  const answers = ['41', 'https://blog.example.org', '0'];
+  const answers = ['41', 'blog.example.org', '0'];
   const printed = [];
   const io = {
     print: function (s) { printed.push(String(s)); },
@@ -736,6 +736,7 @@ test('menu: sets the fallback site URL', async function () {
   await runMenu({ configPath: ctx.cfgPath, io: io, pause: false });
   const cfg = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
   assert.equal(cfg.nginx.fallback.upstream, 'https://blog.example.org');
+  assert.ok(printed.join('\n').includes('已补全为 https://blog.example.org'));
   assert.ok(printed.join('\n').includes('已保存探测回落'));
   fs.rmSync(ctx.dir, { recursive: true, force: true });
 });

@@ -502,7 +502,7 @@ function changeFallback(ctx) {
     const fb = (c.nginx && c.nginx.fallback) || {};
     const current = fb.upstream ? ('反代 ' + fb.upstream) : (fb.root ? ('静态 ' + fb.root) : '未设置');
     ctx.io.print('当前探测回落: ' + current);
-    const answer = String((await ctx.io.question('回落站点地址（https://... 或本机绝对目录如 /var/www/site；回车=保留；- = 关闭）: ')) || '').trim();
+    const answer = String((await ctx.io.question('回落站点地址（域名会自动补 https://；也可填完整 URL 或 /var/www/site；回车=保留；- = 关闭）: ')) || '').trim();
     if (!answer) return ctx.io.print('已保留当前探测回落');
     const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
     raw.nginx = raw.nginx || {};
@@ -512,13 +512,20 @@ function changeFallback(ctx) {
       if (!fs.existsSync(answer)) ctx.io.print('提示: 目录 ' + answer + ' 还不存在，nginx 启动后仍会返回 404。');
       raw.nginx.fallback = { upstream: '', root: answer };
     } else {
+      let candidate = answer;
+      if (!/^https?:\/\//i.test(candidate) && /^[A-Za-z0-9.-]+(:\d+)?$/.test(candidate)) {
+        const host = candidate.split(':')[0];
+        const scheme = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) ? 'http://' : 'https://';
+        candidate = scheme + candidate;
+        ctx.io.print('已补全为 ' + candidate);
+      }
       try {
-        const u = new URL(answer);
+        const u = new URL(candidate);
         if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !u.hostname) throw new Error('bad');
       } catch (e) {
-        return ctx.io.print('地址不合法：填写 http(s):// 开头的 URL，或 / 开头的本机绝对目录。');
+        return ctx.io.print('地址不合法：填写域名、http(s):// 开头的 URL，或 / 开头的本机绝对目录。');
       }
-      raw.nginx.fallback = { upstream: answer.replace(/\/+$/, ''), root: '' };
+      raw.nginx.fallback = { upstream: candidate.replace(/\/+$/, ''), root: '' };
     }
     fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n');
     ctx.io.print('已保存探测回落，按 21 apply 下发 nginx 配置。');

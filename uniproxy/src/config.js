@@ -22,6 +22,15 @@ export function loadConfig(file) {
   return { config: applyDefaults(parsed), path: abs };
 }
 
+function normalizeUpstream(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const host = raw.split(':')[0];
+  const local = host === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(host);
+  return (local ? 'http://' : 'https://') + raw;
+}
+
 export function applyDefaults(c) {
   c.server = c.server || {};
   c.server.domains = c.server.domains || {};
@@ -56,15 +65,16 @@ export function applyDefaults(c) {
   if (c.nginx.extraSites == null) c.nginx.extraSites = [];
   if (c.nginx.locations == null) c.nginx.locations = [];
   for (const s of c.nginx.sites) {
-    if (s.upstream && !/^https?:\/\//i.test(s.upstream)) s.upstream = 'http://' + s.upstream;
+    if (s.upstream) s.upstream = normalizeUpstream(s.upstream);
   }
   for (const loc of c.nginx.locations) {
-    if (loc.upstream && !/^https?:\/\//i.test(loc.upstream)) loc.upstream = 'http://' + loc.upstream;
+    if (loc.upstream) loc.upstream = normalizeUpstream(loc.upstream);
   }
   if (c.nginx.fallback == null) c.nginx.fallback = { upstream: '', root: '' };
   if (typeof c.nginx.fallback === 'string') c.nginx.fallback = { upstream: c.nginx.fallback, root: '' };
   if (c.nginx.fallback.upstream == null) c.nginx.fallback.upstream = '';
   if (c.nginx.fallback.root == null) c.nginx.fallback.root = '';
+  if (c.nginx.fallback.upstream) c.nginx.fallback.upstream = normalizeUpstream(c.nginx.fallback.upstream);
 
   c.subscription = c.subscription || {};
   if (c.subscription.enabled == null) c.subscription.enabled = true;

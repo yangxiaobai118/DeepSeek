@@ -16,7 +16,7 @@ export function collectPorts(c) {
 
   add(c.ports.http, 'nginx:http');
   add(c.ports.https, 'nginx:https');
-  if (c.nginx.mode === 'stream') add(c.ports.nginxInternalTls, 'nginx:internal-tls');
+  if (c.nginx.mode === 'stream') add(c.ports.nginxInternalTls, 'nginx:internal-tls', { listen: '127.0.0.1' });
 
   if (c.panels.xui && c.panels.xui.enabled) {
     add(c.panels.xui.port, 'panel:x-ui', { listen: c.panels.xui.listen });

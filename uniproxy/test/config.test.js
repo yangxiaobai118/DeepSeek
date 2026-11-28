@@ -63,6 +63,14 @@ test('port planner counts the s-ui subscription port', () => {
   assert.ok(report.entries.some((e) => e.label === 'panel:s-ui-sub' && e.port === 2096));
 });
 
+test('port planner reports the internal TLS listener on loopback', () => {
+  const c = makeConfig();
+  const report = analyzePorts(c);
+  const entry = report.entries.find((e) => e.label === 'nginx:internal-tls');
+  assert.equal(entry.port, 8443);
+  assert.equal(entry.listen, '127.0.0.1');
+});
+
 test('stream mode warns about inbounds without sni', () => {
   const c = makeConfig();
   delete c.singbox.inbounds[0].sni;

@@ -610,7 +610,9 @@ test('menu: renders the boxed sections and exits cleanly', async function () {
   assert.ok(text.includes('0. 退出菜单'));
   assert.ok(text.includes('19. 校验配置 (Validate Config)'));
   assert.ok(text.includes('33. 安装/升级 xray (Install / Upgrade Xray)'));
-  assert.ok(text.includes('38. 申请 / 续期证书 (Issue / Renew Cert)'));
+  assert.ok(text.includes('37. 安装/升级 nginx (Install/Upgrade)'));
+  assert.ok(text.includes('38. 卸载 nginx (Uninstall Nginx)'));
+  assert.ok(text.includes('40. 申请 / 续期证书 (Issue / Renew Cert)'));
   assert.ok(text.includes('27. 停止 xray (Stop Xray)'));
   assert.ok(text.includes('30. 启动 xray (Start Xray)'));
   assert.ok(text.includes('无效选项: 99'));
@@ -637,7 +639,7 @@ test('menu: box helper and section count', function () {
   const ctx = { configPath: 'config.json', io: { print: function () {}, question: async function () { return '0'; } } };
   const sections = buildMenu(ctx);
   assert.equal(sections.length, 6);
-  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 41);
+  assert.equal(sections.reduce(function (n, s) { return n + s.items.length; }, 0), 43);
   const rendered = box('面板', ['0. 退出菜单']);
   assert.ok(rendered.startsWith('┌─ 面板'));
   assert.ok(rendered.includes('│ 0. 退出菜单'));
@@ -727,7 +729,7 @@ test('menu: changes the u-ui base path', async function () {
 
 test('menu: sets the fallback site URL', async function () {
   const ctx = setup();
-  const answers = ['41', 'blog.example.org', '0'];
+  const answers = ['43', 'blog.example.org', '0'];
   const printed = [];
   const io = {
     print: function (s) { printed.push(String(s)); },

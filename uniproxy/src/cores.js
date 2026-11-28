@@ -226,3 +226,63 @@ export function uninstallSingbox(log) {
   run('systemctl', ['daemon-reload'], 30000);
   return { ok: true };
 }
+function packageManager() {
+  for (const pm of ['apt-get', 'dnf', 'yum', 'apk', 'zypper']) {
+    if (run('sh', ['-c', 'command -v ' + pm], 5000).ok) return pm;
+  }
+  return '';
+}
+
+export function installNginx(log) {
+  const say = typeof log === 'function' ? log : function () {};
+  const pm = packageManager();
+  if (!pm) return { ok: false, error: 'no supported package manager (apt/dnf/yum/apk/zypper)' };
+  const env = Object.assign({}, process.env, { DEBIAN_FRONTEND: 'noninteractive' });
+  say('1/3 更新软件包索引（' + pm + '）…');
+  if (pm === 'apt-get') {
+    const updated = runLive('apt-get', ['update'], 600000, env);
+    if (!updated.ok) say('警告: apt-get update 失败，尝试使用现有索引继续…');
+  }
+  say('2/3 安装 nginx…');
+  const args = {
+    'apt-get': ['-y', 'install', 'nginx'],
+    dnf: ['-y', 'install', 'nginx'],
+    yum: ['-y', 'install', 'nginx'],
+    apk: ['add', 'nginx'],
+    zypper: ['-n', 'install', 'nginx'],
+  }[pm];
+  const res = runLive(pm, args, 900000, env);
+  if (!res.ok) return { ok: false, error: 'package install failed, exit ' + res.status };
+  say('3/3 启用并启动 nginx…');
+  run('systemctl', ['enable', 'nginx'], 30000);
+  run('systemctl', ['start', 'nginx'], 30000);
+  const version = run('nginx', ['-v'], 10000).output.trim();
+  return { ok: true, version: version };
+}
+
+export function uninstallNginx(log) {
+  const say = typeof log === 'function' ? log : function () {};
+  const pm = packageManager();
+  if (!pm) return { ok: false, error: 'no supported package manager (apt/dnf/yum/apk/zypper)' };
+  const env = Object.assign({}, process.env, { DEBIAN_FRONTEND: 'noninteractive' });
+  say('1/3 停止并禁用 nginx…');
+  run('systemctl', ['disable', '--now', 'nginx'], 30000);
+  say('2/3 卸载 nginx 软件包（配置目录保留）…');
+  let args;
+  if (pm === 'apt-get') {
+    const query = run('dpkg-query', ['-W', '-f=${Package}\n', 'nginx', 'nginx-common', 'nginx-core'], 10000);
+    const installed = query.output.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    args = ['-y', 'remove'].concat(installed.length ? installed : ['nginx']);
+  } else if (pm === 'apk') {
+    args = ['del', 'nginx'];
+  } else if (pm === 'zypper') {
+    args = ['rm', '-y', 'nginx'];
+  } else {
+    args = ['-y', 'remove', 'nginx'];
+  }
+  const res = runLive(pm, args, 600000, env);
+  if (!res.ok) return { ok: false, error: 'package remove failed, exit ' + res.status };
+  say('3/3 清理 systemd…');
+  run('systemctl', ['daemon-reload'], 30000);
+  return { ok: true };
+}

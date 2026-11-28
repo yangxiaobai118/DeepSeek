@@ -1,5 +1,6 @@
 import readline from 'node:readline';
 import crypto from 'node:crypto';
+import { promises as dns } from 'node:dns';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -755,6 +756,41 @@ function showCert(ctx) {
   };
 }
 
+async function lookupDomain(domain) {
+  try {
+    const result = await Promise.race([
+      dns.lookup(domain, { all: true }),
+      new Promise(function (resolve) { setTimeout(function () { resolve([]); }, 3000); }),
+    ]);
+    return Array.isArray(result) ? result : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+async function checkCertDomains(c, cfg) {
+  const ip = (c.server && c.server.publicIp) || '';
+  const good = [];
+  const bad = [];
+  for (const domain of cfg.domains) {
+    if (domain.startsWith('*.')) {
+      bad.push({ domain: domain, reason: '通配符证书需要 DNS-01，不能使用 HTTP-01' });
+      continue;
+    }
+    const addresses = await lookupDomain(domain);
+    if (!addresses.length) {
+      bad.push({ domain: domain, reason: '没有 A/AAAA 解析（NXDOMAIN）' });
+      continue;
+    }
+    if (ip && !addresses.some(function (a) { return a.address === ip; })) {
+      bad.push({ domain: domain, reason: '解析到 ' + addresses.map(function (a) { return a.address; }).join(', ') + '，不是本机 ' + ip });
+      continue;
+    }
+    good.push(domain);
+  }
+  return { good: good, bad: bad };
+}
+
 function issueCert(ctx) {
   return async function (c) {
     const answer = (await ctx.io.question('i=申请  r=续期  (回车取消): ')).trim().toLowerCase();
@@ -769,6 +805,22 @@ function issueCert(ctx) {
       targetConfig.certs = targetConfig.certs || {};
       targetConfig.certs.challenge = 'standalone';
       challenge = 'standalone';
+    }
+    if (cfg.provider === 'certbot' && !cfg.command) {
+      const dnsReport = await checkCertDomains(c, cfg);
+      if (dnsReport.bad.length) {
+        ctx.io.print('以下证书域名无法通过当前服务器的 HTTP-01 验证：');
+        for (const item of dnsReport.bad) ctx.io.print('  - ' + item.domain + ': ' + item.reason);
+        const choice = String((await ctx.io.question('是否只申请解析到本机的域名 ' + (dnsReport.good.join(', ') || '(无)') + '? [Y/n]: ')) || '').trim().toLowerCase();
+        if (choice === 'n' || choice === 'no') {
+          return ctx.io.print('已取消：请先把这些域名的 A 记录指向本机，或从 certs.domains 中删除后再申请。');
+        }
+        if (!dnsReport.good.length) return ctx.io.print('失败: 没有解析到本机的域名，无法申请证书。');
+        targetConfig = JSON.parse(JSON.stringify(targetConfig));
+        targetConfig.certs = targetConfig.certs || {};
+        targetConfig.certs.domains = dnsReport.good;
+        ctx.io.print('本次只申请: ' + dnsReport.good.join(', '));
+      }
     }
     if (cfg.provider === 'certbot' && !cfg.command && !providerAvailable('certbot')) {
       const auto = String((await ctx.io.question('未安装 certbot，是否自动安装? [Y/n]: ')) || '').trim().toLowerCase();

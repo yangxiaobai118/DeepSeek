@@ -250,6 +250,21 @@ body.light .cmd-box{background:#fff}
 body.light .cmd-box input{background:#f8fafc;color:#1f2430}
 body.light .cmd-item{color:#1f2430}
 @media(max-width:1024px){.side-search{justify-content:flex-start}}
+
+/* ---- compact page toolbar / 3x-ui table density ---- */
+.page-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.page-toolbar input:not([type=checkbox]),.page-toolbar select{height:32px;padding:4px 9px;border-radius:7px}
+.page-toolbar .inline{display:flex;flex-direction:row;align-items:center;gap:6px;font-size:12px;color:var(--muted);flex:0 0 auto}
+.page-toolbar .check{flex-direction:row;align-items:center;gap:5px;font-size:12px}
+.page-toolbar #inboundSearch{flex:1 1 220px;max-width:320px}
+.page-toolbar .act,.page-toolbar .ghost{height:32px;padding:0 12px}
+td,th{padding:8px 10px}
+table tbody tr:hover{background:rgba(127,127,127,.045)}
+.log-pre{height:calc(100vh - 300px);min-height:360px;line-height:1.45;font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:pre-wrap;overflow:auto}
+@media(max-width:700px){.page-toolbar{margin-bottom:10px}.page-toolbar #inboundSearch{max-width:none}.log-pre{height:60vh;min-height:280px}}
+td .ghost{padding:4px 8px;font-size:12px;border-radius:6px}
+td .act{padding:4px 8px;font-size:12px;border-radius:6px}
+#pageHint{display:none!important}
 </style></head><body>
 <aside class="sidebar" id="sidebar">
   <div class="brand"><div class="logo">U</div><div class="brand-text"><strong>U-UI</strong><span>uniproxy panel</span></div><button class="side-close" id="sideClose" title="关闭菜单">×</button></div>
@@ -298,9 +313,11 @@ body.light .cmd-item{color:#1f2430}
   <div class="card"><h2>端口<button class="help" data-help="ports" title="帮助">?</button></h2><div id="ports"></div></div>
 </section>
 <section id="tab-inbounds">
-  <div class="card"><h2>入站（同时管理 xray 与 sing-box）<button class="help" data-help="inbounds" title="帮助">?</button></h2><div id="inboundTable"></div></div>
-  <div class="card"><h2 id="inboundFormTitle">新增入站</h2><div id="inboundForm"></div></div>
-  <div class="card"><h2 id="clientsTitle">客户端</h2><div id="clientsPanel"><div class="muted">在上表点「客户端」查看或添加</div></div></div>
+  <div class="card">
+  <div class="page-toolbar"><button class="act" id="addInbound">+ 添加入站</button><input id="inboundSearch" placeholder="搜索 tag / 协议 / 端口"><span id="inboundCount" class="muted"></span></div>
+  <div id="inboundTable"></div></div>
+  <div class="card" id="inboundFormCard" style="display:none"><h2 id="inboundFormTitle">新增入站</h2><div id="inboundForm"></div></div>
+  <div class="card" id="clientsCard" style="display:none"><h2 id="clientsTitle">客户端</h2><div id="clientsPanel"></div></div>
 </section>
 <section id="tab-users">
   <div class="card"><h2>用户注册表<button class="help" data-help="users" title="帮助">?</button></h2><div id="userTable"></div></div>
@@ -316,11 +333,14 @@ body.light .cmd-item{color:#1f2430}
   <div class="card"><h2>采集错误</h2><div id="statsErrors" class="muted">(none)</div></div>
 </section>
 <section id="tab-logs">
-  <div class="card"><h2>日志（journalctl）</h2>
-  <div class="row"><label>来源<select id="logUnit"><option value="xray">xray</option><option value="singbox">sing-box</option><option value="nginx">nginx</option><option value="sub">uniproxy-sub</option></select></label>
-  <label>行数<input id="logLines" type="number" value="200" min="10" max="1000"></label>
-  <button class="ghost" id="loadLogsBtn">刷新</button></div>
-  <pre id="logOut" style="margin-top:12px">(idle)</pre></div>
+  <div class="card">
+  <div class="page-toolbar">
+  <label class="inline">来源<select id="logUnit"><option value="xray">xray</option><option value="singbox">sing-box</option><option value="nginx">nginx</option><option value="sub">uniproxy-sub</option></select></label>
+  <label class="inline">行数<input id="logLines" type="number" value="200" min="10" max="1000"></label>
+  <label class="inline check"><input type="checkbox" id="logAuto"> 自动刷新</label>
+  <button class="act" id="loadLogsBtn">刷新</button><button class="ghost" id="downloadLogs">下载</button>
+  </div>
+  <pre id="logOut" class="log-pre">(idle)</pre></div>
 </section>
 <section id="tab-nginx">
   <div class="card"><h2>nginx 站点<button class="help" data-help="nginx" title="帮助">?</button></h2>
@@ -340,19 +360,22 @@ body.light .cmd-item{color:#1f2430}
   <div class="card"><h2>流量拓扑</h2><div id="topology"></div></div>
 </section>
 <section id="tab-nodes">
-  <div class="card"><h2>节点（通过本机 ssh/scp 编排，无需在远端装 agent）</h2>
-  <div class="row" style="margin-bottom:10px"><button class="ghost" id="probeAll">全部探测</button><button class="ghost" id="deployAll">批量下发</button><input id="batchGroup" placeholder="只处理分组（留空=全部）" size="20"><span id="nodeOut" class="muted"></span></div>
+  <div class="card">
+  <div class="page-toolbar"><button class="act" id="addNode">+ 添加节点</button><button class="ghost" id="probeAll">全部探测</button><button class="ghost" id="deployAll">批量下发</button><input id="batchGroup" placeholder="分组（留空=全部）"><span id="nodeOut" class="muted"></span></div>
   <div id="nodeTable"></div>
-  <div class="row" style="margin-top:12px">
-  <label>id<input id="n_id" size="12"></label>
-  <label>名称<input id="n_name" size="12"></label>
-  <label>host<input id="n_host" size="18" placeholder="203.0.113.9"></label>
-  <label>用户<input id="n_user" size="10" value="root"></label>
-  <label>分组<input id="n_group" size="10" value="default"></label>
-  <label>端口<input id="n_port" type="number" value="22" style="width:80px"></label>
-  <label>密钥<input id="n_key" size="18" placeholder="/root/.ssh/id_ed25519"></label>
-  <label>远端配置<input id="n_path" size="26" value="/etc/uniproxy/config.json"></label>
-  <button class="act" id="saveNode">保存节点</button><span id="nodeMsg" class="muted"></span></div></div>
+  <div id="nodeForm" style="display:none;margin-top:12px">
+  <div class="row">
+  <label>id<input id="n_id"></label>
+  <label>名称<input id="n_name"></label>
+  <label>host<input id="n_host" placeholder="203.0.113.9"></label>
+  <label>用户<input id="n_user" value="root"></label>
+  <label>分组<input id="n_group" value="default"></label>
+  <label>端口<input id="n_port" type="number" value="22"></label>
+  </div><div class="row" style="margin-top:10px">
+  <label>密钥<input id="n_key" placeholder="/root/.ssh/id_ed25519"></label>
+  <label>远端配置<input id="n_path" value="/etc/uniproxy/config.json"></label>
+  <button class="act" id="saveNode">保存节点</button><span id="nodeMsg" class="muted"></span>
+  </div></div></div>
 </section>
 <section id="tab-config">
   <div class="card"><h2>config.json（保存前会跑 validate，并自动备份）</h2>
@@ -371,7 +394,9 @@ body.light .cmd-item{color:#1f2430}
   </div><pre id="actionOut" style="margin-top:12px">(idle)</pre></div>
 </section>
 <section id="tab-settings">
-  <div class="card"><h2>设置（写入 config.json，保存前校验）<button class="help" data-help="settings" title="帮助">?</button></h2><div id="settingsForm"><div class="muted">载入中…</div></div></div>
+  <div class="card">
+  <div class="page-toolbar"><button class="act" id="saveSettings">保存设置</button><span id="settingsMsg" class="muted"></span></div>
+  <div id="settingsForm"></div></div>
 </section>
 <section id="tab-certs">
   <div class="card"><h2>当前证书</h2><div id="certStatus"></div></div>
@@ -427,6 +452,7 @@ let sysHistory = { cpu: [], mem: [], swap: [], disk: [] };
 let lang = (function () { try { return localStorage.getItem('uui-lang') === 'en' ? 'en' : 'zh'; } catch (e) { return 'zh'; } })();
 let themeMode = (function () { try { const v = localStorage.getItem('uui-theme'); return v === 'light' || v === 'ultra' ? v : 'dark'; } catch (e) { return 'dark'; } })();
 let ipVisible = (function () { try { return localStorage.getItem('uui-ip-visible') === '1'; } catch (e) { return false; } })();
+let inboundFormOpen = false;
 const I18N = {
   zh: {
     'nav.overview': '概览', 'nav.inbounds': '入站', 'nav.users': '用户', 'nav.nodes': '节点',
@@ -758,12 +784,22 @@ function renderPorts() {
 }
 function renderInbounds() {
   const t = document.getElementById('inboundTable');
-  t.innerHTML = state.inbounds.length
+  const q = String((document.getElementById('inboundSearch') || {}).value || '').trim().toLowerCase();
+  const list = state.inbounds.filter(function (ib) {
+    return !q || (ib.kind + ' ' + ib.tag + ' ' + ib.protocol + ' ' + ib.port + ' ' + ib.network + ' ' + ib.security).toLowerCase().includes(q);
+  });
+  t.innerHTML = list.length
     ? '<table><thead><tr><th>内核</th><th>tag</th><th>协议</th><th>监听</th><th>网络</th><th>安全</th><th>操作</th></tr></thead><tbody>' +
-      state.inbounds.map(ib => '<tr><td>' + h(ib.kind) + '</td><td><code>' + h(ib.tag) + '</code></td><td>' + h(ib.protocol) + '</td><td>' + h(ib.listen + ':' + ib.port) + '</td><td>' + h(ib.network) + '</td><td>' + h(ib.security) + '</td>' +
+      list.map(ib => '<tr><td>' + h(ib.kind) + '</td><td><code>' + h(ib.tag) + '</code></td><td>' + h(ib.protocol) + '</td><td>' + h(ib.listen + ':' + ib.port) + '</td><td>' + h(ib.network) + '</td><td>' + h(ib.security) + '</td>' +
       '<td><button class="ghost" onclick="openClients(\'' + h(ib.kind) + '\',\'' + h(ib.tag) + '\')">客户端</button> <button class="ghost" onclick="editInbound(\'' + h(ib.kind) + '\',\'' + h(ib.tag) + '\')">编辑</button> <button class="ghost danger" onclick="delInbound(\'' + h(ib.kind) + '\',\'' + h(ib.tag) + '\')">删除</button></td></tr>').join('') + '</tbody></table>'
     : '<div class="muted">还没有入站</div>';
-  renderInboundForm(editingInbound);
+  const count = document.getElementById('inboundCount');
+  if (count) count.textContent = list.length + ' / ' + state.inbounds.length;
+  const formCard = document.getElementById('inboundFormCard');
+  if (formCard) {
+    formCard.style.display = (editingInbound || inboundFormOpen) ? 'block' : 'none';
+    if (editingInbound || inboundFormOpen) renderInboundForm(editingInbound);
+  }
 }
 function syncProtocol() {
   const name = document.getElementById('i_proto').value;
@@ -797,7 +833,6 @@ function renderInboundForm(editable) {
     '<label>Reality privateKey<input id="i_rkey" value="' + h(r.privateKey || '') + '"></label>' +
     '<label>Reality shortIds<input id="i_rsid" value="' + h((r.shortIds || []).join(',')) + '" placeholder="0123456789abcdef"></label>' +
     '</div>' +
-    '<div class="muted" id="i_hint" style="margin-top:8px"></div>' +
     '<div class="row" style="margin-top:12px"><button class="act" id="saveInbound">' + (editable ? '保存修改' : '创建入站') + '</button>' +
     (editable ? '<button class="ghost" onclick="cancelInbound()">取消</button>' : '') + '<span id="inboundMsg" class="muted"></span></div>';
   document.getElementById('saveInbound').onclick = saveInbound;
@@ -828,21 +863,32 @@ async function saveInbound() {
   const r = editingInbound
     ? await api('PUT', '/api/inbounds/' + editingInbound.kind + '/' + encodeURIComponent(editingInbound.tag), body)
     : await api('POST', '/api/inbounds', body);
-  if (r.status === 200) { editingInbound = null; msg.textContent = '已保存'; await refresh(); }
+  if (r.status === 200) { editingInbound = null; inboundFormOpen = false; msg.textContent = '已保存'; await refresh(); }
   else { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'err'; }
 }
 function editInbound(kind, tag) {
   const found = state.inbounds.find(i => i.kind === kind && i.tag === tag);
   if (!found) return;
   editingInbound = Object.assign({}, found, { reality: found.reality || {} });
+  inboundFormOpen = true;
   renderInbounds();
+  document.getElementById('inboundFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-function cancelInbound() { editingInbound = null; renderInbounds(); }
+function cancelInbound() { editingInbound = null; inboundFormOpen = false; renderInbounds(); }
 async function delInbound(kind, tag) {
   if (!confirm('删除入站 ' + tag + ' ?')) return;
   const r = await api('DELETE', '/api/inbounds/' + kind + '/' + encodeURIComponent(tag));
-  if (r.status === 200) { editingInbound = null; await refresh(); } else alert(r.data.error || '删除失败');
+  if (r.status === 200) { editingInbound = null; inboundFormOpen = false; await refresh(); } else alert(r.data.error || '删除失败');
 }
+const addInboundBtn = document.getElementById('addInbound');
+if (addInboundBtn) addInboundBtn.onclick = function () {
+  editingInbound = null;
+  inboundFormOpen = true;
+  renderInbounds();
+  document.getElementById('inboundFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+const inboundSearch = document.getElementById('inboundSearch');
+if (inboundSearch) inboundSearch.oninput = function () { if (state) renderInbounds(); };
 function renderCores() {
   document.getElementById('coreTable').innerHTML = '<table><thead><tr><th>内核</th><th>单元</th><th>生成配置</th><th>运行状态</th><th>操作</th></tr></thead><tbody>' +
     cores.map(c => '<tr><td>' + h(c.kind) + '</td><td><code>' + h(c.unit) + '</code></td>' +
@@ -1012,6 +1058,8 @@ document.querySelectorAll('nav button').forEach(btn => {
 });
 async function openClients(kind, tag) {
   currentInbound = { kind: kind, tag: tag };
+  const clientsCard = document.getElementById('clientsCard');
+  if (clientsCard) clientsCard.style.display = 'block';
   const r = await api('GET', '/api/inbounds/' + kind + '/' + encodeURIComponent(tag) + '/clients');
   const list = (r.data && r.data.clients) || [];
   document.getElementById('clientsTitle').textContent = '客户端：' + kind + ' / ' + tag;
@@ -1071,6 +1119,21 @@ async function loadLogs() {
 }
 
 document.getElementById('loadLogsBtn').onclick = loadLogs;
+let logTimer = null;
+function syncLogAuto() {
+  const on = document.getElementById('logAuto').checked;
+  if (logTimer) { clearInterval(logTimer); logTimer = null; }
+  if (on) logTimer = setInterval(loadLogs, 3000);
+}
+document.getElementById('logAuto').onchange = syncLogAuto;
+document.getElementById('downloadLogs').onclick = function () {
+  const blob = new Blob([document.getElementById('logOut').textContent || ''], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'u-ui-' + document.getElementById('logUnit').value + '.log';
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+};
 
 async function loadSettings() {
   const r = await api('GET', '/api/settings');
@@ -1098,7 +1161,7 @@ async function loadSettings() {
     '<label>x-ui 端口<input id="s_xuip" type="number" value="' + h(xui.port || 54321) + '"></label>' +
     '<label>s-ui 域名<input id="s_sui" value="' + h(sui.domain) + '"></label>' +
     '<label>s-ui 端口<input id="s_suip" type="number" value="' + h(sui.port || 2095) + '"></label>' +
-    '</div><div class="row" style="margin-top:12px"><button class="act" id="saveSettings">保存设置</button><span id="settingsMsg" class="muted"></span></div>';
+    '</div>';
   document.getElementById('saveSettings').onclick = saveSettings;
 }
 
@@ -1363,8 +1426,13 @@ document.getElementById('saveNode').onclick = async function () {
     group: document.getElementById('n_group').value,
     configPath: document.getElementById('n_path').value,
   });
-  if (r.status === 200) { msg.textContent = '已保存'; msg.className = 'ok'; await loadNodes(); }
+  if (r.status === 200) { msg.textContent = '已保存'; msg.className = 'ok'; document.getElementById('nodeForm').style.display = 'none'; await loadNodes(); }
   else { msg.textContent = r.data.error || '失败'; msg.className = 'err'; }
+};
+const addNodeBtn = document.getElementById('addNode');
+if (addNodeBtn) addNodeBtn.onclick = function () {
+  const f = document.getElementById('nodeForm');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
 };
 
 function showNodeResults(data) {

@@ -73,12 +73,12 @@ nav#sideNav button[data-tab="alerts"]::before{content:'!'}
 .side-close{display:none;margin-left:auto;background:#11141f;border:1px solid #2b3145;color:#c9d1d9;border-radius:6px;width:26px;height:26px;cursor:pointer;font-size:16px;line-height:20px}
 .side-foot{padding:12px 18px;border-top:1px solid #262b3d;color:#6f7690;font-size:11px}
 .shell{flex:1;min-width:0;display:flex;flex-direction:column}
-header.topbar{display:flex;align-items:center;gap:14px;padding:14px 24px;background:rgba(23,26,38,.88);border-bottom:1px solid #262b3d;position:sticky;top:0;z-index:30;backdrop-filter:blur(8px)}
-.page-head h1{margin:0;font-size:18px;color:#fff}.page-head span{font-size:12px}
+header.topbar{display:flex;align-items:center;gap:14px;padding:10px 20px;background:var(--side);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:30;box-sizing:border-box}
+.page-head h1{margin:0;font-size:17px;color:var(--text);line-height:1.3}.page-head span{font-size:11px}
 .top-right{margin-left:auto;display:flex;align-items:center;gap:14px}
 .top-right a.logout{color:#9aa1b8;text-decoration:none;font-size:13px}
 #menuToggle{display:none;background:#11141f;border:1px solid #2b3145;color:#e6e8f0;border-radius:8px;padding:7px 10px;cursor:pointer}
-main{padding:22px;display:grid;gap:16px;max-width:1500px;width:100%;margin:0 auto}
+main{padding:20px;display:grid;gap:16px;max-width:1500px;width:100%;margin:0 auto;box-sizing:border-box}
 .card{background:#171a26;border:1px solid #262b3d;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
 .card h2{color:#9fb3ff}
 input,textarea,select{background:#11141f;border-color:#2b3145}
@@ -149,34 +149,72 @@ body.light .ghost:hover,body.light .top-btn:hover{color:#111827}
 .page-head h1{color:var(--text)}
 body.light .page-head h1{color:#111827}
 .muted{color:var(--muted)}
+
+/* ---- 3x-ui rail sidebar ---- */
+aside.sidebar{width:76px;flex:0 0 76px;transition:width .18s ease,flex-basis .18s ease;overflow:hidden;box-shadow:none}
+aside.sidebar:hover{width:232px;flex-basis:232px;box-shadow:0 0 32px rgba(0,0,0,.22)}
+.brand{padding:14px 10px}
+.brand .logo{width:40px;height:40px;font-size:16px;padding:0;flex:0 0 40px}
+.brand-text{display:none;white-space:nowrap;overflow:hidden}
+aside.sidebar:hover .brand-text{display:block}
+nav#sideNav button{justify-content:center;padding:10px 0;gap:0}
+aside.sidebar:hover nav#sideNav button{justify-content:flex-start;padding:9px 12px;gap:10px}
+.nav-label{display:none;white-space:nowrap;overflow:hidden}
+aside.sidebar:hover .nav-label{display:inline}
+.nav-title{display:none;white-space:nowrap}
+aside.sidebar:hover .nav-title{display:block}
+nav#sideNav button::before{flex:0 0 18px}
+.side-foot{display:none;white-space:nowrap}
+aside.sidebar:hover .side-foot{display:block}
+/* ---- dashboard status/action bar ---- */
+.dash-bar{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 14px;flex-wrap:wrap;box-shadow:0 1px 2px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.03)}
+.dash-status{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.dash-actions{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.dash-actions button{background:var(--elevated);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer}
+.dash-actions button:hover{border-color:#3f6fff;color:#fff}
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle;background:#ef4444}
+.status-dot.on{background:#3ddc84;box-shadow:0 0 8px rgba(61,220,132,.5)}
+/* ---- sparklines ---- */
+.spark{margin-top:10px;height:46px}
+.spark svg{display:block;width:100%;height:46px}
+body.light .dash-actions button,body.ultra .dash-actions button{background:var(--elevated);color:var(--text)}
+@media(max-width:900px){
+  aside.sidebar,aside.sidebar:hover{width:240px;flex-basis:240px}
+  .brand-text,.nav-label,.nav-title,.side-foot{display:block}
+  nav#sideNav button,nav#sideNav button:hover{justify-content:flex-start;padding:9px 12px;gap:10px}
+  .side-close{display:block}
+}
+header.topbar{padding:8px 20px;min-height:58px}
+.page-head h1{font-size:16px}
+#pageHint{font-size:11px}
 </style></head><body>
 <aside class="sidebar" id="sidebar">
-  <div class="brand"><div class="logo">U-UI</div><div class="brand-text"><strong>U-UI</strong><span>uniproxy panel</span></div><button class="side-close" id="sideClose" title="关闭菜单">×</button></div>
+  <div class="brand"><div class="logo">U</div><div class="brand-text"><strong>U-UI</strong><span>uniproxy panel</span></div><button class="side-close" id="sideClose" title="关闭菜单">×</button></div>
   <nav id="sideNav">
     <div class="nav-group"><div class="nav-title" data-i18n="group.panel">面板</div>
-      <button data-tab="overview" class="on">概览</button>
-      <button data-tab="inbounds">入站</button>
-      <button data-tab="users">用户</button>
-      <button data-tab="nodes">节点</button>
+      <button data-tab="overview" class="on"><span class="nav-label">概览</span></button>
+      <button data-tab="inbounds"><span class="nav-label">入站</span></button>
+      <button data-tab="users"><span class="nav-label">用户</span></button>
+      <button data-tab="nodes"><span class="nav-label">节点</span></button>
     </div>
     <div class="nav-group"><div class="nav-title" data-i18n="group.system">系统</div>
-      <button data-tab="cores">内核</button>
-      <button data-tab="stats">流量</button>
-      <button data-tab="logs">日志</button>
-      <button data-tab="topology">拓扑</button>
+      <button data-tab="cores"><span class="nav-label">内核</span></button>
+      <button data-tab="stats"><span class="nav-label">流量</span></button>
+      <button data-tab="logs"><span class="nav-label">日志</span></button>
+      <button data-tab="topology"><span class="nav-label">拓扑</span></button>
     </div>
     <div class="nav-group"><div class="nav-title" data-i18n="group.network">网络</div>
-      <button data-tab="nginx">nginx</button>
+      <button data-tab="nginx"><span class="nav-label">nginx</span></button>
     </div>
     <div class="nav-group"><div class="nav-title" data-i18n="group.manage">管理</div>
-      <button data-tab="actions">操作</button>
-      <button data-tab="config">配置</button>
-      <button data-tab="settings">设置</button>
-      <button data-tab="certs">证书</button>
-      <button data-tab="backups">备份</button>
-      <button data-tab="accounts">账号</button>
-      <button data-tab="audit">审计</button>
-      <button data-tab="alerts">告警</button>
+      <button data-tab="actions"><span class="nav-label">操作</span></button>
+      <button data-tab="config"><span class="nav-label">配置</span></button>
+      <button data-tab="settings"><span class="nav-label">设置</span></button>
+      <button data-tab="certs"><span class="nav-label">证书</span></button>
+      <button data-tab="backups"><span class="nav-label">备份</span></button>
+      <button data-tab="accounts"><span class="nav-label">账号</span></button>
+      <button data-tab="audit"><span class="nav-label">审计</span></button>
+      <button data-tab="alerts"><span class="nav-label">告警</span></button>
     </div>
   </nav>
   <div class="side-foot">u-ui · uniproxy</div>
@@ -189,6 +227,7 @@ body.light .page-head h1{color:#111827}
 </header>
 <main>
 <section id="tab-overview" class="on">
+  <div class="dash-bar" id="dashBar"></div>
   <div class="stat-grid" id="sysCards"></div>
   <div class="card"><h2>状态</h2><div id="overview"></div></div>
   <div class="card"><h2>端口<button class="help" data-help="ports" title="帮助">?</button></h2><div id="ports"></div></div>
@@ -319,6 +358,7 @@ body.light .page-head h1{color:#111827}
 const csrf = () => { const m = document.cookie.match(/(?:^|; )uui_csrf=([^;]+)/); return m ? m[1] : ''; };
 let state = null; let cores = []; let editingUser = null; let editingInbound = null; let currentInbound = null;
 let sysInfo = null;
+let sysHistory = { cpu: [], mem: [], disk: [] };
 let lang = (function () { try { return localStorage.getItem('uui-lang') === 'en' ? 'en' : 'zh'; } catch (e) { return 'zh'; } })();
 let themeMode = (function () { try { const v = localStorage.getItem('uui-theme'); return v === 'light' || v === 'ultra' ? v : 'dark'; } catch (e) { return 'dark'; } })();
 let ipVisible = (function () { try { return localStorage.getItem('uui-ip-visible') === '1'; } catch (e) { return false; } })();
@@ -382,6 +422,7 @@ async function refresh() {
   const b = await api('GET', '/api/cores');
   cores = (b.data && b.data.cores) || [];
   renderOverview(); renderPorts(); renderInbounds(); renderUsers(); renderCores(); renderTopology();
+  renderDashboardBar();
   const ro = state.role !== 'admin';
   document.getElementById('roleBadge').textContent = tr(ro ? 'role.viewer' : 'role.admin');
   document.body.classList.toggle('ro', ro);
@@ -395,21 +436,75 @@ async function loadSystem() {
   } catch (e) { /* ignore */ }
 }
 
+function pushHistory(key, value) {
+  const list = sysHistory[key] || (sysHistory[key] = []);
+  list.push(Number(value) || 0);
+  while (list.length > 36) list.shift();
+}
+
+function sparkline(key, color, id) {
+  let values = sysHistory[key] || [];
+  if (!values.length) return '<div class="spark"></div>';
+  if (values.length === 1) values = [values[0], values[0]];
+  const w = 300, h = 46, n = values.length;
+  const min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+  const span = Math.max(1, max - min);
+  const pts = values.map(function (v, i) {
+    const x = (i / (n - 1)) * w;
+    const y = h - 4 - ((v - min) / span) * (h - 10);
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  });
+  const poly = pts.join(' ');
+  return '<div class="spark"><svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">' +
+    '<defs><linearGradient id="g' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + color + '" stop-opacity=".28"/><stop offset="1" stop-color="' + color + '" stop-opacity="0"/></linearGradient></defs>' +
+    '<polygon points="0,' + h + ' ' + poly + ' ' + w + ',' + h + '" fill="url(#g' + id + ')"/>' +
+    '<polyline points="' + poly + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg></div>';
+}
+
 function renderSystem() {
   const el = document.getElementById('sysCards');
   if (!el) return;
   if (!sysInfo) { el.innerHTML = ''; return; }
   const s = sysInfo;
+  pushHistory('cpu', s.cpuPct);
+  pushHistory('mem', s.mem.usedPct);
+  pushHistory('disk', s.disk.usedPct);
   const cards = [
-    { label: tr('stat.cpu'), value: s.cpuPct + '%', sub: s.cores + ' ' + tr('stat.cores') + ' · ' + tr('stat.load') + ' ' + Number(s.load1 || 0).toFixed(2), pct: s.cpuPct },
-    { label: tr('stat.memory'), value: s.mem.usedPct + '%', sub: fmtBytes(s.mem.used) + ' / ' + fmtBytes(s.mem.total), pct: s.mem.usedPct },
-    { label: tr('stat.disk'), value: s.disk.usedPct + '%', sub: fmtBytes(s.disk.used) + ' / ' + fmtBytes(s.disk.total), pct: s.disk.usedPct },
-    { label: tr('stat.uptime'), value: fmtUptime(s.uptime), sub: s.hostname + ' · ' + s.platform + ' ' + s.arch, pct: 0 },
+    { key: 'cpu', color: '#4f8cff', label: tr('stat.cpu'), value: s.cpuPct + '%', sub: s.cores + ' ' + tr('stat.cores') + ' · ' + tr('stat.load') + ' ' + Number(s.load1 || 0).toFixed(2) },
+    { key: 'mem', color: '#7c5cff', label: tr('stat.memory'), value: s.mem.usedPct + '%', sub: fmtBytes(s.mem.used) + ' / ' + fmtBytes(s.mem.total) },
+    { key: 'disk', color: '#22c55e', label: tr('stat.disk'), value: s.disk.usedPct + '%', sub: fmtBytes(s.disk.used) + ' / ' + fmtBytes(s.disk.total) },
+    { key: '', color: '#f59e0b', label: tr('stat.uptime'), value: fmtUptime(s.uptime), sub: s.hostname + ' · ' + s.platform + ' ' + s.arch },
   ];
-  el.innerHTML = cards.map(function (c) {
+  el.innerHTML = cards.map(function (c, i) {
     return '<div class="stat-card"><div class="label">' + h(c.label) + '</div><div class="value">' + h(c.value) + '</div><div class="sub">' + h(c.sub) + '</div>' +
-      (c.pct ? '<div class="stat-bar"><span style="width:' + Math.min(100, c.pct) + '%"></span></div>' : '') + '</div>';
+      (c.key ? sparkline(c.key, c.color, i) : '') + '</div>';
   }).join('');
+}
+
+function switchTab(tab) {
+  const b = document.querySelector('nav#sideNav button[data-tab="' + tab + '"]');
+  if (b) b.click();
+}
+
+function renderDashboardBar() {
+  const el = document.getElementById('dashBar');
+  if (!el) return;
+  const map = {};
+  (cores || []).forEach(function (c) { map[c.kind] = c; });
+  function pill(kind, label) {
+    const c = map[kind] || {};
+    const active = c.active ? ' on' : '';
+    return '<span class="status-dot' + active + '"></span>' + h(label) + ' ' + (c.active ? 'running' : 'stopped');
+  }
+  el.innerHTML = '<div class="dash-status">' + pill('xray', 'Xray') + ' ' + pill('singbox', 'sing-box') + ' ' + pill('nginx', 'nginx') + '</div>' +
+    '<div class="dash-actions">' +
+    '<button onclick="refresh()">刷新</button>' +
+    '<button onclick="coreAct(\'xray\',\'restart\')">重启 Xray</button>' +
+    '<button onclick="coreAct(\'singbox\',\'restart\')">重启 sing-box</button>' +
+    '<button onclick="switchTab(\'logs\')">日志</button>' +
+    '<button onclick="switchTab(\'config\')">配置</button>' +
+    '<button onclick="switchTab(\'backups\')">备份</button>' +
+    '</div>';
 }
 
 function applyTheme() {
@@ -433,7 +528,11 @@ function setPageMeta(tab) {
 }
 
 function applyLang() {
-  document.querySelectorAll('nav#sideNav button[data-tab]').forEach(function (b) { b.textContent = tr('nav.' + b.dataset.tab); });
+  document.querySelectorAll('nav#sideNav button[data-tab]').forEach(function (b) {
+    const label = b.querySelector('.nav-label');
+    if (label) label.textContent = tr('nav.' + b.dataset.tab);
+    else b.textContent = tr('nav.' + b.dataset.tab);
+  });
   document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = tr(el.getAttribute('data-i18n')); });
   const active = document.querySelector('nav#sideNav button.on');
   if (active) setPageMeta(active.dataset.tab);
@@ -1254,6 +1353,10 @@ if (langToggleBtn) langToggleBtn.onclick = function () {
 };
 applyTheme();
 applyLang();
+setInterval(function () {
+  const ov = document.getElementById('tab-overview');
+  if (ov && ov.classList.contains('on')) loadSystem();
+}, 10000);
 refresh();
 </script><div class="modal-backdrop" id="helpModal" onclick="if(event.target===this)closeHelp()"><div class="modal-box"><button class="modal-close" onclick="closeHelp()">关闭</button><h3 class="modal-title"></h3><div class="modal-body"></div></div></div>
 </body></html>

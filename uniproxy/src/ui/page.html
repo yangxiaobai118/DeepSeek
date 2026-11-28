@@ -977,18 +977,31 @@ function syncInboundFields() {
   fillSelect('i_sec', p.securities, secSel.value);
   const net = document.getElementById('i_net').value;
   const sec = document.getElementById('i_sec').value;
+  const kind = kindSel.value;
   showEl('i_path_wrap', pathNetwork(net));
   showEl('i_grpc_wrap', net === 'grpc');
   showEl('i_xhttp_wrap', net === 'xhttp');
   showEl('i_sni_wrap', sec !== 'none');
   showEl('i_reality_wrap', sec === 'reality');
-  showEl('i_client_wrap', ['vless', 'vmess', 'trojan'].includes(proto));
+  showEl('i_singbox_box', kind === 'singbox');
+  showEl('i_ss_box', kind === 'singbox' && proto === 'shadowsocks');
+  showEl('i_hy2_box', kind === 'singbox' && proto === 'hysteria2');
+  showEl('i_tuic_box', kind === 'singbox' && proto === 'tuic');
+  const clientProtocols = kind === 'singbox'
+    ? ['vless', 'vmess', 'trojan', 'hysteria2', 'tuic']
+    : ['vless', 'vmess', 'trojan'];
+  showEl('i_client_wrap', clientProtocols.includes(proto));
   const path = document.getElementById('i_path');
   if (path) path.placeholder = net === 'ws' ? '/ws' : '/';
   const credLabel = document.getElementById('i_cred_label');
-  if (credLabel) credLabel.textContent = proto === 'trojan' ? 'Trojan 密码' : 'UUID';
+  if (credLabel) credLabel.textContent = (proto === 'trojan' || proto === 'hysteria2') ? '密码' : 'UUID';
   const flowWrap = document.getElementById('i_flow_wrap');
   if (flowWrap) flowWrap.style.display = (proto === 'vless' && net === 'tcp' && sec !== 'none') ? '' : 'none';
+  if (kind === 'singbox' && proto === 'shadowsocks') {
+    const pw = document.getElementById('i_ss_password');
+    const r = document.getElementById('randSs');
+    if (pw && !pw.value && r) r.click();
+  }
 }
 function renderInboundForm(editable) {
   const ib = editable || { kind: 'xray', protocol: 'vless', tag: '', listen: '127.0.0.1', port: 10443, network: 'tcp', security: 'none', sni: '', path: '/ws', reality: {} };
@@ -1017,6 +1030,32 @@ function renderInboundForm(editable) {
     '<label id="i_grpc_wrap">gRPC serviceName<input id="i_grpc" value="' + h(ib.grpcService || 'grpc') + '"></label>' +
     '<label id="i_xhttp_wrap">xhttp 模式<select id="i_xhttp"><option value="auto"' + (ib.xhttpMode === 'auto' ? ' selected' : '') + '>auto</option><option value="packet-up"' + (ib.xhttpMode === 'packet-up' ? ' selected' : '') + '>packet-up</option><option value="stream-up"' + (ib.xhttpMode === 'stream-up' ? ' selected' : '') + '>stream-up</option><option value="stream-one"' + (ib.xhttpMode === 'stream-one' ? ' selected' : '') + '>stream-one</option></select></label>' +
     '</div></div>' +
+    '<div class="form-section" id="i_singbox_box"><div class="form-section-title">sing-box 监听选项</div><div class="form-grid">' +
+    '<label class="inline"><input type="checkbox" id="i_tfo" ' + (ib.tcpFastOpen ? 'checked' : '') + '><span>TCP Fast Open</span></label>' +
+    '<label class="inline"><input type="checkbox" id="i_multipath" ' + (ib.tcpMultiPath ? 'checked' : '') + '><span>TCP Multi Path</span></label>' +
+    '<label class="inline"><input type="checkbox" id="i_udpfrag" ' + (ib.udpFragment ? 'checked' : '') + '><span>UDP Fragment</span></label>' +
+    '<label class="inline"><input type="checkbox" id="i_nokeepalive" ' + (ib.disableTcpKeepAlive ? 'checked' : '') + '><span>禁用 TCP Keep Alive</span></label>' +
+    '<label>UDP 超时<input id="i_udptimeout" value="' + h(ib.udpTimeout || '') + '" placeholder="5m"></label>' +
+    '<label>detour<input id="i_detour" value="' + h(ib.detour || '') + '" placeholder="direct"></label>' +
+    '<label>TCP Keep Alive<input id="i_tcpkeepalive" value="' + h(ib.tcpKeepAlive || '') + '" placeholder="5m"></label>' +
+    '<label>Keep Alive 间隔<input id="i_tcpkeepinterval" value="' + h(ib.tcpKeepAliveInterval || '') + '" placeholder="30s"></label>' +
+    '</div></div>' +
+    '<div class="form-section" id="i_ss_box"><div class="form-section-title">Shadowsocks</div><div class="form-grid">' +
+    '<label>加密方法<select id="i_ss_method">' + ['2022-blake3-aes-128-gcm','2022-blake3-aes-256-gcm','2022-blake3-chacha20-poly1305','aes-128-gcm','aes-256-gcm','chacha20-ietf-poly1305','none'].map(function (m) { return '<option value="' + m + '"' + ((ib.method || '2022-blake3-aes-128-gcm') === m ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></label>' +
+    '<label>密码<div class="input-with-btn"><input id="i_ss_password" value="' + h(ib.password || '') + '"><button type="button" id="randSs">随机</button></div></label>' +
+    '</div></div>' +
+    '<div class="form-section" id="i_hy2_box"><div class="form-section-title">Hysteria2</div><div class="form-grid">' +
+    '<label>上传 Mbps<input id="i_up" type="number" value="' + h(ib.upMbps || '') + '" placeholder="100"></label>' +
+    '<label>下载 Mbps<input id="i_down" type="number" value="' + h(ib.downMbps || '') + '" placeholder="100"></label>' +
+    '<label class="inline"><input type="checkbox" id="i_ignorebw" ' + (ib.ignoreClientBandwidth ? 'checked' : '') + '><span>忽略客户端带宽</span></label>' +
+    '<label>obfs 密码<div class="input-with-btn"><input id="i_obfs" value="' + h((ib.obfs && ib.obfs.password) || '') + '"><button type="button" id="randObfs">随机</button></div></label>' +
+    '</div></div>' +
+    '<div class="form-section" id="i_tuic_box"><div class="form-section-title">TUIC</div><div class="form-grid">' +
+    '<label>拥塞控制<select id="i_cc"><option value="">默认</option><option value="cubic"' + (ib.congestionControl === 'cubic' ? ' selected' : '') + '>cubic</option><option value="new_reno"' + (ib.congestionControl === 'new_reno' ? ' selected' : '') + '>new_reno</option><option value="bbr"' + (ib.congestionControl === 'bbr' ? ' selected' : '') + '>bbr</option></select></label>' +
+    '<label class="inline"><input type="checkbox" id="i_zerortt" ' + (ib.zeroRttHandshake ? 'checked' : '') + '><span>Zero-RTT</span></label>' +
+    '<label>auth_timeout<input id="i_authtimeout" value="' + h(ib.authTimeout || '') + '" placeholder="3s"></label>' +
+    '<label>heartbeat<input id="i_heartbeat" value="' + h(ib.heartbeat || '') + '" placeholder="10s"></label>' +
+    '</div></div>' +
     '<div class="form-section" id="i_reality_wrap"><div class="form-section-title">Reality</div><div class="form-grid">' +
     '<label>dest<input id="i_rdest" value="' + h(r.dest || '') + '" placeholder="www.bing.com:443"></label>' +
     '<label>serverNames<input id="i_rnames" value="' + h((r.serverNames || []).join(',')) + '" placeholder="www.bing.com"></label>' +
@@ -1038,8 +1077,20 @@ function renderInboundForm(editable) {
   const rand = document.getElementById('randCred');
   if (rand) rand.onclick = function () {
     const proto = document.getElementById('i_proto').value;
-    document.getElementById('i_client_id').value = proto === 'trojan' ? randomPassword() : randomUuid();
+    document.getElementById('i_client_id').value = (proto === 'trojan' || proto === 'hysteria2') ? randomPassword() : randomUuid();
   };
+  const randSs = document.getElementById('randSs');
+  if (randSs) randSs.onclick = function () {
+    const method = document.getElementById('i_ss_method').value;
+    const size = method.indexOf('256') >= 0 ? 32 : 16;
+    const bytes = new Uint8Array(method === 'none' ? 0 : size);
+    if (bytes.length) crypto.getRandomValues(bytes);
+    document.getElementById('i_ss_password').value = bytes.length ? btoa(String.fromCharCode.apply(null, bytes)) : '';
+  };
+  const randObfs = document.getElementById('randObfs');
+  if (randObfs) randObfs.onclick = function () { document.getElementById('i_obfs').value = randomPassword(); };
+  const ssMethod = document.getElementById('i_ss_method');
+  if (ssMethod) ssMethod.onchange = function () { const r = document.getElementById('randSs'); if (r) r.click(); };
   syncInboundFields();
 }
 function collectInbound() {
@@ -1071,6 +1122,24 @@ function collectInbound() {
     clientName: clientName ? clientName.value.trim() : '',
     clientId: clientId ? clientId.value.trim() : '',
     flow: flow ? flow.value : '',
+    tcpFastOpen: !!(document.getElementById('i_tfo') && document.getElementById('i_tfo').checked),
+    tcpMultiPath: !!(document.getElementById('i_multipath') && document.getElementById('i_multipath').checked),
+    udpFragment: !!(document.getElementById('i_udpfrag') && document.getElementById('i_udpfrag').checked),
+    disableTcpKeepAlive: !!(document.getElementById('i_nokeepalive') && document.getElementById('i_nokeepalive').checked),
+    udpTimeout: document.getElementById('i_udptimeout') ? document.getElementById('i_udptimeout').value.trim() : '',
+    detour: document.getElementById('i_detour') ? document.getElementById('i_detour').value.trim() : '',
+    tcpKeepAlive: document.getElementById('i_tcpkeepalive') ? document.getElementById('i_tcpkeepalive').value.trim() : '',
+    tcpKeepAliveInterval: document.getElementById('i_tcpkeepinterval') ? document.getElementById('i_tcpkeepinterval').value.trim() : '',
+    method: document.getElementById('i_ss_method') ? document.getElementById('i_ss_method').value : '',
+    password: document.getElementById('i_ss_password') ? document.getElementById('i_ss_password').value.trim() : '',
+    upMbps: document.getElementById('i_up') ? document.getElementById('i_up').value : '',
+    downMbps: document.getElementById('i_down') ? document.getElementById('i_down').value : '',
+    ignoreClientBandwidth: !!(document.getElementById('i_ignorebw') && document.getElementById('i_ignorebw').checked),
+    obfsPassword: document.getElementById('i_obfs') ? document.getElementById('i_obfs').value.trim() : '',
+    congestionControl: document.getElementById('i_cc') ? document.getElementById('i_cc').value : '',
+    zeroRttHandshake: !!(document.getElementById('i_zerortt') && document.getElementById('i_zerortt').checked),
+    authTimeout: document.getElementById('i_authtimeout') ? document.getElementById('i_authtimeout').value.trim() : '',
+    heartbeat: document.getElementById('i_heartbeat') ? document.getElementById('i_heartbeat').value.trim() : '',
   };
 }
 async function saveInbound() {
@@ -1086,7 +1155,7 @@ async function saveInbound() {
     ? await api('PUT', '/api/inbounds/' + editingInbound.kind + '/' + encodeURIComponent(editingInbound.tag), body)
     : await api('POST', '/api/inbounds', body);
   if (r.status !== 200) { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'msg err'; return; }
-  if (!editingInbound && clientBody.name && ['vless', 'vmess', 'trojan'].includes(body.protocol)) {
+  if (!editingInbound && clientBody.name && ['vless', 'vmess', 'trojan', 'hysteria2', 'tuic'].includes(body.protocol)) {
     const c = await api('POST', '/api/inbounds/' + body.kind + '/' + encodeURIComponent(body.tag) + '/clients', clientBody);
     if (c.status !== 200) msg.textContent = '入站已创建，但首个客户端失败：' + (c.data.error || c.status);
   }

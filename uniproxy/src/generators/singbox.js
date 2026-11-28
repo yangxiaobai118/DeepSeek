@@ -32,6 +32,15 @@ function buildInbound(ib, ctx) {
     listen_port: Number(ib.port),
   };
 
+  if (ib.tcpFastOpen) inbound.tcp_fast_open = true;
+  if (ib.tcpMultiPath) inbound.tcp_multi_path = true;
+  if (ib.udpFragment) inbound.udp_fragment = true;
+  if (ib.disableTcpKeepAlive) inbound.disable_tcp_keep_alive = true;
+  if (ib.udpTimeout) inbound.udp_timeout = String(ib.udpTimeout);
+  if (ib.detour) inbound.detour = String(ib.detour);
+  if (ib.tcpKeepAlive) inbound.tcp_keep_alive = String(ib.tcpKeepAlive);
+  if (ib.tcpKeepAliveInterval) inbound.tcp_keep_alive_interval = String(ib.tcpKeepAliveInterval);
+
   const users = Array.isArray(ib.users) ? ib.users : ib.clients || [];
 
   if (type === 'vless') {
@@ -58,10 +67,18 @@ function buildInbound(ib, ctx) {
     inbound.users = users.map((u) =>
       stripUndefined({ password: u.password || u.uuid || '', name: u.name || u.email }),
     );
+    inbound.up_mbps = Number(ib.upMbps) || undefined;
+    inbound.down_mbps = Number(ib.downMbps) || undefined;
+    inbound.obfs = ib.obfs && ib.obfs.password ? { type: ib.obfs.type || 'salamander', password: String(ib.obfs.password) } : undefined;
+    inbound.ignore_client_bandwidth = !!ib.ignoreClientBandwidth;
   } else if (type === 'tuic') {
     inbound.users = users.map((u) =>
       stripUndefined({ uuid: u.uuid || u.id || '', password: u.password || '', name: u.name || u.email }),
     );
+    inbound.congestion_control = ib.congestionControl || undefined;
+    inbound.zero_rtt_handshake = !!ib.zeroRttHandshake;
+    inbound.auth_timeout = ib.authTimeout || undefined;
+    inbound.heartbeat = ib.heartbeat || undefined;
   } else if (type === 'socks' || type === 'http') {
     if (users.length) {
       inbound.users = users.map((u) => stripUndefined({ username: u.name || u.email, password: u.password }));

@@ -392,6 +392,24 @@ function allInbounds(c) {
         wsPath: ib.wsPath || '',
         grpcService: ib.grpcService || '',
         xhttpMode: ib.xhttpMode || '',
+        tcpFastOpen: !!ib.tcpFastOpen,
+        tcpMultiPath: !!ib.tcpMultiPath,
+        udpFragment: !!ib.udpFragment,
+        disableTcpKeepAlive: !!ib.disableTcpKeepAlive,
+        udpTimeout: ib.udpTimeout || '',
+        detour: ib.detour || '',
+        tcpKeepAlive: ib.tcpKeepAlive || '',
+        tcpKeepAliveInterval: ib.tcpKeepAliveInterval || '',
+        method: ib.method || '',
+        password: ib.password || '',
+        upMbps: ib.upMbps || '',
+        downMbps: ib.downMbps || '',
+        ignoreClientBandwidth: !!ib.ignoreClientBandwidth,
+        obfs: ib.obfs || null,
+        congestionControl: ib.congestionControl || '',
+        zeroRttHandshake: !!ib.zeroRttHandshake,
+        authTimeout: ib.authTimeout || '',
+        heartbeat: ib.heartbeat || '',
         reality: ib.reality || null,
       });
     }
@@ -569,6 +587,14 @@ function normalizeInbound(body) {
   if (isPathTransport(out.network)) out.path = String(body.path || body.wsPath || (out.network === 'ws' ? '/ws' : '/'));
   if (out.network === 'grpc') out.grpcService = body.grpcService || 'grpc';
   if (out.network === 'xhttp') out.xhttpMode = body.xhttpMode || 'auto';
+  ['tcpFastOpen', 'tcpMultiPath', 'udpFragment', 'disableTcpKeepAlive'].forEach(function (key) {
+    if (body[key]) out[key] = true;
+  });
+  ['udpTimeout', 'detour', 'tcpKeepAlive', 'tcpKeepAliveInterval', 'method', 'password', 'upMbps', 'downMbps', 'congestionControl', 'zeroRttHandshake', 'authTimeout', 'heartbeat', 'obfsPassword'].forEach(function (key) {
+    if (body[key] !== undefined && body[key] !== '') out[key] = body[key];
+  });
+  if (body.ignoreClientBandwidth) out.ignoreClientBandwidth = true;
+  if (body.obfsPassword) out.obfs = { type: 'salamander', password: String(body.obfsPassword) };
   if (out.security === 'reality') {
     out.reality = {
       dest: String(body.realityDest || ''),

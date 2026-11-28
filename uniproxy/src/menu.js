@@ -595,9 +595,13 @@ function showStatus(ctx) {
     const res = run('systemctl status ' + unit + ' --no-pager');
     ctx.io.print('');
     ctx.io.print('---- ' + unit + ' ----');
-    ctx.io.print(paintSystemctl(res.output || '(无输出)'));
-    if (/status=1\/FAILURE|failed/i.test(res.output)) {
+    const text = res.output || '';
+    ctx.io.print(paintSystemctl(text || '(无输出)'));
+    if (/status=1\/FAILURE|failed/i.test(text)) {
       ctx.io.print('提示: 查看 ' + unit + ' 日志请按 16，选择对应内核');
+    }
+    if (/no such file|failed to load config/i.test(text) && /xray|sing-box/.test(unit)) {
+      ctx.io.print('提示: ' + unit + ' 的配置文件不存在，请先按 21 apply 生成并下发配置。');
     }
   };
   showUnit(UI_UNIT);

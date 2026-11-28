@@ -154,7 +154,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 服务 | **安装/卸载 systemd 单元**（`uniproxy-ui` + `uniproxy-sub`）、启动/停止/重启、状态（所有 unit 的完整 systemctl status）、日志（可选 u-ui/订阅/xray/sing-box/nginx）、开机自启 |
 | 配置 | validate、doctor、apply、立即备份、恢复备份 |
 | 内核 | 重启 / 停止 / 启动 xray、sing-box、nginx；**安装/升级/卸载 xray、sing-box** |
-| 其他 | 证书状态、申请/续期、告警、节点列表 |
+| 其他 | 证书状态、申请/续期、告警、节点列表、探测流量回落博客 |
 
 菜单底部实时显示面板与三个内核的状态，所有动作复用同一套 CLI 函数，不会和网页面板行为分叉。
 
@@ -186,7 +186,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 "nginx": { "fallback": { "upstream": "http://127.0.0.1:8080" } }
 ```
 
-保存后菜单 19 validate、21 apply。已知域名（站点、u-ui、订阅）仍按各自 vhost 处理；只有未知域名/无 SNI/直接 IP 会落到 fallback。HTTP 80 仍先 301 到 HTTPS。
+也可以不用手改配置：菜单 `41` 直接输入博客 URL 或本机绝对目录，`-` 关闭，回车保留；保存后菜单 19 validate、21 apply。已知域名（站点、u-ui、订阅）仍按各自 vhost 处理；只有未知域名/无 SNI/直接 IP 会落到 fallback。HTTP 80 仍先 301 到 HTTPS。
 
 ## 10. 初始化向导
 

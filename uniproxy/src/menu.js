@@ -222,6 +222,7 @@ export function buildMenu(ctx) {
     { key: '38', label: '申请 / 续期证书 (Issue / Renew Cert)', run: function () { return withCfg(issueCert(ctx)); } },
     { key: '39', label: '查看告警 (Check Alerts)', run: function () { return withCfg(showAlerts(ctx)); } },
     { key: '40', label: '节点列表 (List Nodes)', run: function () { return withCfg(showNodes(ctx)); } },
+    { key: '41', label: '设置探测回落 (Blog Fallback)', run: function () { return withCfg(changeFallback(ctx)); } },
   ];
 
   return [
@@ -488,10 +489,39 @@ function showSettings(ctx) {
       '证书: ' + certLine,
       '订阅服务: ' + (sub.enabled ? (subBase + (sub.basePath || '/sub/') + '（' + users.length + ' 个用户）') : '未启用'),
       'nginx: ' + c.nginx.mode + '，站点: ' + siteNames + '；x-ui/s-ui 反代: ' + panelNames,
+      '探测回落: ' + ((c.nginx.fallback && (c.nginx.fallback.upstream || c.nginx.fallback.root)) ? (c.nginx.fallback.upstream ? ('反代 ' + c.nginx.fallback.upstream) : ('静态 ' + c.nginx.fallback.root)) : '未设置'),
       '内核: xray ' + (c.xray.enabled ? '启用' : '关闭') + '（' + ((c.xray.inbounds || []).length) + ' 入站）；sing-box ' + (c.singbox.enabled ? '启用' : '关闭') + '（' + ((c.singbox.inbounds || []).length) + ' 入站）',
       '监听端口: ' + ports.entries.length + ' 个',
       'apply: xray=' + (apply.xrayConfig || '-') + '；sing-box=' + (apply.singboxConfig || '-') + '；nginx=' + (apply.nginxConfig || '-'),
     ].join('\n'));
+  };
+}
+
+function changeFallback(ctx) {
+  return async function (c, cfgPath) {
+    const fb = (c.nginx && c.nginx.fallback) || {};
+    const current = fb.upstream ? ('反代 ' + fb.upstream) : (fb.root ? ('静态 ' + fb.root) : '未设置');
+    ctx.io.print('当前探测回落: ' + current);
+    const answer = String((await ctx.io.question('博客地址（https://... 或本机绝对目录如 /var/www/blog；回车=保留；- = 关闭）: ')) || '').trim();
+    if (!answer) return ctx.io.print('已保留当前探测回落');
+    const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    raw.nginx = raw.nginx || {};
+    if (answer === '-') {
+      raw.nginx.fallback = { upstream: '', root: '' };
+    } else if (answer.startsWith('/')) {
+      if (!fs.existsSync(answer)) ctx.io.print('提示: 目录 ' + answer + ' 还不存在，nginx 启动后仍会返回 404。');
+      raw.nginx.fallback = { upstream: '', root: answer };
+    } else {
+      try {
+        const u = new URL(answer);
+        if ((u.protocol !== 'http:' && u.protocol !== 'https:') || !u.hostname) throw new Error('bad');
+      } catch (e) {
+        return ctx.io.print('地址不合法：填写 http(s):// 开头的 URL，或 / 开头的本机绝对目录。');
+      }
+      raw.nginx.fallback = { upstream: answer.replace(/\/+$/, ''), root: '' };
+    }
+    fs.writeFileSync(cfgPath, JSON.stringify(raw, null, 2) + '\n');
+    ctx.io.print('已保存探测回落，按 21 apply 下发 nginx 配置。');
   };
 }
 
@@ -953,7 +983,7 @@ export async function runMenu(options = {}) {
   for (;;) {
     ctx.io.print(renderMenu(ctx));
     const chooser = typeof ctx.io.choose === 'function' ? ctx.io.choose.bind(ctx.io) : ctx.io.question.bind(ctx.io);
-    const answer = String((await chooser('\n' + GREEN + '请选择 [0-40]: ' + RESET)) || '').trim();
+    const answer = String((await chooser('\n' + GREEN + '请选择 [0-41]: ' + RESET)) || '').trim();
     if (answer === '0' || answer.toLowerCase() === 'q') { ctx.io.print('已退出'); break; }
     const item = items.find(function (i) { return i.key === answer; });
     if (!item) { ctx.io.print('无效选项: ' + answer); continue; }

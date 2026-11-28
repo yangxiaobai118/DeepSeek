@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh"><head><meta charset="utf-8"><title>U-UI</title>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>U-UI</title>
 <style>
 body{font-family:system-ui,Segoe UI,sans-serif;margin:0;background:#0f1115;color:#e6e6e6}
 header{display:flex;align-items:center;gap:16px;padding:14px 22px;background:#171a21;border-bottom:1px solid #2a2f3a}
@@ -187,9 +187,73 @@ body.light .dash-actions button,body.ultra .dash-actions button{background:var(-
 header.topbar{padding:8px 20px;min-height:58px}
 .page-head h1{font-size:16px}
 #pageHint{font-size:11px}
+
+/* ---- runtime strip / Ant-like forms / responsive ---- */
+.runtime-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px;box-shadow:0 1px 2px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.03)}
+.rt-item{min-width:0}
+.rt-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.rt-value{font-size:16px;font-weight:600;margin-top:4px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rt-sub{font-size:11px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row label{font-size:13px;color:var(--muted);gap:6px}
+.row label input,.row label select,.row label textarea{width:100%}
+input,select,textarea{height:34px;padding:6px 10px;border-radius:8px;transition:border-color .15s,box-shadow .15s}
+textarea{height:auto;min-height:96px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#3f6fff;box-shadow:0 0 0 3px rgba(63,111,255,.16)}
+button{transition:border-color .15s,background .15s,color .15s}
+@media(max-width:1200px){.stat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1024px){
+  aside.sidebar,aside.sidebar:hover{position:fixed;left:0;top:0;width:240px;flex-basis:240px;height:100vh;transform:translateX(-100%);transition:transform .2s;z-index:50;box-shadow:none}
+  body.nav-open aside.sidebar{transform:none;box-shadow:0 0 40px rgba(0,0,0,.5)}
+  #menuToggle{display:inline-flex}
+  .brand-text,.nav-label,.nav-title,.side-foot{display:block}
+  .side-close{display:block}
+  nav#sideNav button,nav#sideNav button:hover{justify-content:flex-start;padding:9px 12px;gap:10px}
+  main{padding:14px}
+}
+@media(max-width:700px){
+  .stat-grid{grid-template-columns:1fr}
+  .runtime-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
+  main{padding:10px;gap:12px}
+  .card{padding:12px;overflow-x:auto}
+  table{min-width:620px}
+  header.topbar{flex-wrap:wrap;gap:8px;padding:8px 10px}
+  .page-head{flex:1;min-width:0}
+  .page-head h1{font-size:16px}
+  #pageHint{display:none}
+  .top-right{gap:8px}
+  .dash-bar{align-items:flex-start;padding:10px}
+  .dash-actions{width:100%;margin-left:0}
+  .dash-actions button{flex:1 1 auto}
+  .row label{flex:1 1 100%;min-width:0}
+  .modal-box{padding:14px}
+}
+@media(max-width:520px){
+  .runtime-strip{grid-template-columns:1fr}
+  .top-right .logout{display:none}
+  .stat-card .value{font-size:23px}
+}
+
+/* ---- search / command palette ---- */
+.side-search{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 10px 8px;padding:9px 10px;background:var(--elevated);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;cursor:pointer;overflow:hidden;white-space:nowrap}
+.side-search:hover{border-color:#3f6fff;color:var(--text)}
+aside.sidebar:hover .side-search{justify-content:flex-start}
+.search-ico{font-size:15px;line-height:1}
+.cmd-box{background:var(--panel);border:1px solid var(--border);border-radius:14px;width:100%;max-width:620px;box-shadow:0 24px 80px rgba(0,0,0,.5);padding:12px;margin-top:8vh}
+.cmd-box input{width:100%;height:40px;font-size:14px;background:var(--elevated);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:0 12px;margin-bottom:10px}
+.cmd-list{max-height:52vh;overflow:auto;display:grid;gap:2px}
+.cmd-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 10px;border-radius:8px;color:var(--text);font-size:13px;cursor:pointer;text-align:left;background:transparent;border:0}
+.cmd-item:hover,.cmd-item.on{background:var(--hover)}
+.cmd-item .cmd-key{font-size:11px;color:var(--muted)}
+.cmd-item .cmd-kind{font-size:11px;color:#9fb3ff}
+.cmd-foot{font-size:11px;color:var(--muted);padding:9px 4px 2px}
+body.light .cmd-box{background:#fff}
+body.light .cmd-box input{background:#f8fafc;color:#1f2430}
+body.light .cmd-item{color:#1f2430}
+@media(max-width:1024px){.side-search{justify-content:flex-start}}
 </style></head><body>
 <aside class="sidebar" id="sidebar">
   <div class="brand"><div class="logo">U</div><div class="brand-text"><strong>U-UI</strong><span>uniproxy panel</span></div><button class="side-close" id="sideClose" title="关闭菜单">×</button></div>
+  <button class="side-search" id="commandBtn" title="搜索 / 命令面板 (Ctrl+K)"><span class="search-ico">⌕</span><span class="nav-label">搜索页面或操作</span></button>
   <nav id="sideNav">
     <div class="nav-group"><div class="nav-title" data-i18n="group.panel">面板</div>
       <button data-tab="overview" class="on"><span class="nav-label">概览</span></button>
@@ -229,6 +293,7 @@ header.topbar{padding:8px 20px;min-height:58px}
 <section id="tab-overview" class="on">
   <div class="dash-bar" id="dashBar"></div>
   <div class="stat-grid" id="sysCards"></div>
+  <div class="runtime-strip" id="runtimeStrip"></div>
   <div class="card"><h2>状态</h2><div id="overview"></div></div>
   <div class="card"><h2>端口<button class="help" data-help="ports" title="帮助">?</button></h2><div id="ports"></div></div>
 </section>
@@ -358,7 +423,7 @@ header.topbar{padding:8px 20px;min-height:58px}
 const csrf = () => { const m = document.cookie.match(/(?:^|; )uui_csrf=([^;]+)/); return m ? m[1] : ''; };
 let state = null; let cores = []; let editingUser = null; let editingInbound = null; let currentInbound = null;
 let sysInfo = null;
-let sysHistory = { cpu: [], mem: [], disk: [] };
+let sysHistory = { cpu: [], mem: [], swap: [], disk: [] };
 let lang = (function () { try { return localStorage.getItem('uui-lang') === 'en' ? 'en' : 'zh'; } catch (e) { return 'zh'; } })();
 let themeMode = (function () { try { const v = localStorage.getItem('uui-theme'); return v === 'light' || v === 'ultra' ? v : 'dark'; } catch (e) { return 'dark'; } })();
 let ipVisible = (function () { try { return localStorage.getItem('uui-ip-visible') === '1'; } catch (e) { return false; } })();
@@ -370,7 +435,8 @@ const I18N = {
     'nav.certs': '证书', 'nav.backups': '备份', 'nav.accounts': '账号', 'nav.audit': '审计', 'nav.alerts': '告警',
     'group.panel': '面板', 'group.system': '系统', 'group.network': '网络', 'group.manage': '管理',
     'role.admin': '管理员', 'role.viewer': '只读', 'logout': '退出',
-    'stat.cpu': 'CPU', 'stat.memory': '内存', 'stat.disk': '存储', 'stat.uptime': '运行时间',
+    'stat.cpu': 'CPU', 'stat.memory': '内存', 'stat.swap': '交换空间', 'stat.disk': '存储', 'stat.uptime': '运行时间',
+    'stat.conn': '连接数', 'stat.threads': '线程', 'stat.xrayMem': 'Xray 内存',
     'stat.cores': '核心', 'stat.load': '负载', 'stat.host': '主机', 'stat.used': '已用',
     'overview.config': '配置', 'overview.mode': '模式', 'overview.publicIp': '公网 IP', 'overview.notSet': '未设置',
     'overview.inbounds': '入站', 'overview.users': '用户', 'overview.subscriptions': '订阅', 'overview.ok': '校验通过',
@@ -383,7 +449,8 @@ const I18N = {
     'nav.certs': 'Certificates', 'nav.backups': 'Backups', 'nav.accounts': 'Accounts', 'nav.audit': 'Audit', 'nav.alerts': 'Alerts',
     'group.panel': 'PANEL', 'group.system': 'SYSTEM', 'group.network': 'NETWORK', 'group.manage': 'MANAGE',
     'role.admin': 'Administrator', 'role.viewer': 'Read-only', 'logout': 'Logout',
-    'stat.cpu': 'CPU', 'stat.memory': 'Memory', 'stat.disk': 'Disk', 'stat.uptime': 'Uptime',
+    'stat.cpu': 'CPU', 'stat.memory': 'Memory', 'stat.swap': 'Swap', 'stat.disk': 'Disk', 'stat.uptime': 'Uptime',
+    'stat.conn': 'Connections', 'stat.threads': 'threads', 'stat.xrayMem': 'Xray memory',
     'stat.cores': 'cores', 'stat.load': 'load', 'stat.host': 'host', 'stat.used': 'used',
     'overview.config': 'Config', 'overview.mode': 'Mode', 'overview.publicIp': 'Public IP', 'overview.notSet': 'not set',
     'overview.inbounds': 'inbounds', 'overview.users': 'users', 'overview.subscriptions': 'subscriptions', 'overview.ok': 'validation passed',
@@ -468,23 +535,108 @@ function renderSystem() {
   const s = sysInfo;
   pushHistory('cpu', s.cpuPct);
   pushHistory('mem', s.mem.usedPct);
+  pushHistory('swap', s.swap ? s.swap.usedPct : 0);
   pushHistory('disk', s.disk.usedPct);
   const cards = [
     { key: 'cpu', color: '#4f8cff', label: tr('stat.cpu'), value: s.cpuPct + '%', sub: s.cores + ' ' + tr('stat.cores') + ' · ' + tr('stat.load') + ' ' + Number(s.load1 || 0).toFixed(2) },
     { key: 'mem', color: '#7c5cff', label: tr('stat.memory'), value: s.mem.usedPct + '%', sub: fmtBytes(s.mem.used) + ' / ' + fmtBytes(s.mem.total) },
+    { key: 'swap', color: '#38bdf8', label: tr('stat.swap'), value: (s.swap ? s.swap.usedPct : 0) + '%', sub: fmtBytes(s.swap ? s.swap.used : 0) + ' / ' + fmtBytes(s.swap ? s.swap.total : 0) },
     { key: 'disk', color: '#22c55e', label: tr('stat.disk'), value: s.disk.usedPct + '%', sub: fmtBytes(s.disk.used) + ' / ' + fmtBytes(s.disk.total) },
-    { key: '', color: '#f59e0b', label: tr('stat.uptime'), value: fmtUptime(s.uptime), sub: s.hostname + ' · ' + s.platform + ' ' + s.arch },
   ];
   el.innerHTML = cards.map(function (c, i) {
     return '<div class="stat-card"><div class="label">' + h(c.label) + '</div><div class="value">' + h(c.value) + '</div><div class="sub">' + h(c.sub) + '</div>' +
-      (c.key ? sparkline(c.key, c.color, i) : '') + '</div>';
+      sparkline(c.key, c.color, i) + '</div>';
   }).join('');
+  const rt = document.getElementById('runtimeStrip');
+  if (rt) {
+    const x = s.xray || { pid: 0, rss: 0, threads: 0 };
+    const net = s.net || { tcp: 0, udp: 0, total: 0 };
+    const items = [
+      { label: tr('stat.uptime'), value: fmtUptime(s.uptime), sub: s.hostname + ' · ' + s.platform + ' ' + s.arch },
+      { label: 'Xray', value: x.pid ? fmtBytes(x.rss) : '—', sub: x.pid ? (x.threads + ' ' + tr('stat.threads') + ' · pid ' + x.pid) : 'not running' },
+      { label: tr('stat.conn'), value: String(net.total || 0), sub: 'TCP ' + (net.tcp || 0) + ' · UDP ' + (net.udp || 0) },
+      { label: 'OS', value: s.release || s.platform, sub: s.cpuModel || '' },
+    ];
+    rt.innerHTML = items.map(function (it) {
+      return '<div class="rt-item"><div class="rt-label">' + h(it.label) + '</div><div class="rt-value">' + h(it.value) + '</div><div class="rt-sub">' + h(it.sub) + '</div></div>';
+    }).join('');
+  }
 }
 
 function switchTab(tab) {
   const b = document.querySelector('nav#sideNav button[data-tab="' + tab + '"]');
   if (b) b.click();
 }
+
+let cmdIndex = 0;
+let cmdFiltered = [];
+function cmdSources() {
+  const pages = Array.from(document.querySelectorAll('nav#sideNav button[data-tab]')).map(function (b) {
+    const label = b.querySelector('.nav-label');
+    return { label: label ? label.textContent : b.textContent, kind: '页面', run: function () { b.click(); } };
+  });
+  const actions = [
+    { label: '刷新概览', kind: '操作', run: function () { refresh(); } },
+    { label: '重启 Xray', kind: '操作', run: function () { coreAct('xray', 'restart'); } },
+    { label: '重启 sing-box', kind: '操作', run: function () { coreAct('singbox', 'restart'); } },
+    { label: '重启 nginx', kind: '操作', run: function () { coreAct('nginx', 'restart'); } },
+    { label: '查看日志', kind: '操作', run: function () { switchTab('logs'); } },
+    { label: '编辑配置', kind: '操作', run: function () { switchTab('config'); } },
+    { label: '备份配置', kind: '操作', run: function () { switchTab('backups'); } },
+  ];
+  return pages.concat(actions);
+}
+function renderCmd() {
+  const input = document.getElementById('cmdInput');
+  const q = String(input.value || '').trim().toLowerCase();
+  cmdFiltered = cmdSources().filter(function (it) { return !q || (it.label + ' ' + it.kind).toLowerCase().includes(q); });
+  if (cmdIndex >= cmdFiltered.length) cmdIndex = Math.max(0, cmdFiltered.length - 1);
+  const list = document.getElementById('cmdList');
+  list.innerHTML = cmdFiltered.length ? cmdFiltered.map(function (it, i) {
+    return '<button type="button" class="cmd-item' + (i === cmdIndex ? ' on' : '') + '" data-idx="' + i + '"><span>' + h(it.label) + '</span><span class="cmd-kind">' + h(it.kind) + '</span></button>';
+  }).join('') : '<div class="muted" style="padding:10px">没有匹配项</div>';
+  list.querySelectorAll('.cmd-item').forEach(function (btn) {
+    btn.onclick = function () { runCmd(Number(btn.getAttribute('data-idx'))); };
+  });
+}
+function runCmd(idx) {
+  const item = cmdFiltered[idx];
+  if (!item) return;
+  closeCmd();
+  setTimeout(function () { item.run(); }, 50);
+}
+function openCmd() {
+  cmdIndex = 0;
+  const m = document.getElementById('cmdModal');
+  const input = document.getElementById('cmdInput');
+  input.value = '';
+  renderCmd();
+  m.classList.add('on');
+  setTimeout(function () { input.focus(); }, 30);
+}
+function closeCmd() {
+  const m = document.getElementById('cmdModal');
+  if (m) m.classList.remove('on');
+}
+const commandBtn = document.getElementById('commandBtn');
+if (commandBtn) commandBtn.onclick = openCmd;
+const cmdInput = document.getElementById('cmdInput');
+if (cmdInput) {
+  cmdInput.oninput = function () { cmdIndex = 0; renderCmd(); };
+  cmdInput.onkeydown = function (e) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); cmdIndex = Math.min(cmdFiltered.length - 1, cmdIndex + 1); renderCmd(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); cmdIndex = Math.max(0, cmdIndex - 1); renderCmd(); }
+    else if (e.key === 'Enter') { e.preventDefault(); runCmd(cmdIndex); }
+    else if (e.key === 'Escape') { closeCmd(); }
+  };
+}
+document.addEventListener('keydown', function (e) {
+  if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 'k') {
+    e.preventDefault();
+    openCmd();
+  }
+  if (e.key === 'Escape') closeCmd();
+});
 
 function renderDashboardBar() {
   const el = document.getElementById('dashBar');
@@ -1358,5 +1510,6 @@ setInterval(function () {
   if (ov && ov.classList.contains('on')) loadSystem();
 }, 10000);
 refresh();
-</script><div class="modal-backdrop" id="helpModal" onclick="if(event.target===this)closeHelp()"><div class="modal-box"><button class="modal-close" onclick="closeHelp()">关闭</button><h3 class="modal-title"></h3><div class="modal-body"></div></div></div>
+</script><div class="modal-backdrop" id="cmdModal" onclick="if(event.target===this)closeCmd()"><div class="cmd-box"><input id="cmdInput" type="text" placeholder="搜索页面或操作…" autocomplete="off"><div id="cmdList" class="cmd-list"></div><div class="cmd-foot">↑↓ 选择 · Enter 打开 · Esc 关闭 · Ctrl+K 唤起</div></div></div>
+<div class="modal-backdrop" id="helpModal" onclick="if(event.target===this)closeHelp()"><div class="modal-box"><button class="modal-close" onclick="closeHelp()">关闭</button><h3 class="modal-title"></h3><div class="modal-body"></div></div></div>
 </body></html>

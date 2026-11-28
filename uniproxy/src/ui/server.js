@@ -271,6 +271,40 @@ function systemStats() {
     diskFree = st.bavail * st.bsize;
   } catch (e) { /* non-POSIX */ }
   const usedDisk = Math.max(0, diskTotal - diskFree);
+  let swapTotal = 0;
+  let swapFree = 0;
+  try {
+    const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
+    const totalMatch = meminfo.match(/^SwapTotal:\s+(\d+)\s+kB/m);
+    const freeMatch = meminfo.match(/^SwapFree:\s+(\d+)\s+kB/m);
+    if (totalMatch) swapTotal = Number(totalMatch[1]) * 1024;
+    if (freeMatch) swapFree = Number(freeMatch[1]) * 1024;
+  } catch (e) { /* non-Linux */ }
+  const usedSwap = Math.max(0, swapTotal - swapFree);
+  function countSockets(file) {
+    try {
+      const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+      return Math.max(0, lines.length - 1);
+    } catch (e) { return 0; }
+  }
+  const net = {
+    tcp: countSockets('/proc/net/tcp') + countSockets('/proc/net/tcp6'),
+    udp: countSockets('/proc/net/udp') + countSockets('/proc/net/udp6'),
+  };
+  net.total = net.tcp + net.udp;
+  const xray = { pid: 0, rss: 0, threads: 0 };
+  try {
+    const found = spawnSync('pgrep', ['-x', 'xray'], { encoding: 'utf8', timeout: 5000 });
+    const pid = String(found.stdout || '').trim().split(/\s+/)[0];
+    if (pid) {
+      const status = fs.readFileSync('/proc/' + pid + '/status', 'utf8');
+      const rssMatch = status.match(/^VmRSS:\s+(\d+)\s+kB/m);
+      const threadsMatch = status.match(/^Threads:\s+(\d+)/m);
+      xray.pid = Number(pid);
+      xray.rss = rssMatch ? Number(rssMatch[1]) * 1024 : 0;
+      xray.threads = threadsMatch ? Number(threadsMatch[1]) : 0;
+    }
+  } catch (e) { /* xray not running or non-Linux */ }
   return {
     hostname: os.hostname(),
     platform: os.platform(),
@@ -281,7 +315,10 @@ function systemStats() {
     load1: load1,
     cpuPct: Math.min(100, Math.round((load1 / cores) * 100)),
     mem: { total: totalMem, free: freeMem, used: usedMem, usedPct: totalMem ? Math.round((usedMem / totalMem) * 100) : 0 },
+    swap: { total: swapTotal, free: swapFree, used: usedSwap, usedPct: swapTotal ? Math.round((usedSwap / swapTotal) * 100) : 0 },
     disk: { total: diskTotal, free: diskFree, used: usedDisk, usedPct: diskTotal ? Math.round((usedDisk / diskTotal) * 100) : 0 },
+    net: net,
+    xray: xray,
     uptime: os.uptime(),
   };
 }
@@ -1220,7 +1257,7 @@ function loginPage(message, action) {
     'button.submit:hover{filter:brightness(1.08)}.err{color:#ff7b72;background:rgba(255,123,114,.1);border:1px solid rgba(255,123,114,.25);padding:8px 10px;border-radius:8px;font-size:12px;margin:0 0 8px}' +
     'body.light .err{background:#fff1f0;border-color:#ffccc7;color:#b42318}' +
     '@media (max-width:480px){.card{padding:32px 20px 24px}.tools{top:10px;right:10px}}';
-  return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>U-UI login</title><style>' + css + '</style></head><body>' +
+  return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>U-UI login</title><style>' + css + '</style></head><body>' +
     '<div class="bg-blobs"></div><div class="bg-grid"></div>' +
     '<form class="card" method="post" action="' + (action || '/login') + '">' +
     '<div class="tools"><button type="button" id="langBtn">EN</button><button type="button" id="themeBtn">☀</button></div>' +

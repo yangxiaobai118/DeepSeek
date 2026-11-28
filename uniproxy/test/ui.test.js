@@ -220,6 +220,10 @@ test('u-ui: system stats and login appearance', async function () {
     const data = await sys.json();
     assert.equal(typeof data.cores, 'number');
     assert.equal(typeof data.mem.usedPct, 'number');
+    assert.equal(typeof data.swap.usedPct, 'number');
+    assert.equal(typeof data.net.tcp, 'number');
+    assert.equal(typeof data.net.udp, 'number');
+    assert.equal(typeof data.xray.threads, 'number');
   } finally {
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });

@@ -71,6 +71,17 @@ test('port planner reports the internal TLS listener on loopback', () => {
   assert.equal(entry.listen, '127.0.0.1');
 });
 
+test('port planner groups listeners by owner', () => {
+  const report = analyzePorts(makeConfig());
+  const groups = new Set(report.entries.map(function (e) { return e.group; }));
+  for (const g of ['u-ui', 'subscription', 'nginx', '3x-ui', 's-ui', 'xray', 'sing-box']) {
+    assert.ok(groups.has(g), g);
+  }
+  const ui = report.entries.find(function (e) { return e.label === 'u-ui:panel'; });
+  assert.equal(ui.port, 8788);
+  assert.equal(ui.listen, '127.0.0.1');
+});
+
 test('stream mode warns about inbounds without sni', () => {
   const c = makeConfig();
   delete c.singbox.inbounds[0].sni;

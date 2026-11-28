@@ -223,6 +223,8 @@ test('u-ui: system stats and login appearance', async function () {
     assert.equal(typeof data.swap.usedPct, 'number');
     assert.equal(typeof data.net.tcp, 'number');
     assert.equal(typeof data.net.udp, 'number');
+    assert.equal(typeof data.netDev.rx, 'number');
+    assert.equal(typeof data.netDev.tx, 'number');
     assert.equal(typeof data.xray.threads, 'number');
   } finally {
     await inst.close();

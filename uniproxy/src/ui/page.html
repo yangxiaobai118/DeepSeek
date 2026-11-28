@@ -270,6 +270,29 @@ td .act{padding:4px 8px;font-size:12px;border-radius:6px}
 .sf-row label{margin:0;font-size:13px;color:var(--text);font-weight:500}
 .sf-row input,.sf-row select{height:34px;width:100%}
 @media(max-width:700px){.sf-row{grid-template-columns:1fr;gap:6px;padding:10px 0}}
+
+/* ---- fill width, fixed sidebar rhythm, network card ---- */
+main{max-width:none!important;width:100%!important;margin:0!important}
+.brand{height:66px;flex:0 0 66px;padding:0 10px;gap:10px;display:flex;align-items:center;position:relative;box-sizing:border-box}
+.brand .logo{flex:0 0 40px}
+.brand-text{position:absolute;left:60px;top:50%;transform:translateY(-50%);display:none;max-width:150px;white-space:nowrap;overflow:hidden}
+aside.sidebar:hover .brand-text{display:block}
+.side-search{height:36px;flex:0 0 36px;box-sizing:border-box;padding:0 10px}
+.net-card{padding:16px}
+.net-head{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.net-title{font-size:14px;font-weight:600}
+.net-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.net-rates{margin-left:auto;display:flex;gap:18px;font-size:12px;color:var(--muted);white-space:nowrap}
+.net-chart{margin-top:12px;height:210px}
+.net-chart svg{display:block;width:100%;height:210px}
+.net-empty{height:210px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px}
+.net-foot{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;border-top:1px solid var(--border);margin-top:10px;padding-top:10px}
+.net-label{font-size:11px;color:var(--muted)}
+.net-value{font-size:16px;font-weight:600;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:700px){.net-chart,.net-chart svg{height:160px}.net-foot{grid-template-columns:repeat(2,minmax(0,1fr))}.net-rates{margin-left:0;width:100%}}
+.nav-title{display:block!important;visibility:hidden;white-space:nowrap;overflow:hidden}
+aside.sidebar:hover .nav-title{visibility:visible}
+@media(max-width:1024px){.nav-title{visibility:visible}}
 </style></head><body>
 <aside class="sidebar" id="sidebar">
   <div class="brand"><div class="logo">U</div><div class="brand-text"><strong>U-UI</strong><span>uniproxy panel</span></div><button class="side-close" id="sideClose" title="关闭菜单">×</button></div>
@@ -314,6 +337,7 @@ td .act{padding:4px 8px;font-size:12px;border-radius:6px}
   <div class="dash-bar" id="dashBar"></div>
   <div class="stat-grid" id="sysCards"></div>
   <div class="runtime-strip" id="runtimeStrip"></div>
+  <div class="card net-card" id="netCard"></div>
   <div class="card"><h2>状态</h2><div id="overview"></div></div>
   <div class="card"><h2>端口<button class="help" data-help="ports" title="帮助">?</button></h2><div id="ports"></div></div>
 </section>
@@ -453,7 +477,9 @@ td .act{padding:4px 8px;font-size:12px;border-radius:6px}
 const csrf = () => { const m = document.cookie.match(/(?:^|; )uui_csrf=([^;]+)/); return m ? m[1] : ''; };
 let state = null; let cores = []; let editingUser = null; let editingInbound = null; let currentInbound = null;
 let sysInfo = null;
-let sysHistory = { cpu: [], mem: [], swap: [], disk: [] };
+let sysHistory = { cpu: [], mem: [], swap: [], disk: [], rx: [], tx: [] };
+let lastNetSample = null;
+let sysLoading = false;
 let lang = (function () { try { return localStorage.getItem('uui-lang') === 'en' ? 'en' : 'zh'; } catch (e) { return 'zh'; } })();
 let themeMode = (function () { try { const v = localStorage.getItem('uui-theme'); return v === 'light' || v === 'ultra' ? v : 'dark'; } catch (e) { return 'dark'; } })();
 let ipVisible = (function () { try { return localStorage.getItem('uui-ip-visible') === '1'; } catch (e) { return false; } })();
@@ -528,16 +554,19 @@ async function refresh() {
 }
 
 async function loadSystem() {
+  if (sysLoading) return;
+  sysLoading = true;
   try {
     const r = await api('GET', '/api/system');
     if (r.status === 200) { sysInfo = r.data; renderSystem(); }
   } catch (e) { /* ignore */ }
+  finally { sysLoading = false; }
 }
 
 function pushHistory(key, value) {
   const list = sysHistory[key] || (sysHistory[key] = []);
   list.push(Number(value) || 0);
-  while (list.length > 36) list.shift();
+  while (list.length > 90) list.shift();
 }
 
 function sparkline(key, color, id) {
@@ -564,6 +593,14 @@ function renderSystem() {
   if (!el) return;
   if (!sysInfo) { el.innerHTML = ''; return; }
   const s = sysInfo;
+  const now = Date.now();
+  const nd = s.netDev || { rx: 0, tx: 0 };
+  if (lastNetSample && now > lastNetSample.at && nd.rx >= lastNetSample.rx && nd.tx >= lastNetSample.tx) {
+    const dt = (now - lastNetSample.at) / 1000;
+    pushHistory('rx', (nd.rx - lastNetSample.rx) / dt);
+    pushHistory('tx', (nd.tx - lastNetSample.tx) / dt);
+  }
+  lastNetSample = { at: now, rx: nd.rx, tx: nd.tx };
   pushHistory('cpu', s.cpuPct);
   pushHistory('mem', s.mem.usedPct);
   pushHistory('swap', s.swap ? s.swap.usedPct : 0);
@@ -580,11 +617,9 @@ function renderSystem() {
   }).join('');
   const rt = document.getElementById('runtimeStrip');
   if (rt) {
-    const x = s.xray || { pid: 0, rss: 0, threads: 0 };
     const net = s.net || { tcp: 0, udp: 0, total: 0 };
     const items = [
       { label: tr('stat.uptime'), value: fmtUptime(s.uptime), sub: s.hostname + ' · ' + s.platform + ' ' + s.arch },
-      { label: 'Xray', value: x.pid ? fmtBytes(x.rss) : '—', sub: x.pid ? (x.threads + ' ' + tr('stat.threads') + ' · pid ' + x.pid) : 'not running' },
       { label: tr('stat.conn'), value: String(net.total || 0), sub: 'TCP ' + (net.tcp || 0) + ' · UDP ' + (net.udp || 0) },
       { label: 'OS', value: s.release || s.platform, sub: s.cpuModel || '' },
     ];
@@ -592,6 +627,62 @@ function renderSystem() {
       return '<div class="rt-item"><div class="rt-label">' + h(it.label) + '</div><div class="rt-value">' + h(it.value) + '</div><div class="rt-sub">' + h(it.sub) + '</div></div>';
     }).join('');
   }
+  renderNetCard(s);
+}
+
+function fmtRate(n) {
+  n = Number(n) || 0;
+  if (n >= 1048576) return (n / 1048576).toFixed(2) + ' MB/s';
+  if (n >= 1024) return (n / 1024).toFixed(1) + ' KB/s';
+  return Math.round(n) + ' B/s';
+}
+
+function netPolyline(values, w, h, max) {
+  if (!values.length) return '';
+  if (values.length === 1) values = [values[0], values[0]];
+  const n = values.length;
+  return values.map(function (v, i) {
+    const x = (i / (n - 1)) * w;
+    const y = h - 8 - (Math.min(v, max) / max) * (h - 20);
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+}
+
+function renderNetCard(s) {
+  const el = document.getElementById('netCard');
+  if (!el) return;
+  const rx = sysHistory.rx || [];
+  const tx = sysHistory.tx || [];
+  const rates = rx.concat(tx);
+  const max = Math.max(1024, Math.max.apply(null, rates.length ? rates : [0]));
+  const w = 1000, ch = 210;
+  const rxPts = netPolyline(rx, w, ch, max);
+  const txPts = netPolyline(tx, w, ch, max);
+  const nowRx = rx.length ? rx[rx.length - 1] : 0;
+  const nowTx = tx.length ? tx[tx.length - 1] : 0;
+  const peak = rates.length ? Math.max.apply(null, rates) : 0;
+  const avgRx = rx.length ? rx.reduce(function (a, b) { return a + b; }, 0) / rx.length : 0;
+  const avgTx = tx.length ? tx.reduce(function (a, b) { return a + b; }, 0) / tx.length : 0;
+  const nd = s.netDev || { rx: 0, tx: 0 };
+  let chart = '<div class="net-empty">等待网卡数据…</div>';
+  if (rx.length) {
+    chart = '<svg viewBox="0 0 ' + w + ' ' + ch + '" preserveAspectRatio="none">' +
+      '<g stroke="rgba(148,163,184,.14)" stroke-dasharray="3 5">' +
+      '<line x1="0" y1="' + (ch * .25) + '" x2="' + w + '" y2="' + (ch * .25) + '"/>' +
+      '<line x1="0" y1="' + (ch * .5) + '" x2="' + w + '" y2="' + (ch * .5) + '"/>' +
+      '<line x1="0" y1="' + (ch * .75) + '" x2="' + w + '" y2="' + (ch * .75) + '"/></g>' +
+      '<defs><linearGradient id="netTx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f8cff" stop-opacity=".30"/><stop offset="1" stop-color="#4f8cff" stop-opacity="0"/></linearGradient></defs>' +
+      (txPts ? '<polygon points="0,' + ch + ' ' + txPts + ' ' + w + ',' + ch + '" fill="url(#netTx)"/>' : '') +
+      (rxPts ? '<polyline points="' + rxPts + '" fill="none" stroke="#94a3b8" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>' : '') +
+      (txPts ? '<polyline points="' + txPts + '" fill="none" stroke="#4f8cff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' : '') +
+      '</svg>';
+  }
+  el.innerHTML = '<div class="net-head"><div><div class="net-title">整体速度</div><div class="net-sub">网卡总计 · 峰值 ' + h(fmtRate(peak)) + '</div></div>' +
+    '<div class="net-rates"><span>↑ 上传 ' + h(fmtRate(nowTx)) + '</span><span>↓ 下载 ' + h(fmtRate(nowRx)) + '</span></div></div>' +
+    '<div class="net-chart">' + chart + '</div>' +
+    '<div class="net-foot"><div><div class="net-label">已发送</div><div class="net-value">' + h(fmtBytes(nd.tx)) + '</div></div>' +
+    '<div><div class="net-label">已接收</div><div class="net-value">' + h(fmtBytes(nd.rx)) + '</div></div>' +
+    '<div><div class="net-label">窗口均值</div><div class="net-value">↑ ' + h(fmtRate(avgTx)) + ' ↓ ' + h(fmtRate(avgRx)) + '</div></div></div>';
 }
 
 function switchTab(tab) {
@@ -1579,7 +1670,7 @@ applyLang();
 setInterval(function () {
   const ov = document.getElementById('tab-overview');
   if (ov && ov.classList.contains('on')) loadSystem();
-}, 10000);
+}, 1000);
 refresh();
 </script><div class="modal-backdrop" id="cmdModal" onclick="if(event.target===this)closeCmd()"><div class="cmd-box"><input id="cmdInput" type="text" placeholder="搜索页面或操作…" autocomplete="off"><div id="cmdList" class="cmd-list"></div><div class="cmd-foot">↑↓ 选择 · Enter 打开 · Esc 关闭 · Ctrl+K 唤起</div></div></div>
 <div class="modal-backdrop" id="helpModal" onclick="if(event.target===this)closeHelp()"><div class="modal-box"><button class="modal-close" onclick="closeHelp()">关闭</button><h3 class="modal-title"></h3><div class="modal-body"></div></div></div>

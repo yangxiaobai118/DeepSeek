@@ -256,6 +256,8 @@ function readPassword(cfgPath, key) {
   } catch (e) { return ''; }
 }
 
+let xrayCache = { at: 0, value: { pid: 0, rss: 0, threads: 0 } };
+
 function systemStats() {
   const cpus = os.cpus() || [];
   const cores = cpus.length || 1;
@@ -292,19 +294,36 @@ function systemStats() {
     udp: countSockets('/proc/net/udp') + countSockets('/proc/net/udp6'),
   };
   net.total = net.tcp + net.udp;
-  const xray = { pid: 0, rss: 0, threads: 0 };
+  const netDev = { rx: 0, tx: 0 };
   try {
-    const found = spawnSync('pgrep', ['-x', 'xray'], { encoding: 'utf8', timeout: 5000 });
-    const pid = String(found.stdout || '').trim().split(/\s+/)[0];
-    if (pid) {
-      const status = fs.readFileSync('/proc/' + pid + '/status', 'utf8');
-      const rssMatch = status.match(/^VmRSS:\s+(\d+)\s+kB/m);
-      const threadsMatch = status.match(/^Threads:\s+(\d+)/m);
-      xray.pid = Number(pid);
-      xray.rss = rssMatch ? Number(rssMatch[1]) * 1024 : 0;
-      xray.threads = threadsMatch ? Number(threadsMatch[1]) : 0;
-    }
-  } catch (e) { /* xray not running or non-Linux */ }
+    const lines = fs.readFileSync('/proc/net/dev', 'utf8').split('\n');
+    lines.forEach(function (line) {
+      const m = line.match(/^\s*([^:]+):\s*(.*)$/);
+      if (!m || m[1].trim() === 'lo') return;
+      const fields = m[2].trim().split(/\s+/);
+      if (fields.length >= 9) {
+        netDev.rx += Number(fields[0]) || 0;
+        netDev.tx += Number(fields[8]) || 0;
+      }
+    });
+  } catch (e) { /* non-Linux */ }
+  if (Date.now() - xrayCache.at > 5000) {
+    const next = { pid: 0, rss: 0, threads: 0 };
+    try {
+      const found = spawnSync('pgrep', ['-x', 'xray'], { encoding: 'utf8', timeout: 5000 });
+      const pid = String(found.stdout || '').trim().split(/\s+/)[0];
+      if (pid) {
+        const status = fs.readFileSync('/proc/' + pid + '/status', 'utf8');
+        const rssMatch = status.match(/^VmRSS:\s+(\d+)\s+kB/m);
+        const threadsMatch = status.match(/^Threads:\s+(\d+)/m);
+        next.pid = Number(pid);
+        next.rss = rssMatch ? Number(rssMatch[1]) * 1024 : 0;
+        next.threads = threadsMatch ? Number(threadsMatch[1]) : 0;
+      }
+    } catch (e) { /* xray not running or non-Linux */ }
+    xrayCache = { at: Date.now(), value: next };
+  }
+  const xray = Object.assign({}, xrayCache.value);
   return {
     hostname: os.hostname(),
     platform: os.platform(),
@@ -318,6 +337,7 @@ function systemStats() {
     swap: { total: swapTotal, free: swapFree, used: usedSwap, usedPct: swapTotal ? Math.round((usedSwap / swapTotal) * 100) : 0 },
     disk: { total: diskTotal, free: diskFree, used: usedDisk, usedPct: diskTotal ? Math.round((usedDisk / diskTotal) * 100) : 0 },
     net: net,
+    netDev: netDev,
     xray: xray,
     uptime: os.uptime(),
   };

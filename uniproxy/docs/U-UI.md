@@ -52,7 +52,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 界面采用 3x-ui 风格的左侧导航：按 **面板 / 系统 / 网络 / 管理** 分组，顶部显示当前页面标题与登录角色；窄屏下侧栏折叠为菜单按钮。
 
-- 概览顶部是 CPU / 内存 / 交换空间 / 磁盘卡片（带 10 秒采样的 sparkline），下方运行带显示运行时间、Xray 进程内存/线程、TCP/UDP 连接数、OS；数据来自 `GET /api/system`（`os`、`/proc`、`statfs`）。
+- 概览顶部是 CPU / 内存 / 交换空间 / 磁盘卡片（每 1 秒采样），下方运行带显示运行时间、TCP/UDP 连接数、OS，并显示 3x-ui 风格的整体网卡速度图（上传/下载曲线、累计收发、峰值、窗口均值）。数据来自 `GET /api/system`（`os`、`/proc`、`statfs`）。
 - 顶部 `EN/中文` 切换界面语言（导航、页面标题、概览、端口表、统计卡片），偏好写入 localStorage。
 - 顶部主题按钮循环 **深色 / 浅色 / 超深色** 三种方案（对应 3x-ui 的 dark / light / ultra-dark 配色）；公网 IP 默认打码，点眼睛显示。
 - 登录页使用同一套深色渐变、语言/主题切换、动态光斑和字体。
@@ -68,7 +68,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | GET | `/` | 应用页面（未登录跳 `/login`） |
 | GET/POST | `/login`、`/logout` | 密码登录，会话 Cookie |
 | GET | `/api/state` | 概览数据（含 CSRF token） |
-| GET | `/api/system` | CPU/内存/交换/磁盘、TCP/UDP 连接数、Xray 进程内存/线程、运行时间 |
+| GET | `/api/system` | CPU/内存/交换/磁盘、TCP/UDP 连接数、网卡累计收发、Xray 进程内存/线程、运行时间 |
 | GET | `/api/config` | 原始配置文本 |
 | PUT | `/api/config` | 保存配置（校验 + 备份 + 原子写） |
 | POST | `/api/users` | 新增用户 |

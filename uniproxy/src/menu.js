@@ -627,8 +627,12 @@ function paintSystemctl(text) {
 async function showLogs(ctx) {
   const units = { u: UI_UNIT, s: 'uniproxy-sub', x: 'xray', b: 'sing-box', n: 'nginx' };
   const answer = String((await ctx.io.question('查看哪个日志？[u=u-ui s=订阅 x=xray b=sing-box n=nginx，可组合如 xb；回车=xray]: ')) || '').trim().toLowerCase();
-  const keys = answer === '' ? ['x'] : answer.split(/[\s,]+/).filter(function (k) { return units[k]; });
-  if (!keys.length) return ctx.io.print('无效选择，可选 u/s/x/b/n，例如 x、b 或 xb');
+  const cleaned = answer.replace(/[\s,]+/g, '');
+  const chars = Array.from(cleaned);
+  const keys = answer === '' ? ['x'] : Array.from(new Set(chars));
+  if (!keys.length || keys.some(function (k) { return !units[k]; })) {
+    return ctx.io.print('无效选择，可选 u/s/x/b/n，可组合，例如 x、b、xb');
+  }
   for (const key of keys) {
     const unit = units[key];
     const res = run('journalctl -u ' + unit + ' -n 80 --no-pager -o cat');

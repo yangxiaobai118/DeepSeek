@@ -929,7 +929,8 @@ test('nginx: fallback proxies unknown SNI probes to the blog', function () {
   const nginx = generateNginx(cfg);
   assert.ok(nginx.includes('default_server'));
   assert.ok(nginx.includes('server_name _;'));
-  assert.ok(nginx.includes('proxy_pass https://blog.example.org;'));
+  assert.ok(nginx.includes('set $uniproxy_fallback_upstream "https://blog.example.org";'));
+  assert.ok(nginx.includes('proxy_pass $uniproxy_fallback_upstream;'));
   assert.ok(nginx.includes('proxy_set_header Host blog.example.org;'));
   assert.ok(nginx.includes('proxy_ssl_server_name on;'));
 });

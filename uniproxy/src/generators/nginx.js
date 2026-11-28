@@ -8,6 +8,19 @@
  *              nginx's http servers move to 127.0.0.1:<nginxInternalTls>.
  *              Proxy inbounds bind loopback and are reached through the map.
  */
+function systemResolvers() {
+  try {
+    const text = fs.readFileSync('/etc/resolv.conf', 'utf8');
+    const found = [];
+    for (const line of text.split('\n')) {
+      const m = line.match(/^\s*nameserver\s+(\S+)/);
+      if (m && /^\d{1,3}(\.\d{1,3}){3}$/.test(m[1]) && !found.includes(m[1])) found.push(m[1]);
+    }
+    if (found.length) return found.slice(0, 2).join(' ');
+  } catch (e) { /* non-Linux or no resolv.conf */ }
+  return '1.1.1.1 8.8.8.8';
+}
+
 function parseUpstream(value) {
   let raw = String(value || '').trim();
   if (!raw) return null;
@@ -155,7 +168,9 @@ export function generateNginx(c) {
     for (const line of securityHeaders()) w(line);
     if (fallback.upstream) {
       w('        location / {');
-      w('            proxy_pass ' + fallback.upstream + ';');
+      w('            resolver ' + systemResolvers() + ' ipv6=off valid=60s;');
+      w('            set $uniproxy_fallback_upstream "' + fallback.upstream + '";');
+      w('            proxy_pass $uniproxy_fallback_upstream;');
       w('            proxy_http_version 1.1;');
       w('            proxy_set_header Host ' + fallbackHost + ';');
       w('            proxy_set_header X-Forwarded-Host $host;');

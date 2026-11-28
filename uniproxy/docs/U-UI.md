@@ -186,7 +186,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 "nginx": { "fallback": { "upstream": "http://127.0.0.1:8080" } }
 ```
 
-也可以不用手改配置：菜单 `41` 直接输入站点 URL（只填域名会自动补 `https://`）或本机绝对目录，`-` 关闭，回车保留；保存后菜单 19 validate、21 apply。已知域名（站点、u-ui、订阅）仍按各自 vhost 处理；只有未知域名/无 SNI/直接 IP 会落到 fallback。HTTP 80 仍先 301 到 HTTPS。
+也可以不用手改配置：菜单 `41` 直接输入站点 URL（只填域名会自动补 `https://`）或本机绝对目录，`-` 关闭，回车保留；保存后菜单 19 validate、21 apply。已知域名（站点、u-ui、订阅）仍按各自 vhost 处理；只有未知域名/无 SNI/直接 IP 会落到 fallback。HTTP 80 仍先 301 到 HTTPS。外站 upstream 使用 nginx 运行时 DNS（`ipv6=off`），所以博客 DNS 暂时不可用不会阻塞 apply，但访问回落会返回 502，直到解析恢复。
 
 ## 9.3 从旧 nginx 配置迁移
 

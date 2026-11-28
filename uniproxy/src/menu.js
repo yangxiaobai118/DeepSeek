@@ -822,9 +822,64 @@ function showNodes(ctx) {
 }
 
 function defaultIO() {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  let rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const reopen = function () {
+    rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  };
+
+  function choose(prompt) {
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      return new Promise(function (resolve) { rl.question(prompt, resolve); });
+    }
+    return new Promise(function (resolve) {
+      let buffer = '';
+      let escape = '';
+      let active = true;
+      const erase = function () {
+        if (!buffer) return;
+        buffer = buffer.slice(0, -1);
+        process.stdout.write('\b \b');
+      };
+      const finish = function (value) {
+        if (!active) return;
+        active = false;
+        process.stdin.removeListener('data', onData);
+        try { process.stdin.setRawMode(false); } catch (e) { /* not a tty */ }
+        process.stdout.write('\n');
+        reopen();
+        resolve(value);
+      };
+      const onData = function (chunk) {
+        for (const ch of String(chunk)) {
+          if (!active) break;
+          if (ch === '\r' || ch === '\n') { finish(buffer); return; }
+          if (ch === '\x03') { finish('0'); return; }
+          if (ch === '\x1b') { escape = '\x1b'; continue; }
+          if (escape) {
+            escape += ch;
+            if (/^\x1b\[[0-9;]*[A-Za-z~]$/.test(escape)) {
+              if (escape === '\x1b[3~') erase();
+              escape = '';
+            } else if (escape.length > 8) {
+              escape = '';
+            }
+            continue;
+          }
+          if (ch === '\x7f' || ch === '\x08') { erase(); continue; }
+          if (/^[0-9qQ]$/.test(ch)) { buffer += ch; process.stdout.write(ch); }
+        }
+      };
+      rl.close();
+      process.stdout.write(prompt);
+      try { process.stdin.setRawMode(true); } catch (e) { /* fall back */ }
+      process.stdin.resume();
+      process.stdin.on('data', onData);
+    });
+  }
+
   return {
     question: function (q) { return new Promise(function (resolve) { rl.question(q, resolve); }); },
+    choose: choose,
     print: function (s) { process.stdout.write(paintLines(String(s)) + '\n'); },
     close: function () { rl.close(); },
   };
@@ -845,7 +900,8 @@ export async function runMenu(options = {}) {
   const items = buildMenu(ctx).reduce(function (acc, s) { return acc.concat(s.items); }, []);
   for (;;) {
     ctx.io.print(renderMenu(ctx));
-    const answer = String((await ctx.io.question('\n' + GREEN + '请选择 [0-40]: ' + RESET)) || '').trim();
+    const chooser = typeof ctx.io.choose === 'function' ? ctx.io.choose.bind(ctx.io) : ctx.io.question.bind(ctx.io);
+    const answer = String((await chooser('\n' + GREEN + '请选择 [0-40]: ' + RESET)) || '').trim();
     if (answer === '0' || answer.toLowerCase() === 'q') { ctx.io.print('已退出'); break; }
     const item = items.find(function (i) { return i.key === answer; });
     if (!item) { ctx.io.print('无效选项: ' + answer); continue; }

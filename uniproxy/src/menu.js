@@ -591,12 +591,17 @@ function showStatus(ctx) {
   ];
   for (const name of Object.keys(CORE_UNITS)) lines.push(CORE_UNITS[name] + ': ' + colorState(unitState(CORE_UNITS[name])));
   ctx.io.print(lines.join('\n'));
-  const res = run('systemctl status ' + UI_UNIT + ' --no-pager');
-  ctx.io.print('');
-  ctx.io.print(paintSystemctl(res.output || '(无输出)'));
-  if (/status=1\/FAILURE|failed/i.test(res.output)) {
-    ctx.io.print('提示: 查看详细日志请按 16（journalctl -u ' + UI_UNIT + ' -n 60）');
-  }
+  const showUnit = function (unit) {
+    const res = run('systemctl status ' + unit + ' --no-pager');
+    ctx.io.print('');
+    ctx.io.print('---- ' + unit + ' ----');
+    ctx.io.print(paintSystemctl(res.output || '(无输出)'));
+    if (/status=1\/FAILURE|failed/i.test(res.output)) {
+      ctx.io.print('提示: 查看 ' + unit + ' 日志请按 16，选择对应内核');
+    }
+  };
+  showUnit(UI_UNIT);
+  for (const name of Object.keys(CORE_UNITS)) showUnit(CORE_UNITS[name]);
 }
 
 function paintSystemctl(text) {
@@ -613,8 +618,12 @@ function paintSystemctl(text) {
   }).join('\n');
 }
 
-function showLogs(ctx) {
-  const res = run('journalctl -u ' + UI_UNIT + ' -n 60 --no-pager -o cat');
+async function showLogs(ctx) {
+  const units = { u: UI_UNIT, s: 'uniproxy-sub', x: 'xray', b: 'sing-box', n: 'nginx' };
+  const answer = String((await ctx.io.question('查看哪个日志？[u=u-ui s=订阅 x=xray b=sing-box n=nginx，回车=u-ui]: ')) || '').trim().toLowerCase();
+  const unit = units[answer] || units.u;
+  const res = run('journalctl -u ' + unit + ' -n 80 --no-pager -o cat');
+  ctx.io.print('---- ' + unit + ' ----');
   ctx.io.print(res.output || '(无日志)');
 }
 

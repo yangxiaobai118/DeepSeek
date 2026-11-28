@@ -123,6 +123,32 @@ body.light .muted{color:#6b7280}
 .stat-bar span{display:block;height:100%;background:linear-gradient(90deg,#3f6fff,#7c5cff);border-radius:999px}
 .eye-btn{background:transparent;border:0;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;vertical-align:middle}
 .eye-btn:hover{color:#3f6fff}
+
+/* ---- 3x-ui palette alignment: dark / light / ultra ---- */
+body{--bg:#1a1b1f;--panel:#23252b;--side:#15161a;--elevated:#2d2f37;--hover:#2a2c33;--border:rgba(255,255,255,.06);--text:#e6e8ef;--muted:#9a9aa2;background:var(--bg);color:var(--text);transition:background-color .2s,color .2s}
+body:not(.light):not(.ultra){background-image:radial-gradient(900px 520px at 8% -10%,rgba(63,111,255,.10),transparent 55%),radial-gradient(760px 520px at 92% 110%,rgba(124,92,255,.07),transparent 55%);background-attachment:fixed}
+body.light{--bg:#e6e8ec;--panel:#ffffff;--side:#ffffff;--elevated:#f3f4f6;--hover:#eef1f6;--border:#e2e5ea;--text:#1f2430;--muted:#6b7280;background-image:none}
+body.ultra{--bg:#000;--panel:#101013;--side:#050507;--elevated:#1a1a1e;--hover:#1a1a1e;--border:rgba(255,255,255,.04);--text:#f2f2f3;--muted:#8b8b93;background-image:none}
+aside.sidebar{background:var(--side);border-right:1px solid var(--border)}
+header.topbar{background:var(--side);border-bottom:1px solid var(--border);backdrop-filter:none}
+.card,.stat-card{background:var(--panel);border:1px solid var(--border);box-shadow:0 1px 2px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.03)}
+body.light .card,body.light .stat-card{box-shadow:0 1px 2px rgba(16,24,40,.04),inset 0 1px 0 rgba(255,255,255,.7)}
+nav#sideNav button:hover{background:var(--hover)}
+.nav-title{color:var(--muted)}
+body.light .nav-title{color:#8a93a5}
+input,textarea,select{background:var(--elevated);border-color:var(--border);color:var(--text)}
+body.light input,body.light textarea,body.light select{background:#fff;border-color:#d7dce7;color:#1f2430}
+pre{background:var(--bg);border:1px solid var(--border)}
+body.light pre{background:#f7f9fc;border-color:#e5e9f2}
+td,th{border-bottom-color:var(--border)}
+th{color:var(--muted)}
+.ghost,.top-btn{background:var(--elevated);border-color:var(--border);color:var(--text)}
+body.light .ghost,body.light .top-btn{background:#fff;border-color:#d7dce7;color:#374151}
+.ghost:hover,.top-btn:hover{border-color:#3f6fff;color:#fff}
+body.light .ghost:hover,body.light .top-btn:hover{color:#111827}
+.page-head h1{color:var(--text)}
+body.light .page-head h1{color:#111827}
+.muted{color:var(--muted)}
 </style></head><body>
 <aside class="sidebar" id="sidebar">
   <div class="brand"><div class="logo">U-UI</div><div class="brand-text"><strong>U-UI</strong><span>uniproxy panel</span></div><button class="side-close" id="sideClose" title="关闭菜单">×</button></div>
@@ -294,7 +320,7 @@ const csrf = () => { const m = document.cookie.match(/(?:^|; )uui_csrf=([^;]+)/)
 let state = null; let cores = []; let editingUser = null; let editingInbound = null; let currentInbound = null;
 let sysInfo = null;
 let lang = (function () { try { return localStorage.getItem('uui-lang') === 'en' ? 'en' : 'zh'; } catch (e) { return 'zh'; } })();
-let themeMode = (function () { try { return localStorage.getItem('uui-theme') === 'light' ? 'light' : 'dark'; } catch (e) { return 'dark'; } })();
+let themeMode = (function () { try { const v = localStorage.getItem('uui-theme'); return v === 'light' || v === 'ultra' ? v : 'dark'; } catch (e) { return 'dark'; } })();
 let ipVisible = (function () { try { return localStorage.getItem('uui-ip-visible') === '1'; } catch (e) { return false; } })();
 const I18N = {
   zh: {
@@ -388,8 +414,12 @@ function renderSystem() {
 
 function applyTheme() {
   document.body.classList.toggle('light', themeMode === 'light');
+  document.body.classList.toggle('ultra', themeMode === 'ultra');
   const btn = document.getElementById('themeToggle');
-  if (btn) btn.textContent = themeMode === 'light' ? '☾' : '☀';
+  if (btn) {
+    btn.textContent = themeMode === 'light' ? '☀' : (themeMode === 'ultra' ? '🌑' : '☾');
+    btn.title = '主题：' + (themeMode === 'light' ? '浅色' : (themeMode === 'ultra' ? '超深色' : '深色'));
+  }
   try { localStorage.setItem('uui-theme', themeMode); } catch (e) { /* ignore */ }
 }
 
@@ -1213,7 +1243,7 @@ document.getElementById('addAccount').onclick = async function () {
 
 const themeToggleBtn = document.getElementById('themeToggle');
 if (themeToggleBtn) themeToggleBtn.onclick = function () {
-  themeMode = themeMode === 'dark' ? 'light' : 'dark';
+  themeMode = themeMode === 'dark' ? 'light' : (themeMode === 'light' ? 'ultra' : 'dark');
   applyTheme();
 };
 const langToggleBtn = document.getElementById('langToggle');

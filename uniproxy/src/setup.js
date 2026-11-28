@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import net from 'node:net';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { hashPassword, USERNAME_RE } from './auth.js';
@@ -16,6 +17,18 @@ import { scaffold } from './scaffold.js';
  * domain (or an explicit IP-only mode), the public IP (auto-detected, overridable)
  * and the ACME e-mail. Ports default to sane values and accept `r` for random.
  */
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+function basePathInputOk(value) {
+  if (!value) return true;
+  let s = String(value);
+  if (s === '/') return true;
+  if (s[0] !== '/') s = '/' + s;
+  if (!s.endsWith('/')) s += '/';
+  s = s.replace(/\/+/g, '/');
+  return /^\/[A-Za-z0-9._~!$&'()*+,;=:@%\/-]+\/$/.test(s) && !/^\/(api|login|logout)\//.test(s);
+}
 
 const PASSWORD_ALPHABET = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -68,11 +81,20 @@ export async function runSetup(opts = {}) {
   cfg.ui = cfg.ui || {};
   cfg.subscription = cfg.subscription || {};
 
-  const ask = async function (question, fallback) {
+  const rawAsk = async function (question, fallback) {
     if (yes) return fallback;
     const shown = question + (fallback ? ' [' + fallback + ']' : '') + ': ';
     const answer = String((await io.question(shown)) || '').trim();
     return answer === '' ? (fallback || '') : answer;
+  };
+
+  const ask = async function (question, fallback, validate, hint) {
+    if (yes) return fallback;
+    for (;;) {
+      const value = await rawAsk(question, fallback);
+      if (!validate || validate(value)) return value;
+      io.print('输入不合法：' + (hint || '请检查后重新输入'));
+    }
   };
 
   if (!yes) io.print('回车 = 保留当前值 / 使用默认值；r = 随机；只有你重新输入的项会被修改。');
@@ -80,7 +102,12 @@ export async function runSetup(opts = {}) {
   // 1. domain: cannot be random
   const currentDomain = (cfg.server.domains && cfg.server.domains.web) || '';
   const domainHint = currentDomain && !currentDomain.endsWith('.example.com') ? currentDomain : '';
-  const domain = flags.domain != null ? flags.domain : await ask('域名（如 example.com；回车=仅 IP，不使用域名）', domainHint);
+  const domain = flags.domain != null ? flags.domain : await ask(
+    '域名（如 example.com；回车=仅 IP，不使用域名）',
+    domainHint,
+    function (v) { return v === '' || validDomain(v); },
+    '域名格式不正确，例如 example.com',
+  );
   const domainChanged = domain !== currentDomain;
   if (domain && domainChanged) applyDomain(cfg, domain);
 
@@ -103,14 +130,12 @@ export async function runSetup(opts = {}) {
     const uiFallback = hostDefault(cfg.ui.domain, 'uui');
     let uiDomain = cfg.ui.domain || '';
     if (!yes) {
-      const value = String(await ask('u-ui 面板域名（- = 仅 SSH 隧道；r = 随机前缀）', uiFallback)).trim();
-      if (value === '-' || value.toLowerCase() === 'none') uiDomain = '';
-      else if (value.toLowerCase() === 'r') uiDomain = 'uui-' + crypto.randomBytes(2).toString('hex') + '.' + domain;
-      else if (!value) uiDomain = uiFallback;
-      else if (validDomain(value)) uiDomain = value;
-      else {
-        io.print('域名不合法，使用 ' + uiFallback);
-        uiDomain = uiFallback;
+      for (;;) {
+        const value = String(await rawAsk('u-ui 面板域名（- = 仅 SSH 隧道；r = 随机前缀）', uiFallback)).trim();
+        if (value === '-' || value.toLowerCase() === 'none') { uiDomain = ''; break; }
+        if (value.toLowerCase() === 'r') { uiDomain = 'uui-' + crypto.randomBytes(2).toString('hex') + '.' + domain; break; }
+        if (validDomain(value)) { uiDomain = value; break; }
+        io.print('域名不合法，请重新输入（- = 仅 SSH 隧道，r = 随机前缀）');
       }
     } else if (!validDomain(uiDomain)) {
       uiDomain = '';
@@ -120,8 +145,12 @@ export async function runSetup(opts = {}) {
     const baseFallback = (cfg.ui.basePath && cfg.ui.basePath !== '/') ? cfg.ui.basePath : '/';
     let basePath = normalizeBasePath(cfg.ui.basePath);
     if (!yes) {
-      const value = String(await ask('u-ui 访问路径（如 /uui/；回车=/）', baseFallback)).trim();
-      basePath = normalizeBasePath(value);
+      for (;;) {
+        const value = String(await rawAsk('u-ui 访问路径（如 /uui/；回车=/；r = 随机）', baseFallback)).trim();
+        if (value.toLowerCase() === 'r') { basePath = normalizeBasePath('/uui-' + crypto.randomBytes(2).toString('hex') + '/'); break; }
+        if (basePathInputOk(value)) { basePath = normalizeBasePath(value); break; }
+        io.print('路径不合法：需以 / 开头和结尾，且不能使用 /api/、/login/、/logout/ 前缀');
+      }
     }
     cfg.ui.basePath = basePath;
 
@@ -146,32 +175,45 @@ export async function runSetup(opts = {}) {
   const ipFallback = isPlaceholderAddress(oldIp) ? (detected || oldIp) : oldIp;
   let ip = flags.ip;
   if (ip == null) {
-    ip = await ask(detected && isPlaceholderAddress(oldIp) ? '公网 IP（已自动探测，回车使用）' : '公网 IP（回车保留当前）', ipFallback);
+    ip = await ask(
+      detected && isPlaceholderAddress(oldIp) ? '公网 IP（已自动探测，回车使用）' : '公网 IP（回车保留当前）',
+      ipFallback,
+      function (v) { return v === '' || net.isIP(v) !== 0; },
+      'IP 地址格式不正确（IPv4 或 IPv6）',
+    );
   }
   if (ip) cfg.server.publicIp = ip;
 
   // 4. panel port
   const currentUiPort = String(cfg.ui.port || 8788);
-  const uiPort = flags.panelPort != null ? String(flags.panelPort) : await ask('面板端口（r = 随机）', currentUiPort);
+  const uiPort = flags.panelPort != null ? String(flags.panelPort) : await ask(
+    '面板端口（r = 随机）',
+    currentUiPort,
+    function (v) { return v === 'r' || (/^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 65535); },
+    '端口必须是 1-65535 的整数，或输入 r 随机',
+  );
   cfg.ui.port = uiPort === 'r' ? randomPort() : Number(uiPort) || 8788;
 
   // 5. subscription port
   const currentSubPort = String(cfg.subscription.port || 8787);
-  const subPort = flags.subPort != null ? String(flags.subPort) : await ask('订阅服务端口（r = 随机）', currentSubPort);
+  const subPort = flags.subPort != null ? String(flags.subPort) : await ask(
+    '订阅服务端口（r = 随机）',
+    currentSubPort,
+    function (v) { return v === 'r' || (/^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 65535); },
+    '端口必须是 1-65535 的整数，或输入 r 随机',
+  );
   cfg.subscription.port = subPort === 'r' ? randomPort() : Number(subPort) || 8787;
 
   // 6. public subscription address (optional; empty means http://<ip>:<port>)
   const currentBase = String(cfg.subscription.publicBase || '');
   let subBase = currentBase;
   if (!yes) {
-    const input = String((await io.question('订阅公开地址（如 https://sub.example.com；回车=' + (currentBase || '自动') + '；- = 自动）: ')) || '').trim();
-    if (input === '-') subBase = '';
-    else if (input) {
-      if (!/^https?:\/\/[^\s/]+$/i.test(input)) {
-        io.print('订阅地址不合法（只填协议+域名，不要带路径），保持当前值');
-      } else {
-        subBase = input.replace(/\/+$/, '');
-      }
+    for (;;) {
+      const input = String(await rawAsk('订阅公开地址（如 https://sub.example.com；回车=' + (currentBase || '自动') + '；- = 自动）', currentBase)).trim();
+      if (input === '-') { subBase = ''; break; }
+      if (input === '') { subBase = currentBase; break; }
+      if (/^https?:\/\/[^\s/]+$/i.test(input)) { subBase = input.replace(/\/+$/, ''); break; }
+      io.print('输入不合法：订阅地址必须带 http:// 或 https://，只填域名，不要带路径；请重新输入');
     }
   }
   cfg.subscription.publicBase = subBase;
@@ -189,7 +231,12 @@ export async function runSetup(opts = {}) {
 
   // 7. the only account created here: an admin. Others are added in the panel.
   const existingAdmin = (cfg.ui.users || []).find(function (u) { return u.role !== 'viewer'; });
-  const username = flags.username != null ? flags.username : await ask('管理员用户名', existingAdmin ? existingAdmin.username : 'admin');
+  const username = flags.username != null ? flags.username : await ask(
+    '管理员用户名',
+    existingAdmin ? existingAdmin.username : 'admin',
+    function (v) { return USERNAME_RE.test(v); },
+    '用户名只能使用 A-Z a-z 0-9 _ -，长度 3-32',
+  );
   if (!USERNAME_RE.test(username)) {
     io.print('用户名只能用 A-Z a-z 0-9 _ -，3-32 位');
     return { ok: false, error: 'invalid username' };
@@ -235,7 +282,12 @@ export async function runSetup(opts = {}) {
   }
 
   // 8. e-mail for ACME
-  const email = flags.email != null ? flags.email : await ask('邮箱（申请证书用，回车 = 跳过）', cfg.server.email || '');
+  const email = flags.email != null ? flags.email : await ask(
+    '邮箱（申请证书用，回车 = 跳过）',
+    cfg.server.email || '',
+    function (v) { return v === '' || EMAIL_RE.test(v); },
+    '邮箱格式不正确，例如 name@example.com',
+  );
   if (email) cfg.server.email = email;
 
   if (flags.dryRun) {

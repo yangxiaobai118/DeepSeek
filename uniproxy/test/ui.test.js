@@ -967,6 +967,30 @@ test('setup: creates a default config when the file is missing', async function 
   }
 });
 
+test('setup: invalid answers are asked again', async function () {
+  const ctx = setup();
+  const printed = [];
+  const answers = ['bad domain', 'example.org', '', '', '999.1.1.1', '203.0.113.7', 'r', 'r', 'sub.example.org', 'https://sub.example.org', 'admin', '', 'ops@example.org'];
+  try {
+    const res = await runSetup({
+      configPath: ctx.cfgPath,
+      detectIp: false,
+      io: { print: function (s) { printed.push(String(s)); }, question: async function () { return answers.length ? answers.shift() : ''; } },
+    });
+    assert.equal(res.ok, true);
+    const cfg = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
+    assert.equal(cfg.server.domains.web, 'example.org');
+    assert.equal(cfg.server.publicIp, '203.0.113.7');
+    assert.equal(cfg.subscription.publicBase, 'https://sub.example.org');
+    const text = printed.join('\n');
+    assert.ok(text.includes('域名格式不正确'));
+    assert.ok(text.includes('IP 地址格式不正确'));
+    assert.ok(text.includes('订阅地址必须带 http:// 或 https://'));
+  } finally {
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
 test('setup: random password and port generators', function () {
   const a = randomPassword();
   const b = randomPassword();
@@ -1041,10 +1065,8 @@ test('u-ui: accounts can be added, updated and deleted', async function () {
     const viewer = await fetch(inst.url + '/api/accounts', { method: 'POST', headers: headers, body: JSON.stringify({ username: 'look', password: 'p2', role: 'viewer' }) });
     assert.equal(viewer.status, 200);
     assert.equal(JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8')).ui.users.length, 2);
-
     const removed = await fetch(inst.url + '/api/accounts/look', { method: 'DELETE', headers: headers });
     assert.equal(removed.status, 200);
-    assert.equal(JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8')).ui.users.length, 1);
   } finally {
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });

@@ -181,4 +181,4 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | `server.secret` | ✅ 自动 | 随机 | 所有凭据都由它派生 |
 | VLESS UUID / Reality 密钥 / shortId / 用户 UUID | ✅ 自动 | 随机 | |
 
-初始化只创建**一个管理员账号**（用户名 + 密码），其他账号在面板「账号」页添加。**重复运行向导时回车保留当前值**，只有重新输入的项才会更新；没有配置文件时自动生成一份默认配置。向导不再配置 x-ui / s-ui 面板反代（默认 `panels.xui.enabled=false`、`panels.sui.enabled=false`）；需要时可在 `config.json` 里手动打开。非交互用法：`uniproxy setup --yes --domain example.com --username admin --password '...' --email a@b.c`。
+初始化只创建**一个管理员账号**（用户名 + 密码），其他账号在面板「账号」页添加。需要校验的输入（域名、IP、端口、邮箱、订阅地址、访问路径）不合法时会提示并重新询问，不会跳到下一项。**重复运行向导时回车保留当前值**，只有重新输入的项才会更新；没有配置文件时自动生成一份默认配置。向导不再配置 x-ui / s-ui 面板反代（默认 `panels.xui.enabled=false`、`panels.sui.enabled=false`）；需要时可在 `config.json` 里手动打开。非交互用法：`uniproxy setup --yes --domain example.com --username admin --password '...' --email a@b.c`。

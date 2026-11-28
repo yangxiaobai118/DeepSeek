@@ -160,7 +160,34 @@ export async function runSetup(opts = {}) {
   const subPort = flags.subPort != null ? String(flags.subPort) : await ask('订阅服务端口（r = 随机）', currentSubPort);
   cfg.subscription.port = subPort === 'r' ? randomPort() : Number(subPort) || 8787;
 
-  // 6. the only account created here: an admin. Others are added in the panel.
+  // 6. public subscription address (optional; empty means http://<ip>:<port>)
+  const currentBase = String(cfg.subscription.publicBase || '');
+  let subBase = currentBase;
+  if (!yes) {
+    const input = String((await io.question('订阅公开地址（如 https://sub.example.com；回车=' + (currentBase || '自动') + '；- = 自动）: ')) || '').trim();
+    if (input === '-') subBase = '';
+    else if (input) {
+      if (!/^https?:\/\/[^\s/]+$/i.test(input)) {
+        io.print('订阅地址不合法（只填协议+域名，不要带路径），保持当前值');
+      } else {
+        subBase = input.replace(/\/+$/, '');
+      }
+    }
+  }
+  cfg.subscription.publicBase = subBase;
+  if (subBase && subBase !== currentBase) {
+    try {
+      const parsed = new URL(subBase);
+      const host = parsed.hostname;
+      const isIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.indexOf(':') >= 0;
+      if (parsed.protocol === 'https:' && !isIp && validDomain(host)) {
+        cfg.certs = cfg.certs || {};
+        cfg.certs.domains = Array.from(new Set((cfg.certs.domains || []).concat([host])));
+      }
+    } catch (e) { /* invalid URL was rejected above */ }
+  }
+
+  // 7. the only account created here: an admin. Others are added in the panel.
   const existingAdmin = (cfg.ui.users || []).find(function (u) { return u.role !== 'viewer'; });
   const username = flags.username != null ? flags.username : await ask('管理员用户名', existingAdmin ? existingAdmin.username : 'admin');
   if (!USERNAME_RE.test(username)) {
@@ -207,7 +234,7 @@ export async function runSetup(opts = {}) {
     delete cfg.ui.viewerPassword;
   }
 
-  // 7. e-mail for ACME
+  // 8. e-mail for ACME
   const email = flags.email != null ? flags.email : await ask('邮箱（申请证书用，回车 = 跳过）', cfg.server.email || '');
   if (email) cfg.server.email = email;
 
@@ -236,6 +263,7 @@ export async function runSetup(opts = {}) {
     '  公网 IP:    ' + cfg.server.publicIp,
     '  面板端口:   ' + cfg.ui.port,
     '  订阅端口:   ' + cfg.subscription.port,
+    '  订阅地址:   ' + (cfg.subscription.publicBase || '自动（http://公网IP:端口）'),
     '  访问路径:   ' + (cfg.ui.basePath || '/'),
     '  面板服务:   ' + panelState,
     '  管理员账号: ' + username,

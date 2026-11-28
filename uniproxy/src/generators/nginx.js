@@ -8,8 +8,20 @@
  *              nginx's http servers move to 127.0.0.1:<nginxInternalTls>.
  *              Proxy inbounds bind loopback and are reached through the map.
  */
+function httpsHost(value) {
+  try {
+    const u = new URL(String(value || ''));
+    if (u.protocol !== 'https:') return '';
+    const host = u.hostname;
+    if (!host || /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.indexOf(':') >= 0) return '';
+    return host;
+  } catch (e) {
+    return '';
+  }
+}
+
 export function generateNginx(c) {
-  const { ports, nginx, panels, server } = c;
+  const { ports, nginx, panels, server, subscription } = c;
   const mode = nginx.mode;
   const cert = server.cert || {};
   const hasCert = Boolean(cert.certFile && cert.keyFile);
@@ -111,6 +123,11 @@ export function generateNginx(c) {
     { key: 'xui', p: panels.xui },
     { key: 'sui', p: panels.sui },
   ];
+  const subHost = httpsHost(subscription && subscription.publicBase);
+  const subPort = (subscription && subscription.port) || 8787;
+  let subBasePath = (subscription && subscription.basePath) || '/sub/';
+  if (subBasePath[0] !== '/') subBasePath = '/' + subBasePath;
+  if (!subBasePath.endsWith('/')) subBasePath += '/';
 
   if (mode === 'http') {
     // In http mode nginx terminates TLS itself, so ACME HTTP-01 can also work
@@ -206,6 +223,28 @@ export function generateNginx(c) {
     w('');
   }
 
+  if (subHost) {
+    w('    # ---- uniproxy subscriptions: ' + subHost + ' -> 127.0.0.1:' + subPort + ' ----');
+    w('    server {');
+    for (const line of listenLines()) w(line);
+    w('        server_name ' + subHost + ';');
+    for (const line of tlsLines()) w(line);
+    for (const line of securityHeaders()) w(line);
+    w('        location ^~ ' + subBasePath + ' {');
+    w('            proxy_pass http://127.0.0.1:' + subPort + ';');
+    w('            proxy_http_version 1.1;');
+    w('            proxy_set_header Host $host;');
+    w('            proxy_set_header X-Real-IP $remote_addr;');
+    w('            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;');
+    w('            proxy_set_header X-Forwarded-Proto $scheme;');
+    w('            proxy_buffering off;');
+    w('            add_header Cache-Control "no-store" always;');
+    w('        }');
+    w('        location / { return 404; }');
+    w('    }');
+    w('');
+  }
+
   for (const site of nginx.extraSites || []) {
     if (!site.serverName || !site.upstream) continue;
     w('    # ---- extra site: ' + site.serverName + ' -> ' + site.upstream + ' ----');
@@ -244,7 +283,8 @@ export function generateNginx(c) {
         if (subHost) routes.set(subHost, '127.0.0.1:' + ports.nginxInternalTls);
       }
     }
-    for (const site of nginx.extraSites || []) {
+    if (subHost) routes.set(subHost, '127.0.0.1:' + ports.nginxInternalTls);
+  for (const site of nginx.extraSites || []) {
       if (site.serverName) routes.set(site.serverName, '127.0.0.1:' + ports.nginxInternalTls);
     }
     const inbounds = [

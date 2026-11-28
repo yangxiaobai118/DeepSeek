@@ -172,6 +172,11 @@ export function generateNginx(c) {
     { key: 'xui', p: panels.xui },
     { key: 'sui', p: panels.sui },
   ];
+  const uiPort = (c.ui && c.ui.port) || 8788;
+  const uiOnSite = Boolean(c.ui && c.ui.domain && (nginx.sites || []).some(function (s) { return s.serverName === c.ui.domain; }));
+  let uiBasePath = String((c.ui && c.ui.basePath) || '/');
+  if (uiBasePath[0] !== '/') uiBasePath = '/' + uiBasePath;
+  if (!uiBasePath.endsWith('/')) uiBasePath += '/';
   const subHost = httpsHost(subscription && subscription.publicBase);
   const subPort = (subscription && subscription.port) || 8787;
   let subBasePath = (subscription && subscription.basePath) || '/sub/';
@@ -221,8 +226,7 @@ export function generateNginx(c) {
     // on port 80 for the certificate in server.cert.
   }
 
-  if (c.ui && c.ui.domain) {
-    const uiPort = (c.ui && c.ui.port) || 8788;
+  if (c.ui && c.ui.domain && !uiOnSite) {
     w('    # ---- u-ui panel: ' + c.ui.domain + ' -> 127.0.0.1:' + uiPort + ' ----');
     w('    server {');
     for (const line of listenLines()) w(line);
@@ -254,6 +258,22 @@ export function generateNginx(c) {
     w('        server_name ' + site.serverName + ';');
     for (const line of tlsLines()) w(line);
     for (const line of securityHeaders()) w(line);
+    if (uiOnSite && c.ui.domain === site.serverName && uiBasePath !== '/') {
+      w('        location = ' + uiBasePath.slice(0, -1) + ' { return 301 ' + uiBasePath + '; }');
+      w('        location ^~ ' + uiBasePath + ' {');
+      w('            proxy_pass http://127.0.0.1:' + uiPort + ';');
+      w('            proxy_http_version 1.1;');
+      w('            proxy_set_header Host $host;');
+      w('            proxy_set_header X-Real-IP $remote_addr;');
+      w('            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;');
+      w('            proxy_set_header X-Forwarded-Host $host;');
+      w('            proxy_set_header X-Forwarded-Proto $scheme;');
+      w('            proxy_set_header Upgrade $http_upgrade;');
+      w('            proxy_set_header Connection $connection_upgrade;');
+      w('            proxy_read_timeout 3600s;');
+      w('            proxy_buffering off;');
+      w('        }');
+    }
     for (const loc of siteLocations) {
       const up = parseUpstream(loc.upstream);
       if (!up) continue;

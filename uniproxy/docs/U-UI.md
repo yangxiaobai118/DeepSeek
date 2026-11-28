@@ -203,6 +203,8 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 保存只会写入 `config.json`。要让配置真正进入 `/etc/nginx/nginx.conf`，还需要菜单 21 apply，或在 u-ui「操作」页执行 apply；之后再用 nginx -t / reload。
 
+如果 u-ui 域名与某个站点域名相同（例如都用 `www.yangxiaobaicdn.top`），不会生成两个互相冲突的 vhost，而是在该站点 vhost 内只把访问路径（如 `/manageruui/`）反代到 8788，其他路径继续走站点自己的静态目录或反代。此时 `ui.basePath` 不能是 `/`。
+
 ## 10. 初始化向导
 
 `u-ui` 菜单的 **3. 初始化向导**（或 `uniproxy setup`）只问你真正需要决定的东西，其余全部随机：

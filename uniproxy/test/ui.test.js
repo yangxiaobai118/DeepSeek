@@ -935,6 +935,23 @@ test('nginx: fallback proxies unknown SNI probes to the blog', function () {
   assert.ok(nginx.includes('proxy_ssl_server_name on;'));
 });
 
+test('nginx: u-ui basePath on the same domain as the site', function () {
+  const cfg = JSON.parse(fs.readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'));
+  cfg.ui = cfg.ui || {};
+  cfg.ui.domain = 'www.example.com';
+  cfg.ui.basePath = '/manageruui/';
+  cfg.ui.port = 8788;
+  cfg.nginx.sites = [{ serverName: 'www.example.com', upstream: 'https://blog.example.org' }];
+  const nginx = generateNginx(cfg);
+  assert.equal((nginx.match(/server_name www\.example\.com;/g) || []).length, 1);
+  assert.ok(nginx.includes('location = /manageruui { return 301 /manageruui/; }'));
+  assert.ok(nginx.includes('location ^~ /manageruui/ {'));
+  assert.ok(nginx.includes('proxy_pass http://127.0.0.1:8788;'));
+  assert.ok(nginx.includes('set $uniproxy_site_'));
+  assert.ok(nginx.includes('proxy_pass $uniproxy_site_'));
+  assert.ok(!nginx.includes('# ---- u-ui panel: www.example.com'));
+});
+
 test('nginx: site upstream, path locations and websocket', function () {
   const cfg = JSON.parse(fs.readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'));
   cfg.nginx.sites = [{ serverName: 'www.example.com', upstream: 'https://blog.example.org', subFilter: true }];

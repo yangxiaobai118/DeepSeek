@@ -222,6 +222,10 @@ export function validateConfig(c) {
     errors.push('nginx.fallback.root must be an absolute path');
   }
   const siteNames = new Set((c.nginx.sites || []).map(function (s) { return s.serverName; }));
+  if (c.ui && c.ui.domain && siteNames.has(c.ui.domain)) {
+    const bp = String(c.ui.basePath || '/');
+    if (bp === '/' || bp === '') errors.push('ui.basePath must not be / when ui.domain equals a site serverName');
+  }
   for (const s of c.nginx.sites || []) {
     if (s.upstream) {
       try { new URL(s.upstream); } catch (e) { errors.push('nginx.sites[' + s.serverName + '].upstream is not a valid URL'); }

@@ -39,27 +39,98 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 .modal-box p{font-size:13px;line-height:1.6;color:#c9d1d9}
 .modal-box pre{background:#0b0d12;padding:10px;border-radius:6px;font-size:12px;margin:8px 0}
 .modal-box code{color:#9fb3ff}
+
+/* ---- 3x-ui style shell ---- */
+body{display:flex;min-height:100vh;background:#0d0f17;color:#e6e8f0}
+aside.sidebar{width:232px;flex:0 0 232px;background:linear-gradient(180deg,#1b1e2c,#161925);border-right:1px solid #262b3d;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;z-index:40}
+.brand{display:flex;align-items:center;gap:10px;padding:18px 18px 14px}
+.brand .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#4f7cff,#7c5cff);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff}
+.brand-text strong{display:block;font-size:15px}.brand-text span{font-size:11px;color:#8b90a5}
+nav#sideNav{display:block;flex:1;overflow:auto;padding:8px 10px}
+.nav-group{margin-bottom:14px}
+.nav-title{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#6f7690;padding:8px 12px 6px}
+nav#sideNav button{width:100%;display:flex;align-items:center;gap:10px;background:transparent;border:0;color:#aab0c6;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:13px;text-align:left}
+nav#sideNav button:hover{background:#242941;color:#fff}
+nav#sideNav button.on{background:linear-gradient(90deg,#3f6fff,#5a54d8);color:#fff;box-shadow:0 6px 18px rgba(63,111,255,.25)}
+nav#sideNav button::before{width:16px;text-align:center;opacity:.9;font-size:14px}
+nav#sideNav button[data-tab="overview"]::before{content:'◫'}
+nav#sideNav button[data-tab="inbounds"]::before{content:'⇄'}
+nav#sideNav button[data-tab="users"]::before{content:'☰'}
+nav#sideNav button[data-tab="nodes"]::before{content:'◇'}
+nav#sideNav button[data-tab="cores"]::before{content:'⚙'}
+nav#sideNav button[data-tab="stats"]::before{content:'↕'}
+nav#sideNav button[data-tab="logs"]::before{content:'≡'}
+nav#sideNav button[data-tab="topology"]::before{content:'⌘'}
+nav#sideNav button[data-tab="nginx"]::before{content:'N'}
+nav#sideNav button[data-tab="actions"]::before{content:'▶'}
+nav#sideNav button[data-tab="config"]::before{content:'{}'}
+nav#sideNav button[data-tab="settings"]::before{content:'⚙'}
+nav#sideNav button[data-tab="certs"]::before{content:'▣'}
+nav#sideNav button[data-tab="backups"]::before{content:'⤓'}
+nav#sideNav button[data-tab="accounts"]::before{content:'☺'}
+nav#sideNav button[data-tab="audit"]::before{content:'◷'}
+nav#sideNav button[data-tab="alerts"]::before{content:'!'}
+.side-foot{padding:12px 18px;border-top:1px solid #262b3d;color:#6f7690;font-size:11px}
+.shell{flex:1;min-width:0;display:flex;flex-direction:column}
+header.topbar{display:flex;align-items:center;gap:14px;padding:14px 24px;background:rgba(23,26,38,.88);border-bottom:1px solid #262b3d;position:sticky;top:0;z-index:30;backdrop-filter:blur(8px)}
+.page-head h1{margin:0;font-size:18px;color:#fff}.page-head span{font-size:12px}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+.top-right a.logout{color:#9aa1b8;text-decoration:none;font-size:13px}
+#menuToggle{display:none;background:#11141f;border:1px solid #2b3145;color:#e6e8f0;border-radius:8px;padding:7px 10px;cursor:pointer}
+main{padding:22px;display:grid;gap:16px;max-width:1500px;width:100%;margin:0 auto}
+.card{background:#171a26;border:1px solid #262b3d;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.card h2{color:#9fb3ff}
+input,textarea,select{background:#11141f;border-color:#2b3145}
+td,th{border-bottom-color:#262b3d}
+th{color:#8b90a5}
+.act{background:linear-gradient(90deg,#3f6fff,#5a54d8);border:0;color:#fff;border-radius:8px;padding:8px 14px;cursor:pointer}
+.ghost{background:#11141f;border:1px solid #2b3145;color:#c9d1d9;border-radius:8px;padding:7px 12px;cursor:pointer}
+.ghost:hover{border-color:#3f6fff;color:#fff}
+@media(max-width:900px){
+  aside.sidebar{position:fixed;left:0;top:0;transform:translateX(-100%);transition:transform .2s;height:100vh}
+  body.nav-open aside.sidebar{transform:none;box-shadow:0 0 40px rgba(0,0,0,.5)}
+  #menuToggle{display:inline-flex}
+  header.topbar{padding:12px 14px}
+  main{padding:14px}
+}
 </style></head><body>
-<header><h1>u-ui</h1>
-<nav>
-<button data-tab="overview" class="on">概览</button>
-<button data-tab="inbounds">入站</button>
-<button data-tab="users">用户</button>
-<button data-tab="cores">内核</button>
-<button data-tab="stats">流量</button>
-<button data-tab="logs">日志</button>
-<button data-tab="nginx">nginx</button>
-<button data-tab="topology">拓扑</button>
-<button data-tab="nodes">节点</button>
-<button data-tab="config">配置</button>
-<button data-tab="actions">操作</button>
-<button data-tab="settings">设置</button>
-<button data-tab="certs">证书</button>
-<button data-tab="backups">备份</button>
-<button data-tab="accounts">账号</button>
-<button data-tab="audit">审计</button>
-<button data-tab="alerts">告警</button>
-</nav><span id="roleBadge" class="muted"></span><a href="/logout">退出</a></header>
+<aside class="sidebar" id="sidebar">
+  <div class="brand"><div class="logo">U</div><div class="brand-text"><strong>u-ui</strong><span>uniproxy panel</span></div></div>
+  <nav id="sideNav">
+    <div class="nav-group"><div class="nav-title">面板</div>
+      <button data-tab="overview" class="on">概览</button>
+      <button data-tab="inbounds">入站</button>
+      <button data-tab="users">用户</button>
+      <button data-tab="nodes">节点</button>
+    </div>
+    <div class="nav-group"><div class="nav-title">系统</div>
+      <button data-tab="cores">内核</button>
+      <button data-tab="stats">流量</button>
+      <button data-tab="logs">日志</button>
+      <button data-tab="topology">拓扑</button>
+    </div>
+    <div class="nav-group"><div class="nav-title">网络</div>
+      <button data-tab="nginx">nginx</button>
+    </div>
+    <div class="nav-group"><div class="nav-title">管理</div>
+      <button data-tab="actions">操作</button>
+      <button data-tab="config">配置</button>
+      <button data-tab="settings">设置</button>
+      <button data-tab="certs">证书</button>
+      <button data-tab="backups">备份</button>
+      <button data-tab="accounts">账号</button>
+      <button data-tab="audit">审计</button>
+      <button data-tab="alerts">告警</button>
+    </div>
+  </nav>
+  <div class="side-foot">u-ui · uniproxy</div>
+</aside>
+<div class="shell">
+<header class="topbar">
+  <button id="menuToggle" title="打开/关闭菜单">☰</button>
+  <div class="page-head"><h1 id="pageTitle">概览</h1><span class="muted" id="pageHint">运行状态与端口</span></div>
+  <div class="top-right"><span id="roleBadge" class="muted"></span><a class="logout" href="/logout">退出</a></div>
+</header>
 <main>
 <section id="tab-overview" class="on">
   <div class="card"><h2>状态</h2><div id="overview"></div></div>
@@ -186,6 +257,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   <div class="muted" id="alertChannels" style="margin-top:8px"></div></div>
 </section>
 </main>
+</div>
 <script>
 const csrf = () => { const m = document.cookie.match(/(?:^|; )uui_csrf=([^;]+)/); return m ? m[1] : ''; };
 let state = null; let cores = []; let editingUser = null; let editingInbound = null; let currentInbound = null;
@@ -448,12 +520,37 @@ document.querySelectorAll('[data-action]').forEach(btn => {
     await refresh();
   };
 });
+const PAGE_META = {
+  overview: ['概览', '运行状态与端口'],
+  inbounds: ['入站', 'xray / sing-box 入口与客户端'],
+  users: ['用户', '账号、到期、流量与订阅'],
+  nodes: ['节点', '多服务器注册与下发'],
+  cores: ['内核', '服务状态与安装升级'],
+  stats: ['流量', '按用户统计与同步'],
+  logs: ['日志', '按 unit 查看 journal'],
+  topology: ['拓扑', '443 入口与监听端口'],
+  nginx: ['nginx', '站点、反代与探测回落'],
+  actions: ['操作', 'validate / doctor / plan / apply'],
+  config: ['配置', 'config.json 原始编辑'],
+  settings: ['设置', '域名、证书、端口与面板'],
+  certs: ['证书', '申请、续期与 SAN 检查'],
+  backups: ['备份', '快照、下载与恢复'],
+  accounts: ['账号', '面板管理员与只读账号'],
+  audit: ['审计', '配置与操作记录'],
+  alerts: ['告警', 'doctor 发现与通知'],
+};
+const menuToggle = document.getElementById('menuToggle');
+if (menuToggle) menuToggle.onclick = function () { document.body.classList.toggle('nav-open'); };
 document.querySelectorAll('nav button').forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll('nav button').forEach(b => b.classList.remove('on'));
     btn.classList.add('on');
     document.querySelectorAll('main section').forEach(s => s.classList.remove('on'));
     document.getElementById('tab-' + btn.dataset.tab).classList.add('on');
+    const meta = PAGE_META[btn.dataset.tab] || [btn.textContent, ''];
+    document.getElementById('pageTitle').textContent = meta[0];
+    document.getElementById('pageHint').textContent = meta[1];
+    document.body.classList.remove('nav-open');
     if (btn.dataset.tab === 'config') loadConfig();
     if (btn.dataset.tab === 'stats') loadStats();
     if (btn.dataset.tab === 'logs') loadLogs();

@@ -54,9 +54,25 @@ function latestXray() {
   return data.tag_name;
 }
 
+const XRAY_MACHINE = { x64: '64', arm64: 'arm64-v8a', ia32: '32', arm: 'arm32-v7a', ppc64: 'ppc64le', s390x: 's390x', riscv64: 'riscv64' };
+
+function downloadXrayZip(url, dest) {
+  const mirror = process.env.UNIPROXY_MIRROR || '';
+  const full = mirror + url;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const res = runLive('curl', [
+      '-fL', '-C', '-', '--connect-timeout', '15', '--max-time', '1800',
+      '--http1.1', '--progress-bar', full, '-o', dest,
+    ], 1800000);
+    if (res.ok) return true;
+    if (attempt < 5) run('sleep', ['3'], 5000);
+  }
+  return false;
+}
+
 export function installXray(log) {
   const say = typeof log === 'function' ? log : function () {};
-  say('1/3 查询 Xray 最新版本…');
+  say('1/4 查询 Xray 最新版本…');
   let version;
   try {
     version = latestXray();
@@ -64,12 +80,20 @@ export function installXray(log) {
     return { ok: false, error: e.message };
   }
   say('最新版本: ' + version);
-  say('2/3 下载并准备 Xray 官方安装脚本…');
+
+  const machine = XRAY_MACHINE[process.arch];
+  if (!machine) return { ok: false, error: 'unsupported architecture: ' + process.arch };
+
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'uniproxy-xray-'));
   try {
     const script = fetchXrayScript(tmp);
-    say('3/3 安装 ' + version + '（下载 zip 时会显示进度条）…');
-    const res = runLive('bash', [script, 'install', '--version', version], 900000, process.env);
+    const zip = path.join(tmp, 'Xray-linux-' + machine + '.zip');
+    const url = 'https://github.com/XTLS/Xray-core/releases/download/' + version + '/Xray-linux-' + machine + '.zip';
+    say('2/4 下载 ' + url + '（进度条，断线自动续传）…');
+    if (!downloadXrayZip(url, zip)) return { ok: false, error: 'Xray zip download failed after 5 attempts' };
+    say('3/4 校验并解压…');
+    say('4/4 运行官方安装脚本（使用本地 zip，不再访问 GitHub）…');
+    const res = runLive('bash', [script, 'install', '--local', zip], 900000, process.env);
     if (!res.ok) return { ok: false, error: res.error || ('install script exit ' + res.status) };
     const installed = run('xray', ['version'], 10000).output.split('\n')[0] || '';
     return { ok: true, version: installed || version };

@@ -719,6 +719,15 @@ function issueCert(ctx) {
     if (answer !== 'i' && answer !== 'r') return ctx.io.print('已取消');
 
     const cfg = normalizeCerts(c);
+    let targetConfig = c;
+    let challenge = cfg.challenge;
+    if (challenge !== 'standalone' && challenge !== 'dns-01' && !fs.existsSync(cfg.certFile)) {
+      ctx.io.print('证书文件还不存在，首次签发改用 standalone 验证（会临时停止 nginx）…');
+      targetConfig = JSON.parse(JSON.stringify(c));
+      targetConfig.certs = targetConfig.certs || {};
+      targetConfig.certs.challenge = 'standalone';
+      challenge = 'standalone';
+    }
     if (cfg.provider === 'certbot' && !cfg.command && !providerAvailable('certbot')) {
       const auto = String((await ctx.io.question('未安装 certbot，是否自动安装? [Y/n]: ')) || '').trim().toLowerCase();
       if (auto === 'n' || auto === 'no') return ctx.io.print('已取消：请先安装 certbot');
@@ -726,11 +735,11 @@ function issueCert(ctx) {
       if (!installed.ok) return ctx.io.print('失败: certbot 安装失败: ' + (installed.error || ''));
     }
 
-    if (cfg.challenge !== 'standalone' && cfg.webroot) {
+    if (challenge !== 'standalone' && cfg.webroot) {
       try { fs.mkdirSync(cfg.webroot, { recursive: true }); } catch (e) { /* existing or not permitted */ }
     }
 
-    const standalone = cfg.challenge === 'standalone';
+    const standalone = challenge === 'standalone';
     let nginxWasActive = false;
     if (standalone) {
       nginxWasActive = run('systemctl is-active nginx').output === 'active';
@@ -742,7 +751,7 @@ function issueCert(ctx) {
 
     let result;
     try {
-      result = issue(c, { mode: answer === 'r' ? 'renew' : 'issue', reload: standalone ? false : undefined });
+      result = issue(targetConfig, { mode: answer === 'r' ? 'renew' : 'issue', reload: standalone ? false : undefined });
     } finally {
       if (standalone && nginxWasActive) {
         ctx.io.print('恢复 nginx…');
@@ -750,6 +759,9 @@ function issueCert(ctx) {
       }
     }
     ctx.io.print((result.command ? '$ ' + result.command + '\n' : '') + (result.output || '') + '\n' + (result.ok ? 'OK' : ('FAILED ' + (result.error || ''))));
+    if (result.ok && standalone) {
+      ctx.io.print('提示: 证书已签发，按 21 apply 下发包含新证书的 nginx 配置。');
+    }
   };
 }
 

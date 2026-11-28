@@ -864,6 +864,8 @@ test('setup: u-ui domain without x-ui/s-ui panels', async function () {
     assert.ok(nginx.includes('server_name panel.example.net;'));
     assert.ok(nginx.includes('proxy_pass http://127.0.0.1:8788;'));
     assert.ok(nginx.includes('panel.example.net  127.0.0.1:8443;'));
+    assert.ok(nginx.includes('location ^~ /.well-known/acme-challenge/'));
+    assert.ok(nginx.includes('root /var/www/html;'));
     assert.ok(!nginx.includes('xui.example.net'));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

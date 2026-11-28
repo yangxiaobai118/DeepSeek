@@ -13,6 +13,7 @@ export function generateNginx(c) {
   const mode = nginx.mode;
   const cert = server.cert || {};
   const hasCert = Boolean(cert.certFile && cert.keyFile);
+  const certWebroot = (c.certs && c.certs.webroot) || '/var/www/html';
   const tlsListen =
     mode === 'stream' ? '127.0.0.1:' + ports.nginxInternalTls : String(ports.https);
   const http2Style = nginx.http2 || 'listen';
@@ -91,11 +92,18 @@ export function generateNginx(c) {
   w('    gzip_min_length 1024;');
   w('    gzip_types text/plain text/css application/json application/javascript application/xml image/svg+xml;');
   w('');
-  w('    # ---- plain HTTP: redirect everything to TLS ----');
+  w('    # ---- plain HTTP: ACME challenges, then redirect to TLS ----');
   w('    server {');
   w('        listen ' + ports.http + ';');
   w('        server_name _;');
-  w('        return 301 https://$host$request_uri;');
+  w('        location ^~ /.well-known/acme-challenge/ {');
+  w('            root ' + certWebroot + ';');
+  w('            default_type text/plain;');
+  w('            try_files $uri =404;');
+  w('        }');
+  w('        location / {');
+  w('            return 301 https://$host$request_uri;');
+  w('        }');
   w('    }');
   w('');
 

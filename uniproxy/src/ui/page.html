@@ -89,7 +89,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   <div class="muted" style="margin:12px 0 6px">静态站点</div><div id="nginxSites"></div>
   <div class="muted" style="margin:12px 0 6px">反向代理（extraSites）</div><div id="nginxExtra"></div>
   <div class="muted" style="margin:12px 0 6px">路径反代（同一域名下按 path 分流，支持 WebSocket）</div><div id="nginxLocations"></div>
-  <div class="row" style="margin-top:12px"><label>探测回落博客（URL 或本机绝对目录）<input id="nginxFallback" placeholder="https://blog.example.com 或 /var/www/blog"></label></div>
+  <div class="row" style="margin-top:12px"><label>探测回落站点（URL 或本机绝对目录）<input id="nginxFallback" placeholder="https://www.example.com 或 /var/www/site"></label></div>
   <pre id="nginxOut" style="margin-top:12px">(idle)</pre></div>
   <div class="card"><h2>SNI 路由</h2><div id="nginxSni"></div></div>
   <div class="card"><h2>生成的 nginx.conf</h2><pre id="nginxPreview">(loading)</pre></div>
@@ -531,7 +531,7 @@ async function saveSettings() {
 function nginxSiteRow(name, root, upstream, subFilter) {
   const value = upstream || root || '/var/www/html';
   return '<div class="row nginx-row" style="margin-bottom:6px"><label>域名<input class="n_site" value="' + h(name) + '"></label>' +
-    '<label>根目录 / 反代 URL<input class="n_root" value="' + h(value) + '" placeholder="/var/www/html 或 https://blog.example.com"></label>' +
+    '<label>根目录 / 反代 URL<input class="n_root" value="' + h(value) + '" placeholder="/var/www/html 或 https://www.example.com"></label>' +
     '<label style="flex:0 0 auto"><input type="checkbox" class="n_subfilter"' + (subFilter ? ' checked' : '') + '> 改写域名</label>' +
     '<button class="ghost danger n_del">删除</button></div>';
 }

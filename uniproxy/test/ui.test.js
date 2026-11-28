@@ -725,7 +725,7 @@ test('menu: changes the u-ui base path', async function () {
   fs.rmSync(ctx.dir, { recursive: true, force: true });
 });
 
-test('menu: sets the blog fallback URL', async function () {
+test('menu: sets the fallback site URL', async function () {
   const ctx = setup();
   const answers = ['41', 'https://blog.example.org', '0'];
   const printed = [];

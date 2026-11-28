@@ -222,7 +222,7 @@ export function buildMenu(ctx) {
     { key: '38', label: '申请 / 续期证书 (Issue / Renew Cert)', run: function () { return withCfg(issueCert(ctx)); } },
     { key: '39', label: '查看告警 (Check Alerts)', run: function () { return withCfg(showAlerts(ctx)); } },
     { key: '40', label: '节点列表 (List Nodes)', run: function () { return withCfg(showNodes(ctx)); } },
-    { key: '41', label: '设置探测回落 (Blog Fallback)', run: function () { return withCfg(changeFallback(ctx)); } },
+    { key: '41', label: '设置探测回落 (Fallback Site)', run: function () { return withCfg(changeFallback(ctx)); } },
   ];
 
   return [
@@ -502,7 +502,7 @@ function changeFallback(ctx) {
     const fb = (c.nginx && c.nginx.fallback) || {};
     const current = fb.upstream ? ('反代 ' + fb.upstream) : (fb.root ? ('静态 ' + fb.root) : '未设置');
     ctx.io.print('当前探测回落: ' + current);
-    const answer = String((await ctx.io.question('博客地址（https://... 或本机绝对目录如 /var/www/blog；回车=保留；- = 关闭）: ')) || '').trim();
+    const answer = String((await ctx.io.question('回落站点地址（https://... 或本机绝对目录如 /var/www/site；回车=保留；- = 关闭）: ')) || '').trim();
     if (!answer) return ctx.io.print('已保留当前探测回落');
     const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
     raw.nginx = raw.nginx || {};

@@ -147,7 +147,7 @@ export function generateNginx(c) {
   try { fallbackUrl = fallback.upstream ? new URL(String(fallback.upstream)) : null; } catch (e) { fallbackUrl = null; }
   const fallbackHost = fallbackUrl ? fallbackUrl.host : '';
   if (fallback.upstream || fallback.root) {
-    w('    # ---- fallback/decoy: unknown SNI or direct-IP probes -> blog ----');
+    w('    # ---- fallback site: unknown SNI or direct-IP probes ----');
     w('    server {');
     for (const line of listenLines(true)) w(line);
     w('        server_name _;');

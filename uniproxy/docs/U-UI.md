@@ -36,7 +36,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 流量 | 从 Xray stats API 与 sing-box（Clash API）采集按用户的上行/下行，支持一键同步到 `users[].usage`（订阅的 `subscription-userinfo` 随之变化）。生成配置时会**自动开启**统计端点：Xray `stats` + `api`（`xray.apiPort`，默认 10085）、sing-box `experimental.clash_api`（`singbox.clashPort`，默认 9090）；两者都进端口表，可用 `xray.stats: false` / `singbox.clashApi: false` 关闭 |
 | 日志 | `journalctl` 查看 xray / sing-box / nginx / uniproxy-sub，可选行数 |
 | 设置 | 公网 IP、邮箱、网站域名、证书/私钥路径、80/443/内部 TLS 端口、nginx 模式、两个面板的域名与端口 |
-| nginx | 模式切换（stream/http）；站点可填本机根目录或反代 URL（可选改写页面域名）；按域名/路径的 locations 反代（精确匹配、WebSocket）；探测流量回落博客；extraSites；SNI 路由预览、生成配置预览、`nginx -t` 与 reload |
+| nginx | 模式切换（stream/http）；站点可填本机根目录或反代 URL（可选改写页面域名）；按域名/路径的 locations 反代（精确匹配、WebSocket）；探测流量回落站点；extraSites；SNI 路由预览、生成配置预览、`nginx -t` 与 reload |
 | 拓扑 | 从 443 入口按 SNI 到各后端的流向，以及全部监听端口 |
 | 节点 | 注册其他服务器（ssh/scp，无需 agent），带 `group` 分组；支持全部探测、按分组批量下发；下发前先比较远端 `sha256sum`，一致则跳过（增量同步） |
 | 审计 | 每次配置写入、apply、内核操作、nginx 测试/重载的时间与动作 |
@@ -154,7 +154,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 服务 | **安装/卸载 systemd 单元**（`uniproxy-ui` + `uniproxy-sub`）、启动/停止/重启、状态（所有 unit 的完整 systemctl status）、日志（可选 u-ui/订阅/xray/sing-box/nginx）、开机自启 |
 | 配置 | validate、doctor、apply、立即备份、恢复备份 |
 | 内核 | 重启 / 停止 / 启动 xray、sing-box、nginx；**安装/升级/卸载 xray、sing-box** |
-| 其他 | 证书状态、申请/续期、告警、节点列表、探测流量回落博客 |
+| 其他 | 证书状态、申请/续期、告警、节点列表、探测流量回落站点 |
 
 菜单底部实时显示面板与三个内核的状态，所有动作复用同一套 CLI 函数，不会和网页面板行为分叉。
 
@@ -162,22 +162,22 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 菜单申请/续期证书时，如果系统没有 `certbot`，会先询问并自动用 apt/dnf/yum/apk/zypper 安装，再执行申请；`standalone` 验证会临时停止 nginx、申请完成后自动启动，`webroot` 验证保持 nginx 运行。
 
-## 9.2 探测流量回落到博客
+## 9.2 探测流量回落到站点
 
-未知 SNI、直接访问 IP:443 的探测流量会进入 nginx 的默认 TLS server。想让它显示博客而不是 u-ui 面板，配置 `nginx.fallback`：
+未知 SNI、直接访问 IP:443 的探测流量会进入 nginx 的默认 TLS server。想让它显示一个正常站点而不是 u-ui 面板，配置 `nginx.fallback`：
 
-外站博客：
+外站站点：
 
 ```json
 "nginx": {
-  "fallback": { "upstream": "https://blog.example.com" }
+  "fallback": { "upstream": "https://www.example.com" }
 }
 ```
 
-本机静态博客：
+本机静态站点：
 
 ```json
-"nginx": { "fallback": { "root": "/var/www/blog" } }
+"nginx": { "fallback": { "root": "/var/www/site" } }
 ```
 
 本机其他端口：
@@ -186,7 +186,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 "nginx": { "fallback": { "upstream": "http://127.0.0.1:8080" } }
 ```
 
-也可以不用手改配置：菜单 `41` 直接输入博客 URL 或本机绝对目录，`-` 关闭，回车保留；保存后菜单 19 validate、21 apply。已知域名（站点、u-ui、订阅）仍按各自 vhost 处理；只有未知域名/无 SNI/直接 IP 会落到 fallback。HTTP 80 仍先 301 到 HTTPS。
+也可以不用手改配置：菜单 `41` 直接输入站点 URL 或本机绝对目录，`-` 关闭，回车保留；保存后菜单 19 validate、21 apply。已知域名（站点、u-ui、订阅）仍按各自 vhost 处理；只有未知域名/无 SNI/直接 IP 会落到 fallback。HTTP 80 仍先 301 到 HTTPS。
 
 ## 9.3 从旧 nginx 配置迁移
 
@@ -194,12 +194,12 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 
 | 旧配置 | u-ui 设置 |
 |---|---|
-| `location / { proxy_pass https://blog...; }` | 站点行填 `https://blog...`（根目录/反代 URL），勾选“改写域名” |
+| `location / { proxy_pass https://origin...; }` | 站点行填 `https://origin...`（根目录/反代 URL），勾选“改写域名” |
 | `location = /xray { ... Upgrade ... }` | 路径反代：域名、`/xray`、后端 `127.0.0.1:55555`，勾选“精确”和“WebSocket” |
 | `location ^~ /managerxui/` | 路径反代：路径 `/managerxui/`，后端 `127.0.0.1:30580` |
 | `location ^~ /managersui/` | 路径反代：路径 `/managersui/`，后端 `127.0.0.1:2095` |
 | 整个 server 的 `sub_filter` | 站点行勾选“改写域名” |
-| 未匹配域名回落博客 | “探测回落博客”输入 `https://blog...`，或菜单 41 |
+| 未匹配域名回落站点 | “探测回落站点”输入 `https://site...`，或菜单 41 |
 
 保存只会写入 `config.json`。要让配置真正进入 `/etc/nginx/nginx.conf`，还需要菜单 21 apply，或在 u-ui「操作」页执行 apply；之后再用 nginx -t / reload。
 

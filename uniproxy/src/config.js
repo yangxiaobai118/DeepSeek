@@ -205,7 +205,6 @@ export function validateConfig(c) {
   for (const key of PANELS) {
     const p = c.panels[key];
     if (p && p.enabled) {
-      if (!p.domain) errors.push(`panels.${key}.domain is required when enabled`);
       if (!Number.isInteger(Number(p.port))) errors.push(`panels.${key}.port must be an integer`);
     }
     if (p && p.sub && p.sub.enabled) {

@@ -19,18 +19,18 @@
   "panels": {
     "xui": {
       "enabled": true,
-      "domain": "xui.example.com",
+      "domain": "",
       "listen": "127.0.0.1",
       "port": 54321
     },
     "sui": {
       "enabled": true,
-      "domain": "sui.example.com",
+      "domain": "",
       "listen": "127.0.0.1",
       "port": 2095,
       "sub": {
         "enabled": true,
-        "domain": "sub.example.com",
+        "domain": "",
         "port": 2096,
         "path": "/sub/"
       }

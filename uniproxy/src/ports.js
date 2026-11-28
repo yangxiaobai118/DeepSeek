@@ -18,12 +18,12 @@ export function collectPorts(c) {
   add(c.ports.https, 'nginx:https');
   if (c.nginx.mode === 'stream') add(c.ports.nginxInternalTls, 'nginx:internal-tls', { listen: '127.0.0.1' });
 
-  if (c.panels.xui && c.panels.xui.enabled) {
+  if (c.panels.xui && c.panels.xui.enabled && c.panels.xui.domain) {
     add(c.panels.xui.port, 'panel:x-ui', { listen: c.panels.xui.listen });
   }
-  if (c.panels.sui && c.panels.sui.enabled) {
+  if (c.panels.sui && c.panels.sui.enabled && c.panels.sui.domain) {
     add(c.panels.sui.port, 'panel:s-ui', { listen: c.panels.sui.listen });
-    if (c.panels.sui.sub && c.panels.sui.sub.enabled) {
+    if (c.panels.sui.sub && c.panels.sui.sub.enabled && c.panels.sui.sub.domain) {
       add(c.panels.sui.sub.port, 'panel:s-ui-sub', { listen: c.panels.sui.listen });
     }
   }
@@ -82,7 +82,7 @@ export function analyzePorts(c) {
 
   if (c.panels.sui && c.panels.sui.enabled && c.panels.sui.sub && c.panels.sui.sub.enabled) {
     const sub = c.panels.sui.sub;
-    if (sub.domain && sub.domain === c.panels.sui.domain) {
+    if (sub.domain && c.panels.sui.domain && sub.domain === c.panels.sui.domain) {
       warnings.push('panels.sui.sub.domain equals panels.sui.domain; s-ui subscriptions will shadow the panel path');
     }
   }

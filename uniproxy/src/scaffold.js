@@ -19,13 +19,13 @@ export function scaffold() {
     },
     ports: { http: 80, https: 443, nginxInternalTls: 8443 },
     panels: {
-      xui: { enabled: true, domain: 'xui.example.com', listen: '127.0.0.1', port: 54321 },
+      xui: { enabled: true, domain: '', listen: '127.0.0.1', port: 54321 },
       sui: {
         enabled: true,
-        domain: 'sui.example.com',
+        domain: '',
         listen: '127.0.0.1',
         port: 2095,
-        sub: { enabled: true, domain: 'sub.example.com', port: 2096, path: '/sub/' },
+        sub: { enabled: true, domain: '', port: 2096, path: '/sub/' },
       },
     },
     nginx: {

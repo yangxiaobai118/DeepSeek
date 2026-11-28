@@ -468,7 +468,7 @@ function showSettings(ctx) {
       c.panels.xui && c.panels.xui.enabled !== false ? c.panels.xui.domain : '',
       c.panels.sui && c.panels.sui.enabled !== false ? c.panels.sui.domain : '',
       c.panels.sui && c.panels.sui.enabled !== false && c.panels.sui.sub && c.panels.sui.sub.enabled !== false ? c.panels.sui.sub.domain : '',
-    ].filter(Boolean).join(', ') || '(未启用)';
+    ].filter(Boolean).join(', ') || '(未设置)';
     const apply = c.apply || {};
     const certLine = cert.ok
       ? (cert.file + '（剩余 ' + cert.daysLeft + ' 天；SAN: ' + (cert.sans || '-') + '）')

@@ -35,7 +35,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 内核 | xray / sing-box / nginx 的运行状态（systemctl），start / stop / restart，以及「是否让 uniproxy 生成该内核配置」的开关 |
 | 流量 | 从 Xray stats API 与 sing-box（Clash API）采集按用户的上行/下行，支持一键同步到 `users[].usage`（订阅的 `subscription-userinfo` 随之变化）。生成配置时会**自动开启**统计端点：Xray `stats` + `api`（`xray.apiPort`，默认 10085）、sing-box `experimental.clash_api`（`singbox.clashPort`，默认 9090）；两者都进端口表，可用 `xray.stats: false` / `singbox.clashApi: false` 关闭 |
 | 日志 | `journalctl` 查看 xray / sing-box / nginx / uniproxy-sub，可选行数 |
-| 设置 | 公网 IP、邮箱、网站域名、证书/私钥路径、80/443/内部 TLS 端口、nginx 模式、两个面板的域名与端口 |
+| 设置 | 公网 IP、邮箱、网站域名、证书/私钥路径、80/443/内部 TLS 端口、nginx 模式、x-ui/s-ui 域名与端口（默认启用、域名为空，填了才生成反代） |
 | nginx | 模式切换（stream/http）；站点可填本机根目录或反代 URL（可选改写页面域名）；按域名/路径的 locations 反代（精确匹配、WebSocket）；探测流量回落站点；extraSites；SNI 路由预览、生成配置预览、`nginx -t` 与 reload |
 | 拓扑 | 从 443 入口按 SNI 到各后端的流向，以及全部监听端口 |
 | 节点 | 注册其他服务器（ssh/scp，无需 agent），带 `group` 分组；支持全部探测、按分组批量下发；下发前先比较远端 `sha256sum`，一致则跳过（增量同步） |
@@ -47,6 +47,8 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 | 用户 | 表格（状态/到期/配额/入站/订阅 token）+ 新增/编辑/删除 |
 | 配置 | `config.json` 原始文本编辑器，保存前跑 `validate`，写入前自动备份 |
 | 操作 | `validate` / `doctor` / `plan`（只预览）/ `apply`（需输入确认词） |
+
+主要页面标题旁都有一个 **`?`** 帮助按钮，点击弹出该功能的用法与示例（入站、用户、内核、设置、nginx 站点）。
 
 ## 4. API
 

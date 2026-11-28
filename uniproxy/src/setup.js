@@ -111,15 +111,19 @@ export async function runSetup(opts = {}) {
   const domainChanged = domain !== currentDomain;
   if (domain && domainChanged) applyDomain(cfg, domain);
 
-  // 2. u-ui hostname; x-ui / s-ui panel proxying is no longer configured here
+  // 2. u-ui hostname; x-ui / s-ui proxying stays enabled but with empty domains by default
   if (domain) {
     cfg.panels = cfg.panels || {};
     cfg.panels.xui = cfg.panels.xui || {};
     cfg.panels.sui = cfg.panels.sui || {};
     cfg.panels.sui.sub = cfg.panels.sui.sub || {};
-    cfg.panels.xui.enabled = false;
-    cfg.panels.sui.enabled = false;
-    cfg.panels.sui.sub.enabled = false;
+    cfg.panels.xui.enabled = true;
+    cfg.panels.sui.enabled = true;
+    cfg.panels.sui.sub.enabled = true;
+    for (const p of [cfg.panels.xui, cfg.panels.sui]) {
+      if (p.domain && String(p.domain).endsWith('.example.com')) p.domain = '';
+    }
+    if (cfg.panels.sui.sub.domain && String(cfg.panels.sui.sub.domain).endsWith('.example.com')) cfg.panels.sui.sub.domain = '';
 
     let tagRenamed = false;
     let sniRenamed = false;
@@ -185,7 +189,7 @@ export async function runSetup(opts = {}) {
       cfg.certs.domains = Array.from(new Set(hosts));
     }
 
-    if (!yes) io.print('已关闭 x-ui / s-ui 面板反代：只用 u-ui');
+    if (!yes) io.print('x-ui / s-ui 反代：已启用；域名为空时不生成反代（已安装 3x-ui/s-ui 可在设置页填写域名与端口）');
   }
 
   // 3. public IP: auto-detected, overridable

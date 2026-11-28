@@ -857,8 +857,8 @@ test('setup: u-ui only, certificates cover the u-ui host', async function () {
   try {
     await runSetup({ configPath: cfgPath, yes: true, detectIp: false, flags: { domain: 'example.com' }, io: { print: function () {}, question: async function () { return ''; } } });
     const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-    assert.equal(cfg.panels.xui.enabled, false);
-    assert.equal(cfg.panels.sui.enabled, false);
+    assert.equal(cfg.panels.xui.enabled, true);
+    assert.equal(cfg.panels.sui.enabled, true);
     for (const host of ['example.com', 'singbox.example.com']) {
       assert.ok(cfg.certs.domains.includes(host), host);
     }
@@ -902,8 +902,8 @@ test('setup: u-ui domain without x-ui/s-ui panels', async function () {
     });
     const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
     assert.equal(cfg.ui.domain, 'panel.example.net');
-    assert.equal(cfg.panels.xui.enabled, false);
-    assert.equal(cfg.panels.sui.enabled, false);
+    assert.equal(cfg.panels.xui.enabled, true);
+    assert.equal(cfg.panels.sui.enabled, true);
     assert.ok(cfg.certs.domains.includes('example.net'));
     assert.ok(cfg.certs.domains.includes('panel.example.net'));
     assert.ok(cfg.certs.domains.includes('singbox.example.net'));
@@ -1115,8 +1115,8 @@ test('setup: asks for the domain, randomises the rest', async function () {
 
   const cfg = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
   assert.equal(cfg.server.domains.web, 'example.org');
-  assert.equal(cfg.panels.xui.enabled, false);
-  assert.equal(cfg.panels.sui.enabled, false);
+  assert.equal(cfg.panels.xui.enabled, true);
+  assert.equal(cfg.panels.sui.enabled, true);
   assert.equal(cfg.ui.domain, 'uui.example.org');
   assert.ok(cfg.certs.domains.includes('uui.example.org'));
   assert.ok(!cfg.certs.domains.includes('xui.example.org'));

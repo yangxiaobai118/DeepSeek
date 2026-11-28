@@ -29,6 +29,16 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
 .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;border:1px solid #2a2f3a}
 .pill.on{color:#3ddc84;border-color:#1f6f43}.pill.off{color:#ff6b6b;border-color:#7f1d1d}
 .ro .act{opacity:.45;pointer-events:none}
+.help{background:#0b0d12;border:1px solid #2a2f3a;color:#9fb3ff;border-radius:50%;width:19px;height:19px;line-height:17px;padding:0;cursor:pointer;font-size:12px;vertical-align:middle;margin-left:6px}
+.help:hover{color:#fff;border-color:#3b6cf6}
+.modal-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:50;align-items:flex-start;justify-content:center;padding:40px 20px}
+.modal-backdrop.on{display:flex}
+.modal-box{background:#171a21;border:1px solid #2a2f3a;border-radius:10px;max-width:720px;width:100%;max-height:80vh;overflow:auto;padding:18px}
+.modal-box h3{margin:0 0 12px;color:#9fb3ff;font-size:15px}
+.modal-box .modal-close{float:right;background:#0b0d12;border:1px solid #2a2f3a;color:#c9d1d9;border-radius:6px;cursor:pointer;padding:4px 10px}
+.modal-box p{font-size:13px;line-height:1.6;color:#c9d1d9}
+.modal-box pre{background:#0b0d12;padding:10px;border-radius:6px;font-size:12px;margin:8px 0}
+.modal-box code{color:#9fb3ff}
 </style></head><body>
 <header><h1>u-ui</h1>
 <nav>
@@ -56,16 +66,16 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   <div class="card"><h2>端口</h2><div id="ports"></div></div>
 </section>
 <section id="tab-inbounds">
-  <div class="card"><h2>入站（同时管理 xray 与 sing-box）</h2><div id="inboundTable"></div></div>
+  <div class="card"><h2>入站（同时管理 xray 与 sing-box）<button class="help" data-help="inbounds" title="帮助">?</button></h2><div id="inboundTable"></div></div>
   <div class="card"><h2 id="inboundFormTitle">新增入站</h2><div id="inboundForm"></div></div>
   <div class="card"><h2 id="clientsTitle">客户端</h2><div id="clientsPanel"><div class="muted">在上表点「客户端」查看或添加</div></div></div>
 </section>
 <section id="tab-users">
-  <div class="card"><h2>用户注册表</h2><div id="userTable"></div></div>
+  <div class="card"><h2>用户注册表<button class="help" data-help="users" title="帮助">?</button></h2><div id="userTable"></div></div>
   <div class="card"><h2 id="userFormTitle">新增用户</h2><div id="userForm"></div></div>
 </section>
 <section id="tab-cores">
-  <div class="card"><h2>内核与服务 <button class="ghost" id="refreshCores" style="float:right" title="重新读取运行状态">刷新</button></h2><div id="coreTable"></div>
+  <div class="card"><h2>内核与服务<button class="help" data-help="cores" title="帮助">?</button> <button class="ghost" id="refreshCores" style="float:right" title="重新读取运行状态">刷新</button></h2><div id="coreTable"></div>
   <div class="muted" style="margin-top:10px">开关控制的是 uniproxy 是否生成该内核的配置；启动/停止/重启走 systemctl。</div></div>
 </section>
 <section id="tab-stats">
@@ -81,7 +91,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   <pre id="logOut" style="margin-top:12px">(idle)</pre></div>
 </section>
 <section id="tab-nginx">
-  <div class="card"><h2>nginx 站点</h2>
+  <div class="card"><h2>nginx 站点<button class="help" data-help="nginx" title="帮助">?</button></h2>
   <div class="row"><label>模式<select id="nginxMode"><option value="stream">stream（443 按 SNI 分流）</option><option value="http">http（nginx 直接占 443）</option></select></label>
   <button class="ghost" id="addSite">添加站点</button><button class="ghost" id="addExtra">添加反代</button><button class="ghost" id="addLocation">添加路径反代</button>
   <button class="act" id="saveNginx">保存 nginx 配置</button>
@@ -129,7 +139,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   </div><pre id="actionOut" style="margin-top:12px">(idle)</pre></div>
 </section>
 <section id="tab-settings">
-  <div class="card"><h2>设置（写入 config.json，保存前校验）</h2><div id="settingsForm"><div class="muted">载入中…</div></div></div>
+  <div class="card"><h2>设置（写入 config.json，保存前校验）<button class="help" data-help="settings" title="帮助">?</button></h2><div id="settingsForm"><div class="muted">载入中…</div></div></div>
 </section>
 <section id="tab-certs">
   <div class="card"><h2>当前证书</h2><div id="certStatus"></div></div>
@@ -201,6 +211,26 @@ async function refresh() {
 }
 function h(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function gb(n) { return n ? (n / 1073741824).toFixed(1) + ' GB' : '-'; }
+const HELP = {
+  inbounds: { title: '入站', html: '<p>入站是客户端要连接的入口。常用示例：</p><pre>VLESS + Reality + TCP + Vision（最推荐）\nVLESS + TLS + WebSocket + 路径 /ws\nTrojan + TLS</pre><p>字段说明：<code>tag</code> 是唯一名称；<code>listen</code> 留空或 127.0.0.1 让 nginx 转发；<code>port</code> 是内核本机监听端口；<code>sni</code> 是 TLS/Reality 的伪装域名；客户端在「客户端」页添加。</p>' },
+  users: { title: '用户注册表', html: '<p>用户是订阅的主体：一个用户可绑定多个入站，共享一个订阅链接和流量/到期。</p><pre>name: bob\ninbounds: [xray-vless-reality, singbox-vless-ws-tls]\nexpireAt: 2027-06-01T00:00:00Z</pre><p>保存后客户端链接会出现在「订阅」输出中；到期/超流量会自动拒绝。</p>' },
+  cores: { title: '内核与服务', html: '<p><code>start / stop / restart</code> 直接操作 systemd 服务，立即生效但重启后可能恢复。</p><p><code>启用/停用配置</code> 控制 uniproxy 是否生成该内核的配置；停用后不会下发，服务即使启动也没有有效配置。</p><p>例：xray 配置报错时，先点 <code>restart</code> 看状态，再回到「操作」页 apply。</p>' },
+  settings: { title: '设置', html: '<p>这里写入 config.json，保存只校验不立即 apply。常见字段：</p><pre>网站域名 = nginx 站点域名（如 www.example.com）\n证书/私钥 = TLS 证书路径\nnginx 内部 TLS = 只监听 127.0.0.1</pre><p>x-ui / s-ui 域名和端口是给已安装 3x-ui / s-ui 的反代用的；<b>不用就留空</b>，留空不会生成任何反代，也不占端口。</p>' },
+  nginx: { title: 'nginx 站点', html: '<p><b>站点</b>：一个域名填根目录（静态网站）或反代 URL（博客）。<b>改写域名</b>：把上游页面里的域名替换成访问域名。</p><p><b>路径反代</b>：同一域名按路径分流，例：<code>/xray</code> → 127.0.0.1:55555（WebSocket 勾选），<code>/managerxui/</code> → 127.0.0.1:30580。</p><p><b>探测回落</b>：未知域名/直接 IP 的流量落到这个站点。</p><p>保存只写 config.json；点「操作」页 apply 才会写入 /etc/nginx/nginx.conf。页面的 nginx -t 测试的是预览配置。</p>' },
+};
+function showHelpById(key) {
+  const item = HELP[key];
+  if (!item) return;
+  const m = document.getElementById('helpModal');
+  m.querySelector('.modal-title').textContent = item.title;
+  m.querySelector('.modal-body').innerHTML = item.html;
+  m.classList.add('on');
+}
+function closeHelp() { document.getElementById('helpModal').classList.remove('on'); }
+document.addEventListener('click', function (e) {
+  const b = e.target.closest('[data-help]');
+  if (b) showHelpById(b.getAttribute('data-help'));
+});
 function renderOverview() {
   document.getElementById('overview').innerHTML =
     '<div class="muted">配置：' + h(state.configPath) + '　模式：' + h(state.nginxMode) + '　公网 IP：' + h(state.publicIp || '未设置') + '</div>' +
@@ -905,4 +935,5 @@ document.getElementById('addAccount').onclick = async function () {
 };
 
 refresh();
-</script></body></html>
+</script><div class="modal-backdrop" id="helpModal" onclick="if(event.target===this)closeHelp()"><div class="modal-box"><button class="modal-close" onclick="closeHelp()">关闭</button><h3 class="modal-title"></h3><div class="modal-body"></div></div></div>
+</body></html>

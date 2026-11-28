@@ -33,6 +33,11 @@ function parseUpstream(value) {
   }
 }
 
+function isLocalHostname(hostname) {
+  const host = String(hostname || '');
+  return host === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.indexOf(':') >= 0;
+}
+
 function httpsHost(value) {
   try {
     const u = new URL(String(value || ''));
@@ -57,6 +62,20 @@ export function generateNginx(c) {
 
   const out = [];
   const w = (s = '') => out.push(s);
+  let proxySeq = 0;
+  const nextProxyVar = function (prefix) {
+    proxySeq += 1;
+    return '$uniproxy_' + prefix + '_' + proxySeq;
+  };
+  const externalUpstream = []
+    .concat(nginx.sites || [])
+    .concat(nginx.locations || [])
+    .concat(nginx.extraSites || [])
+    .concat(nginx.fallback && nginx.fallback.upstream ? [nginx.fallback] : [])
+    .some(function (entry) {
+      const up = parseUpstream(entry.upstream);
+      return Boolean(up && !isLocalHostname(up.hostname));
+    });
 
   const tlsLines = () => {
     if (!hasCert) return [];
@@ -130,6 +149,10 @@ export function generateNginx(c) {
   w('    gzip_min_length 1024;');
   w('    gzip_types text/plain text/css application/json application/javascript application/xml image/svg+xml;');
   w('');
+  if (externalUpstream) {
+    w('    resolver ' + systemResolvers() + ' ipv6=off valid=60s;');
+    w('');
+  }
   w('    # ---- plain HTTP: ACME challenges, then redirect to TLS ----');
   w('    server {');
   w('        listen ' + ports.http + ';');
@@ -234,8 +257,10 @@ export function generateNginx(c) {
     for (const loc of siteLocations) {
       const up = parseUpstream(loc.upstream);
       if (!up) continue;
+      const locTarget = isLocalHostname(up.hostname) ? up.url : nextProxyVar('loc');
       w('        location ' + (loc.exact ? '= ' : '^~ ') + loc.path + ' {');
-      w('            proxy_pass ' + up.url + ';');
+      if (locTarget !== up.url) w('            set ' + locTarget + ' "' + up.url + '";');
+      w('            proxy_pass ' + locTarget + ';');
       w('            proxy_http_version 1.1;');
       w('            proxy_set_header Host $host;');
       w('            proxy_set_header X-Real-IP $remote_addr;');
@@ -258,8 +283,10 @@ export function generateNginx(c) {
     if (siteUpstream) {
       if (site.subFilter) w('        sub_filter_once off;');
       if (site.subFilter) w('        sub_filter "' + siteUpstream.host + '" $host;');
+      const siteTarget = isLocalHostname(siteUpstream.hostname) ? siteUpstream.url : nextProxyVar('site');
       w('        location / {');
-      w('            proxy_pass ' + siteUpstream.url + ';');
+      if (siteTarget !== siteUpstream.url) w('            set ' + siteTarget + ' "' + siteUpstream.url + '";');
+      w('            proxy_pass ' + siteTarget + ';');
       w('            proxy_http_version 1.1;');
       w('            proxy_set_header Host ' + siteUpstream.host + ';');
       w('            proxy_set_header X-Real-IP $remote_addr;');
@@ -357,17 +384,25 @@ export function generateNginx(c) {
 
   for (const site of nginx.extraSites || []) {
     if (!site.serverName || !site.upstream) continue;
-    w('    # ---- extra site: ' + site.serverName + ' -> ' + site.upstream + ' ----');
+    const extraUpstream = parseUpstream(site.upstream);
+    if (!extraUpstream) continue;
+    const extraTarget = isLocalHostname(extraUpstream.hostname) ? extraUpstream.url : nextProxyVar('extra');
+    w('    # ---- extra site: ' + site.serverName + ' -> ' + extraUpstream.url + ' ----');
     w('    server {');
     for (const line of listenLines()) w(line);
     w('        server_name ' + site.serverName + ';');
     for (const line of tlsLines()) w(line);
     for (const line of securityHeaders()) w(line);
     w('        location / {');
-    w('            proxy_pass http://' + site.upstream + ';');
+    if (extraTarget !== extraUpstream.url) w('            set ' + extraTarget + ' "' + extraUpstream.url + '";');
+    w('            proxy_pass ' + extraTarget + ';');
     w('            proxy_set_header Host $host;');
     w('            proxy_set_header X-Real-IP $remote_addr;');
     w('            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;');
+    if (extraUpstream.https) {
+      w('            proxy_ssl_server_name on;');
+      w('            proxy_ssl_name ' + extraUpstream.hostname + ';');
+    }
     w('            proxy_set_header Upgrade $http_upgrade;');
     w('            proxy_set_header Connection $connection_upgrade;');
     w('        }');

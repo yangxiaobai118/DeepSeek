@@ -947,7 +947,8 @@ test('nginx: site upstream, path locations and websocket', function () {
   assert.ok(nginx.includes('location ^~ /managerxui/'));
   assert.ok(nginx.includes('proxy_pass http://127.0.0.1:55555;'));
   assert.ok(nginx.includes('proxy_set_header Upgrade $http_upgrade;'));
-  assert.ok(nginx.includes('proxy_pass https://blog.example.org;'));
+  assert.match(nginx, /set \$uniproxy_site_\d+ "https:\/\/blog\.example\.org";/);
+  assert.match(nginx, /proxy_pass \$uniproxy_site_\d+;/);
   assert.ok(nginx.includes('proxy_set_header Host blog.example.org;'));
   assert.ok(nginx.includes('sub_filter "blog.example.org" $host;'));
   assert.ok(nginx.includes('location / {'));

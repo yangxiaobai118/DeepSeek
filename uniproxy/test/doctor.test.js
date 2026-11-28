@@ -18,7 +18,7 @@ test('doctor is clean for a complete config', () => {
 
 test('doctor catches duplicate SNI in stream mode', () => {
   const c = makeConfig();
-  c.xray.inbounds[0].sni = 'sb.example.net';
+  c.xray.inbounds[0].sni = 'singbox.example.net';
   const report = runDoctor(c, 'config.json', { probe: false });
   assert.ok(report.results.some((r) => r.level === 'fail' && r.title === 'stream sni'));
 });

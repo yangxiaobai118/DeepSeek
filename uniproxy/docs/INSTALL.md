@@ -585,7 +585,7 @@ Edit `/etc/uniproxy/config.json`:
 | `xray.inbounds[0].sni` | a real site, e.g. `www.bing.com` | must equal `reality.serverNames` |
 | `xray.inbounds[0].port` | `10443` (keep 127.0.0.1) | reached through nginx :443 |
 | `xray.inbounds[0].clients` | your UUID/name pairs | or use the top-level `users` |
-| `singbox.inbounds[0].sni` | `sb.example.com` (covered by cert) | or another covered name |
+| `singbox.inbounds[0].sni` | `singbox.example.com` (covered by cert) | or another covered name |
 | `subscription.publicBase` | `https://sub.example.com` | subscription URL prefix |
 | `subscription.routing` | optional | direct/block/bypass-LAN rules |
 | `apply.xrayConfig` | `/usr/local/etc/xray/config.json` | default is fine |
@@ -599,7 +599,7 @@ Edit `/etc/uniproxy/config.json`:
 "users": [
   {
     "name": "alice",
-    "inbounds": ["xray-vless-reality", "sb-vless-ws-tls"],
+    "inbounds": ["xray-vless-reality", "singbox-vless-ws-tls"],
     "expireAt": "2027-01-01T00:00:00Z",
     "dataLimitBytes": 107374182400,
     "usage": { "upload": 0, "download": 0 }
@@ -651,7 +651,7 @@ PORT   COMPONENT                LISTEN
 2095   panel:s-ui               127.0.0.1
 2096   panel:s-ui-sub           127.0.0.1
 10443  xray:xray-vless-reality  127.0.0.1
-2052   singbox:sb-vless-ws-tls  127.0.0.1
+2052   singbox:singbox-vless-ws-tls  127.0.0.1
 
 
 OK - 0 errors, 0 warning(s)
@@ -970,7 +970,7 @@ Then measure latency and browse to confirm the proxy works.
 Edit the `users` array in `/etc/uniproxy/config.json`:
 
 ```json
-{ "name": "bob", "inbounds": ["xray-vless-reality", "sb-vless-ws-tls"], "expireAt": "2027-06-01T00:00:00Z" }
+{ "name": "bob", "inbounds": ["xray-vless-reality", "singbox-vless-ws-tls"], "expireAt": "2027-06-01T00:00:00Z" }
 ```
 
 > **What to replace**: `bob` with the new user name, `inbounds` with the inbound `tag`s to provision, and adjust `expireAt`. Append this object to the `users` array in `config.json`.

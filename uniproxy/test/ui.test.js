@@ -86,24 +86,24 @@ test('u-ui: inbound CRUD across both cores and core control', async function () 
 
     const created = await fetch(base + '/api/inbounds', {
       method: 'POST', headers: headers,
-      body: JSON.stringify({ kind: 'singbox', tag: 'sb-test', protocol: 'vless', listen: '127.0.0.1', port: 2053, network: 'ws', security: 'tls', sni: 'sb.example.com', wsPath: '/sb' }),
+      body: JSON.stringify({ kind: 'singbox', tag: 'singbox-test', protocol: 'vless', listen: '127.0.0.1', port: 2053, network: 'ws', security: 'tls', sni: 'singbox.example.com', wsPath: '/singbox' }),
     });
     assert.equal(created.status, 200);
     let raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
-    assert.ok(raw.singbox.inbounds.some(function (ib) { return ib.tag === 'sb-test'; }));
+    assert.ok(raw.singbox.inbounds.some(function (ib) { return ib.tag === 'singbox-test'; }));
 
     const listed = await fetch(base + '/api/state', { headers: { cookie: auth.cookie } });
     const listedJson = await listed.json();
-    const found = listedJson.inbounds.find(function (ib) { return ib.tag === 'sb-test'; });
+    const found = listedJson.inbounds.find(function (ib) { return ib.tag === 'singbox-test'; });
     assert.equal(found.kind, 'singbox');
     assert.equal(found.network, 'ws');
 
-    const updated = await fetch(base + '/api/inbounds/singbox/sb-test', { method: 'PUT', headers: headers, body: JSON.stringify({ port: 2054 }) });
+    const updated = await fetch(base + '/api/inbounds/singbox/singbox-test', { method: 'PUT', headers: headers, body: JSON.stringify({ port: 2054 }) });
     assert.equal(updated.status, 200);
     raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
-    assert.equal(raw.singbox.inbounds.find(function (ib) { return ib.tag === 'sb-test'; }).port, 2054);
+    assert.equal(raw.singbox.inbounds.find(function (ib) { return ib.tag === 'singbox-test'; }).port, 2054);
 
-    const dup = await fetch(base + '/api/inbounds', { method: 'POST', headers: headers, body: JSON.stringify({ kind: 'singbox', tag: 'sb-test', port: 2055 }) });
+    const dup = await fetch(base + '/api/inbounds', { method: 'POST', headers: headers, body: JSON.stringify({ kind: 'singbox', tag: 'singbox-test', port: 2055 }) });
     assert.equal(dup.status, 409);
 
     const badPort = await fetch(base + '/api/inbounds', { method: 'POST', headers: headers, body: JSON.stringify({ kind: 'xray', tag: 'x-test', port: 99999 }) });
@@ -119,10 +119,10 @@ test('u-ui: inbound CRUD across both cores and core control', async function () 
     raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
     assert.equal(raw.singbox.enabled, false);
 
-    const deleted = await fetch(base + '/api/inbounds/singbox/sb-test', { method: 'DELETE', headers: headers });
+    const deleted = await fetch(base + '/api/inbounds/singbox/singbox-test', { method: 'DELETE', headers: headers });
     assert.equal(deleted.status, 200);
     raw = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
-    assert.equal(raw.singbox.inbounds.some(function (ib) { return ib.tag === 'sb-test'; }), false);
+    assert.equal(raw.singbox.inbounds.some(function (ib) { return ib.tag === 'singbox-test'; }), false);
   } finally {
     await inst.close();
     fs.rmSync(ctx.dir, { recursive: true, force: true });
@@ -857,10 +857,30 @@ test('setup: u-ui only, certificates cover the u-ui host', async function () {
     const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
     assert.equal(cfg.panels.xui.enabled, false);
     assert.equal(cfg.panels.sui.enabled, false);
-    for (const host of ['example.com', 'sb.example.com']) {
+    for (const host of ['example.com', 'singbox.example.com']) {
       assert.ok(cfg.certs.domains.includes(host), host);
     }
     assert.ok(!cfg.certs.domains.includes('xui.example.com'));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('setup: migrates the old sb tag and SNI to singbox', async function () {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'setup-sb-'));
+  const cfgPath = path.join(dir, 'config.json');
+  const example = JSON.parse(fs.readFileSync(new URL('../config.example.json', import.meta.url), 'utf8'));
+  example.singbox.inbounds[0].tag = 'sb-vless-ws-tls';
+  example.singbox.inbounds[0].sni = 'sb.example.com';
+  example.users = [{ name: 'carol', inbounds: ['sb-vless-ws-tls'] }];
+  fs.writeFileSync(cfgPath, JSON.stringify(example, null, 2));
+  try {
+    await runSetup({ configPath: cfgPath, yes: true, detectIp: false, flags: { domain: 'example.com' }, io: { print: function () {}, question: async function () { return ''; } } });
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    assert.equal(cfg.singbox.inbounds[0].tag, 'singbox-vless-ws-tls');
+    assert.equal(cfg.singbox.inbounds[0].sni, 'singbox.example.com');
+    assert.deepEqual(cfg.users[0].inbounds, ['singbox-vless-ws-tls']);
+    assert.ok(cfg.certs.domains.includes('singbox.example.com'));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -884,7 +904,7 @@ test('setup: u-ui domain without x-ui/s-ui panels', async function () {
     assert.equal(cfg.panels.sui.enabled, false);
     assert.ok(cfg.certs.domains.includes('example.net'));
     assert.ok(cfg.certs.domains.includes('panel.example.net'));
-    assert.ok(cfg.certs.domains.includes('sb.example.net'));
+    assert.ok(cfg.certs.domains.includes('singbox.example.net'));
     assert.ok(!cfg.certs.domains.includes('xui.example.net'));
     assert.equal(cfg.subscription.publicBase, 'https://sub.example.net');
     assert.ok(cfg.certs.domains.includes('sub.example.net'));

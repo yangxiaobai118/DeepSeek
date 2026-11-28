@@ -113,7 +113,7 @@ u-ui **不接管内核**：它只改 `config.json`，再由 `apply` 下发并 `s
 ```json
 {
   "name": "alice",
-  "inbounds": ["xray-vless-reality", "sb-vless-ws-tls"],
+  "inbounds": ["xray-vless-reality", "singbox-vless-ws-tls"],
   "expireAt": "2027-01-01T00:00:00Z",
   "dataLimitBytes": 107374182400,
   "enabled": true,

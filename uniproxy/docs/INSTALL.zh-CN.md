@@ -588,7 +588,7 @@ next: edit server.publicIp / domains / cert paths, then run "uniproxy validate"
 | `xray.inbounds[0].sni` | `www.bing.com` 等真实站点 | 必须与 `reality.serverNames` 一致 |
 | `xray.inbounds[0].port` | `10443`（保持 127.0.0.1） | 由 nginx 443 分流进入 |
 | `xray.inbounds[0].clients` | 你的用户 UUID/name | 或改用顶层 `users` |
-| `singbox.inbounds[0].sni` | `sb.example.com`（需有证书） | 或改成证书覆盖的域名 |
+| `singbox.inbounds[0].sni` | `singbox.example.com`（需有证书） | 或改成证书覆盖的域名 |
 | `subscription.publicBase` | `https://sub.example.com` | 订阅 URL 前缀 |
 | `subscription.routing` | 按需 | 直连/屏蔽/绕局域网规则 |
 | `apply.xrayConfig` | `/usr/local/etc/xray/config.json` | 默认即可 |
@@ -602,7 +602,7 @@ next: edit server.publicIp / domains / cert paths, then run "uniproxy validate"
 "users": [
   {
     "name": "alice",
-    "inbounds": ["xray-vless-reality", "sb-vless-ws-tls"],
+    "inbounds": ["xray-vless-reality", "singbox-vless-ws-tls"],
     "expireAt": "2027-01-01T00:00:00Z",
     "dataLimitBytes": 107374182400,
     "usage": { "upload": 0, "download": 0 }
@@ -654,7 +654,7 @@ PORT   COMPONENT                LISTEN
 2095   panel:s-ui               127.0.0.1
 2096   panel:s-ui-sub           127.0.0.1
 10443  xray:xray-vless-reality  127.0.0.1
-2052   singbox:sb-vless-ws-tls  127.0.0.1
+2052   singbox:singbox-vless-ws-tls  127.0.0.1
 
 
 OK - 0 errors, 0 warning(s)
@@ -977,7 +977,7 @@ curl -sSI "https://sub.example.com/sub/${TOKEN}" | grep -iE 'subscription-userin
 编辑 `/etc/uniproxy/config.json` 的 `users` 数组，追加：
 
 ```json
-{ "name": "bob", "inbounds": ["xray-vless-reality", "sb-vless-ws-tls"], "expireAt": "2027-06-01T00:00:00Z" }
+{ "name": "bob", "inbounds": ["xray-vless-reality", "singbox-vless-ws-tls"], "expireAt": "2027-06-01T00:00:00Z" }
 ```
 
 > **替换点**：`bob` 换成新用户名；`inbounds` 填要下发的入站 `tag`；`expireAt` 按需改。这是**追加**到 `config.json` 的 `users` 数组里的对象。

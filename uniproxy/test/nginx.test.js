@@ -8,7 +8,7 @@ test('stream mode owns 443 and routes SNI to every inbound', () => {
   assert.match(conf, /map \$ssl_preread_server_name/);
   assert.match(conf, /ssl_preread on;/);
   assert.match(conf, /www\.bing\.com\s+127\.0\.0\.1:10443;/);
-  assert.match(conf, /sb\.example\.net\s+127\.0\.0\.1:2052;/);
+  assert.match(conf, /singbox\.example\.net\s+127\.0\.0\.1:2052;/);
   assert.match(conf, /sub\.example\.net\s+127\.0\.0\.1:8443;/);
   assert.match(conf, /listen 127\.0\.0\.1:8443 ssl http2;/);
   assert.doesNotMatch(conf, /listen 443 ssl/);

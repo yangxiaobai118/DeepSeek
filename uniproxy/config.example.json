@@ -119,10 +119,10 @@
     "logLevel": "warn",
     "inbounds": [
       {
-        "tag": "sb-vless-ws-tls",
+        "tag": "singbox-vless-ws-tls",
         "listen": "127.0.0.1",
         "port": 2052,
-        "sni": "sb.example.com",
+        "sni": "singbox.example.com",
         "network": "ws",
         "security": "tls",
         "path": "/sbws",

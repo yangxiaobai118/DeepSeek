@@ -64,7 +64,7 @@ export function makeConfig(overrides = {}) {
           protocol: 'vless',
           listen: '127.0.0.1',
           port: 2052,
-          sni: 'sb.example.net',
+          sni: 'singbox.example.net',
           network: 'ws',
           security: 'tls',
           path: '/wspath',

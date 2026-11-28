@@ -61,7 +61,7 @@ function applyDomain(cfg, domain) {
   if (cfg.nginx.sites[0]) cfg.nginx.sites[0].serverName = domain;
   else cfg.nginx.sites.push({ serverName: domain, root: '/var/www/html', index: 'index.html' });
   for (const ib of (cfg.singbox && cfg.singbox.inbounds) || []) {
-    if (ib.security === 'tls' && (!ib.sni || ib.sni.endsWith('.example.com'))) ib.sni = 'sb.' + domain;
+    if (ib.security === 'tls' && (!ib.sni || ib.sni.endsWith('.example.com'))) ib.sni = 'singbox.' + domain;
   }
 }
 
@@ -121,6 +121,26 @@ export async function runSetup(opts = {}) {
     cfg.panels.sui.enabled = false;
     cfg.panels.sui.sub.enabled = false;
 
+    let tagRenamed = false;
+    let sniRenamed = false;
+    for (const ib of (cfg.singbox && cfg.singbox.inbounds) || []) {
+      if (ib.tag === 'sb-vless-ws-tls') { ib.tag = 'singbox-vless-ws-tls'; tagRenamed = true; }
+      if (ib.security === 'tls' && typeof ib.sni === 'string' && ib.sni.startsWith('sb.')) {
+        ib.sni = 'singbox.' + ib.sni.slice(3);
+        sniRenamed = true;
+      }
+    }
+    if (tagRenamed) {
+      for (const user of cfg.users || []) {
+        if (Array.isArray(user.inbounds)) {
+          user.inbounds = user.inbounds.map(function (tag) { return tag === 'sb-vless-ws-tls' ? 'singbox-vless-ws-tls' : tag; });
+        }
+      }
+    }
+    if (sniRenamed || tagRenamed) {
+      io.print('已把默认名称 sb 改为 singbox（入站 tag / SNI）。');
+    }
+
     const hostDefault = function (current, prefix) {
       return current && validDomain(current) && current.endsWith('.' + domain) && current !== domain
         ? current
@@ -160,7 +180,7 @@ export async function runSetup(opts = {}) {
       if (ib.security === 'tls' && ib.sni && (ib.sni === domain || ib.sni.endsWith('.' + domain))) hosts.push(ib.sni);
     }
     const existingCerts = (cfg.certs && Array.isArray(cfg.certs.domains)) ? cfg.certs.domains : [];
-    if (domainChanged || uiDomain !== originalUiDomain || !existingCerts.length) {
+    if (domainChanged || uiDomain !== originalUiDomain || sniRenamed || !existingCerts.length) {
       cfg.certs = cfg.certs || {};
       cfg.certs.domains = Array.from(new Set(hosts));
     }

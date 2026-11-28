@@ -293,6 +293,26 @@ aside.sidebar:hover .brand-text{display:block}
 .nav-title{display:block!important;visibility:hidden;white-space:nowrap;overflow:hidden}
 aside.sidebar:hover .nav-title{visibility:visible}
 @media(max-width:1024px){.nav-title{visibility:visible}}
+
+/* ---- inbound / user modal forms ---- */
+.inbound-box{background:var(--panel);border:1px solid var(--border);border-radius:14px;width:min(820px,96vw);max-height:90vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.55);overflow:hidden}
+.inbound-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border);font-size:15px}
+.inbound-head .modal-close{position:static;float:none;width:30px;height:30px;padding:0;font-size:18px;background:var(--elevated);border:1px solid var(--border);color:var(--text);border-radius:7px;cursor:pointer}
+.inbound-body{padding:18px;overflow:auto}
+.form-section{border-bottom:1px solid var(--border);padding:0 0 14px;margin:0 0 14px}
+.form-section:last-of-type{border-bottom:0;margin-bottom:0}
+.form-section-title{font-size:12px;font-weight:600;color:var(--muted);margin:0 0 10px}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.form-grid label{display:grid;gap:5px;font-size:12px;color:var(--muted);margin:0}
+.form-grid label input,.form-grid label select{width:100%;height:34px}
+.form-grid .span2{grid-column:span 2}
+.input-with-btn{display:flex;gap:6px}
+.input-with-btn input{flex:1;min-width:0}
+.input-with-btn button{flex:0 0 auto;padding:0 10px;height:34px;background:var(--elevated);border:1px solid var(--border);color:var(--text);border-radius:7px;cursor:pointer;font-size:12px}
+.modal-footer{display:flex;align-items:center;gap:8px;justify-content:flex-end;padding:14px 18px;border-top:1px solid var(--border);background:var(--panel);position:sticky;bottom:0}
+.modal-footer .msg{margin-right:auto;font-size:12px}
+@media(max-width:700px){.form-grid{grid-template-columns:1fr}.form-grid .span2{grid-column:span 1}.inbound-box{max-height:94vh}.inbound-body{padding:14px}.inbound-head{padding:12px 14px}.modal-footer{padding:12px 14px}}
+.form-grid label.inline{display:flex;flex-direction:row;align-items:center;gap:8px;margin-top:18px}
 </style></head><body>
 <aside class="sidebar" id="sidebar">
   <div class="brand"><div class="logo">U</div><div class="brand-text"><strong>U-UI</strong><span>uniproxy panel</span></div><button class="side-close" id="sideClose" title="关闭菜单">×</button></div>
@@ -345,12 +365,22 @@ aside.sidebar:hover .nav-title{visibility:visible}
   <div class="card">
   <div class="page-toolbar"><button class="act" id="addInbound">+ 添加入站</button><input id="inboundSearch" placeholder="搜索 tag / 协议 / 端口"><span id="inboundCount" class="muted"></span></div>
   <div id="inboundTable"></div></div>
-  <div class="card" id="inboundFormCard" style="display:none"><h2 id="inboundFormTitle">新增入站</h2><div id="inboundForm"></div></div>
+  <div class="modal-backdrop" id="inboundModal" onclick="if(event.target===this)cancelInbound()">
+    <div class="inbound-box">
+      <div class="inbound-head"><strong id="inboundFormTitle">新增入站</strong><button type="button" class="modal-close" onclick="cancelInbound()">×</button></div>
+      <div class="inbound-body" id="inboundForm"></div>
+    </div>
+  </div>
   <div class="card" id="clientsCard" style="display:none"><h2 id="clientsTitle">客户端</h2><div id="clientsPanel"></div></div>
 </section>
 <section id="tab-users">
-  <div class="card"><h2>用户注册表<button class="help" data-help="users" title="帮助">?</button></h2><div id="userTable"></div></div>
-  <div class="card"><h2 id="userFormTitle">新增用户</h2><div id="userForm"></div></div>
+<div class="card">
+  <div class="page-toolbar"><button class="act" id="addUser">+ 添加用户</button><input id="userSearch" placeholder="搜索用户 / 入站"><span id="userCount" class="muted"></span></div>
+  <div id="userTable"></div>
+</div>
+<div class="modal-backdrop" id="userModal" onclick="if(event.target===this)cancelEdit()">
+  <div class="inbound-box"><div class="inbound-head"><strong id="userFormTitle">新增用户</strong><button type="button" class="modal-close" onclick="cancelEdit()">×</button></div><div class="inbound-body" id="userForm"></div></div>
+</div>
 </section>
 <section id="tab-cores">
   <div class="card"><h2>内核与服务<button class="help" data-help="cores" title="帮助">?</button> <button class="ghost" id="refreshCores" style="float:right" title="重新读取运行状态">刷新</button></h2><div id="coreTable"></div>
@@ -484,6 +514,7 @@ let lang = (function () { try { return localStorage.getItem('uui-lang') === 'en'
 let themeMode = (function () { try { const v = localStorage.getItem('uui-theme'); return v === 'light' || v === 'ultra' ? v : 'dark'; } catch (e) { return 'dark'; } })();
 let ipVisible = (function () { try { return localStorage.getItem('uui-ip-visible') === '1'; } catch (e) { return false; } })();
 let inboundFormOpen = false;
+let userFormOpen = false;
 const I18N = {
   zh: {
     'nav.overview': '概览', 'nav.inbounds': '入站', 'nav.users': '用户', 'nav.nodes': '节点',
@@ -757,7 +788,7 @@ document.addEventListener('keydown', function (e) {
     e.preventDefault();
     openCmd();
   }
-  if (e.key === 'Escape') closeCmd();
+  if (e.key === 'Escape') { closeCmd(); cancelInbound(); cancelEdit(); }
 });
 
 function renderDashboardBar() {
@@ -891,76 +922,172 @@ function renderInbounds() {
     : '<div class="muted">还没有入站</div>';
   const count = document.getElementById('inboundCount');
   if (count) count.textContent = list.length + ' / ' + state.inbounds.length;
-  const formCard = document.getElementById('inboundFormCard');
-  if (formCard) {
-    formCard.style.display = (editingInbound || inboundFormOpen) ? 'block' : 'none';
+  const modal = document.getElementById('inboundModal');
+  if (modal) {
+    modal.classList.toggle('on', !!(editingInbound || inboundFormOpen));
     if (editingInbound || inboundFormOpen) renderInboundForm(editingInbound);
   }
 }
-function syncProtocol() {
-  const name = document.getElementById('i_proto').value;
-  const p = (state.protocols || []).find(function (x) { return x.name === name; });
-  if (!p) return;
-  const coreSel = document.getElementById('i_kind');
-  if (!p.cores.includes(coreSel.value)) coreSel.value = p.cores[0];
-  const hint = document.getElementById('i_hint');
-  if (hint) hint.textContent = name + ' 可用：内核 ' + p.cores.join('/') + '，传输 ' + p.transports.join('/') + '，安全 ' + p.securities.join('/');
+function randomUuid() {
+  try {
+    if (window.crypto && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    const h = Array.from(b).map(function (x) { return x.toString(16).padStart(2, '0'); }).join('');
+    return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20, 32);
+  } catch (e) {
+    return '00000000-0000-4000-8000-' + String(Date.now()).slice(-12);
+  }
 }
-
+function randomPassword() {
+  try {
+    const b = new Uint8Array(12);
+    crypto.getRandomValues(b);
+    return Array.from(b).map(function (x) { return x.toString(16).padStart(2, '0'); }).join('');
+  } catch (e) { return String(Date.now()) + Math.random().toString(16).slice(2, 10); }
+}
+function pathNetwork(net) { return net === 'ws' || net === 'httpupgrade' || net === 'xhttp' || net === 'h2'; }
+function showEl(id, on) { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; }
+function fillSelect(id, values, current) {
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  const list = values.slice();
+  const pick = list.includes(current) ? current : list[0];
+  sel.innerHTML = list.map(function (v) { return '<option value="' + h(v) + '"' + (v === pick ? ' selected' : '') + '>' + h(v) + '</option>'; }).join('');
+}
+function syncInboundFields() {
+  const protoSel = document.getElementById('i_proto');
+  const kindSel = document.getElementById('i_kind');
+  if (!protoSel || !kindSel) return;
+  const proto = protoSel.value;
+  const p = (state.protocols || []).find(function (x) { return x.name === proto; });
+  if (!p) return;
+  if (!p.cores.includes(kindSel.value)) kindSel.value = p.cores[0];
+  const netSel = document.getElementById('i_net');
+  const secSel = document.getElementById('i_sec');
+  fillSelect('i_net', p.transports, netSel.value);
+  fillSelect('i_sec', p.securities, secSel.value);
+  const net = document.getElementById('i_net').value;
+  const sec = document.getElementById('i_sec').value;
+  showEl('i_path_wrap', pathNetwork(net));
+  showEl('i_grpc_wrap', net === 'grpc');
+  showEl('i_xhttp_wrap', net === 'xhttp');
+  showEl('i_sni_wrap', sec !== 'none');
+  showEl('i_reality_wrap', sec === 'reality');
+  showEl('i_client_wrap', ['vless', 'vmess', 'trojan'].includes(proto));
+  const path = document.getElementById('i_path');
+  if (path) path.placeholder = net === 'ws' ? '/ws' : '/';
+  const credLabel = document.getElementById('i_cred_label');
+  if (credLabel) credLabel.textContent = proto === 'trojan' ? 'Trojan 密码' : 'UUID';
+  const flowWrap = document.getElementById('i_flow_wrap');
+  if (flowWrap) flowWrap.style.display = (proto === 'vless' && net === 'tcp' && sec !== 'none') ? '' : 'none';
+}
 function renderInboundForm(editable) {
-  const ib = editable || { kind: 'xray', tag: '', protocol: 'vless', listen: '127.0.0.1', port: 10443, network: 'tcp', security: 'none', sni: '', wsPath: '/ws', reality: {} };
+  const ib = editable || { kind: 'xray', protocol: 'vless', tag: '', listen: '127.0.0.1', port: 10443, network: 'tcp', security: 'none', sni: '', path: '/ws', reality: {} };
   const r = ib.reality || {};
-  document.getElementById('inboundFormTitle').textContent = editable ? ('编辑入站：' + editable.tag) : '新增入站';
+  const isEdit = !!editable;
+  const p = (state.protocols || []).find(function (x) { return x.name === (ib.protocol || 'vless'); }) || (state.protocols || [])[0];
+  const networks = p ? p.transports : ['tcp'];
+  const securities = p ? p.securities : ['none'];
+  const net = networks.includes(ib.network) ? ib.network : networks[0];
+  const sec = securities.includes(ib.security) ? ib.security : securities[0];
+  document.getElementById('inboundFormTitle').textContent = isEdit ? ('编辑入站：' + editable.tag) : '新增入站';
   document.getElementById('inboundForm').innerHTML =
-    '<div class="row">' +
+    '<div class="form-section"><div class="form-grid">' +
     '<label>内核<select id="i_kind"><option value="xray"' + (ib.kind === 'xray' ? ' selected' : '') + '>xray</option><option value="singbox"' + (ib.kind === 'singbox' ? ' selected' : '') + '>singbox</option></select></label>' +
-    '<label>tag<input id="i_tag" value="' + h(ib.tag) + '"></label>' +
-    '<label>协议<select id="i_proto">' + (state.protocols || []).map(function (p) { return '<option value="' + p.name + '"' + (ib.protocol === p.name ? ' selected' : '') + '>' + p.name + '</option>'; }).join('') + '</select></label>' +
-    '<label>监听<input id="i_listen" value="' + h(ib.listen) + '"></label>' +
-    '<label>端口<input id="i_port" type="number" value="' + h(ib.port) + '"></label>' +
-    '<label>网络<select id="i_net">' + ['tcp','ws','grpc','h2','quic'].map(p => '<option' + (ib.network === p ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label>' +
-    '<label>安全<select id="i_sec">' + ['none','tls','reality'].map(p => '<option' + (ib.security === p ? ' selected' : '') + '>' + p + '</option>').join('') + '</select></label>' +
-    '<label>SNI<input id="i_sni" value="' + h(ib.sni || '') + '"></label>' +
-    '<label>WS 路径<input id="i_ws" value="' + h(ib.wsPath || '/ws') + '"></label>' +
-    '</div>' +
-    '<div class="row" style="margin-top:10px">' +
-    '<label>Reality dest<input id="i_rdest" value="' + h(r.dest || '') + '" placeholder="www.bing.com:443"></label>' +
-    '<label>Reality serverNames<input id="i_rnames" value="' + h((r.serverNames || []).join(',')) + '" placeholder="www.bing.com"></label>' +
-    '<label>Reality privateKey<input id="i_rkey" value="' + h(r.privateKey || '') + '"></label>' +
-    '<label>Reality shortIds<input id="i_rsid" value="' + h((r.shortIds || []).join(',')) + '" placeholder="0123456789abcdef"></label>' +
-    '</div>' +
-    '<div class="row" style="margin-top:12px"><button class="act" id="saveInbound">' + (editable ? '保存修改' : '创建入站') + '</button>' +
-    (editable ? '<button class="ghost" onclick="cancelInbound()">取消</button>' : '') + '<span id="inboundMsg" class="muted"></span></div>';
+    '<label>协议<select id="i_proto">' + (state.protocols || []).map(function (x) { return '<option value="' + x.name + '"' + ((ib.protocol || 'vless') === x.name ? ' selected' : '') + '>' + x.name + '</option>'; }).join('') + '</select></label>' +
+    '<label>标签 (tag)<input id="i_tag" value="' + h(ib.tag || '') + '" placeholder="vless-reality"></label>' +
+    '<label>监听地址<input id="i_listen" value="' + h(ib.listen || '127.0.0.1') + '"></label>' +
+    '<label>端口<input id="i_port" type="number" value="' + h(ib.port || 10443) + '"></label>' +
+    '</div></div>' +
+    '<div class="form-section"><div class="form-section-title">传输与安全</div><div class="form-grid">' +
+    '<label>传输<select id="i_net">' + networks.map(function (v) { return '<option' + (v === net ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></label>' +
+    '<label>安全<select id="i_sec">' + securities.map(function (v) { return '<option' + (v === sec ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></label>' +
+    '<label id="i_sni_wrap">SNI<input id="i_sni" value="' + h(ib.sni || '') + '" placeholder="www.bing.com"></label>' +
+    '</div><div class="form-grid" style="margin-top:12px">' +
+    '<label id="i_path_wrap">路径<input id="i_path" value="' + h(ib.path || ib.wsPath || (net === 'ws' ? '/ws' : '/')) + '"></label>' +
+    '<label id="i_grpc_wrap">gRPC serviceName<input id="i_grpc" value="' + h(ib.grpcService || 'grpc') + '"></label>' +
+    '<label id="i_xhttp_wrap">xhttp 模式<select id="i_xhttp"><option value="auto"' + (ib.xhttpMode === 'auto' ? ' selected' : '') + '>auto</option><option value="packet-up"' + (ib.xhttpMode === 'packet-up' ? ' selected' : '') + '>packet-up</option><option value="stream-up"' + (ib.xhttpMode === 'stream-up' ? ' selected' : '') + '>stream-up</option><option value="stream-one"' + (ib.xhttpMode === 'stream-one' ? ' selected' : '') + '>stream-one</option></select></label>' +
+    '</div></div>' +
+    '<div class="form-section" id="i_reality_wrap"><div class="form-section-title">Reality</div><div class="form-grid">' +
+    '<label>dest<input id="i_rdest" value="' + h(r.dest || '') + '" placeholder="www.bing.com:443"></label>' +
+    '<label>serverNames<input id="i_rnames" value="' + h((r.serverNames || []).join(',')) + '" placeholder="www.bing.com"></label>' +
+    '<label>privateKey<input id="i_rkey" value="' + h(r.privateKey || '') + '"></label>' +
+    '<label>shortIds<input id="i_rsid" value="' + h((r.shortIds || []).join(',')) + '" placeholder="0123456789abcdef"></label>' +
+    '</div></div>' +
+    (isEdit ? '' : '<div class="form-section" id="i_client_wrap"><div class="form-section-title">首个客户端</div><div class="form-grid">' +
+      '<label>名称<input id="i_client_name" value="user1"></label>' +
+      '<label><span id="i_cred_label">UUID</span><div class="input-with-btn"><input id="i_client_id" value="' + h((ib.protocol || 'vless') === 'trojan' ? randomPassword() : randomUuid()) + '"><button type="button" id="randCred" title="随机生成">随机</button></div></label>' +
+      '<label id="i_flow_wrap">flow<select id="i_flow"><option value="">none</option><option value="xtls-rprx-vision">xtls-rprx-vision</option></select></label>' +
+      '</div></div>') +
+    '<div class="modal-footer"><span id="inboundMsg" class="msg muted"></span><button type="button" class="ghost" id="cancelInboundBtn">取消</button><button type="button" class="act" id="saveInbound">' + (isEdit ? '保存修改' : '创建入站') + '</button></div>';
   document.getElementById('saveInbound').onclick = saveInbound;
-  document.getElementById('i_proto').onchange = syncProtocol;
-  syncProtocol();
+  document.getElementById('cancelInboundBtn').onclick = cancelInbound;
+  document.getElementById('i_kind').onchange = syncInboundFields;
+  document.getElementById('i_proto').onchange = syncInboundFields;
+  document.getElementById('i_net').onchange = syncInboundFields;
+  document.getElementById('i_sec').onchange = syncInboundFields;
+  const rand = document.getElementById('randCred');
+  if (rand) rand.onclick = function () {
+    const proto = document.getElementById('i_proto').value;
+    document.getElementById('i_client_id').value = proto === 'trojan' ? randomPassword() : randomUuid();
+  };
+  syncInboundFields();
 }
 function collectInbound() {
+  const net = document.getElementById('i_net').value;
+  const sec = document.getElementById('i_sec').value;
+  const path = document.getElementById('i_path');
+  const grpc = document.getElementById('i_grpc');
+  const xhttp = document.getElementById('i_xhttp');
+  const flow = document.getElementById('i_flow');
+  const clientName = document.getElementById('i_client_name');
+  const clientId = document.getElementById('i_client_id');
   return {
     kind: document.getElementById('i_kind').value,
     tag: document.getElementById('i_tag').value.trim(),
     protocol: document.getElementById('i_proto').value,
     listen: document.getElementById('i_listen').value.trim(),
     port: Number(document.getElementById('i_port').value),
-    network: document.getElementById('i_net').value,
-    security: document.getElementById('i_sec').value,
+    network: net,
+    security: sec,
     sni: document.getElementById('i_sni').value.trim(),
-    wsPath: document.getElementById('i_ws').value.trim(),
-    realityDest: document.getElementById('i_rdest').value.trim(),
-    realityServerNames: document.getElementById('i_rnames').value.trim(),
-    realityPrivateKey: document.getElementById('i_rkey').value.trim(),
-    realityShortIds: document.getElementById('i_rsid').value.trim(),
+    path: path ? path.value.trim() : '',
+    wsPath: path ? path.value.trim() : '',
+    grpcService: grpc ? grpc.value.trim() : '',
+    xhttpMode: xhttp ? xhttp.value : '',
+    realityDest: document.getElementById('i_rdest') ? document.getElementById('i_rdest').value.trim() : '',
+    realityServerNames: document.getElementById('i_rnames') ? document.getElementById('i_rnames').value.trim() : '',
+    realityPrivateKey: document.getElementById('i_rkey') ? document.getElementById('i_rkey').value.trim() : '',
+    realityShortIds: document.getElementById('i_rsid') ? document.getElementById('i_rsid').value.trim() : '',
+    clientName: clientName ? clientName.value.trim() : '',
+    clientId: clientId ? clientId.value.trim() : '',
+    flow: flow ? flow.value : '',
   };
 }
 async function saveInbound() {
   const body = collectInbound();
   const msg = document.getElementById('inboundMsg');
-  if (!body.tag) { msg.textContent = 'tag 必填'; msg.className = 'err'; return; }
+  if (!body.tag) { msg.textContent = 'tag 必填'; msg.className = 'msg err'; return; }
+  const clientBody = { name: body.clientName, credential: body.clientId };
+  if (body.flow) clientBody.flow = body.flow;
+  delete body.clientName;
+  delete body.clientId;
+  delete body.flow;
   const r = editingInbound
     ? await api('PUT', '/api/inbounds/' + editingInbound.kind + '/' + encodeURIComponent(editingInbound.tag), body)
     : await api('POST', '/api/inbounds', body);
-  if (r.status === 200) { editingInbound = null; inboundFormOpen = false; msg.textContent = '已保存'; await refresh(); }
-  else { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'err'; }
+  if (r.status !== 200) { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'msg err'; return; }
+  if (!editingInbound && clientBody.name && ['vless', 'vmess', 'trojan'].includes(body.protocol)) {
+    const c = await api('POST', '/api/inbounds/' + body.kind + '/' + encodeURIComponent(body.tag) + '/clients', clientBody);
+    if (c.status !== 200) msg.textContent = '入站已创建，但首个客户端失败：' + (c.data.error || c.status);
+  }
+  editingInbound = null;
+  inboundFormOpen = false;
+  await refresh();
+  document.getElementById('inboundModal').classList.remove('on');
 }
 function editInbound(kind, tag) {
   const found = state.inbounds.find(i => i.kind === kind && i.tag === tag);
@@ -968,9 +1095,14 @@ function editInbound(kind, tag) {
   editingInbound = Object.assign({}, found, { reality: found.reality || {} });
   inboundFormOpen = true;
   renderInbounds();
-  document.getElementById('inboundFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
-function cancelInbound() { editingInbound = null; inboundFormOpen = false; renderInbounds(); }
+function cancelInbound() {
+  editingInbound = null;
+  inboundFormOpen = false;
+  const m = document.getElementById('inboundModal');
+  if (m) m.classList.remove('on');
+  if (state) renderInbounds();
+}
 async function delInbound(kind, tag) {
   if (!confirm('删除入站 ' + tag + ' ?')) return;
   const r = await api('DELETE', '/api/inbounds/' + kind + '/' + encodeURIComponent(tag));
@@ -981,7 +1113,6 @@ if (addInboundBtn) addInboundBtn.onclick = function () {
   editingInbound = null;
   inboundFormOpen = true;
   renderInbounds();
-  document.getElementById('inboundFormCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 const inboundSearch = document.getElementById('inboundSearch');
 if (inboundSearch) inboundSearch.oninput = function () { if (state) renderInbounds(); };
@@ -1014,30 +1145,45 @@ async function toggleCore(kind, enabled) {
 }
 function renderUsers() {
   const t = document.getElementById('userTable');
-  t.innerHTML = state.users.length
+  const q = String((document.getElementById('userSearch') || {}).value || '').trim().toLowerCase();
+  const list = state.users.filter(function (u) {
+    return !q || (u.name + ' ' + u.status + ' ' + (u.inbounds || []).join(' ')).toLowerCase().includes(q);
+  });
+  t.innerHTML = list.length
     ? '<table><thead><tr><th>用户</th><th>状态</th><th>到期</th><th>用量/配额</th><th>入站</th><th>操作</th></tr></thead><tbody>' +
-      state.users.map(u => '<tr><td>' + h(u.name) + '</td><td>' + h(u.status) + '</td><td>' + h(u.expireAt || '-') + '</td><td>' + gb(u.usedBytes) + ' / ' + gb(u.dataLimitBytes) + '</td><td>' + h(u.inbounds.join(', ') || '-') + '</td>' +
+      list.map(u => '<tr><td>' + h(u.name) + '</td><td>' + h(u.status) + '</td><td>' + h(u.expireAt || '-') + '</td><td>' + gb(u.usedBytes) + ' / ' + gb(u.dataLimitBytes) + '</td><td>' + h(u.inbounds.join(', ') || '-') + '</td>' +
       '<td><button class="ghost" onclick="editUser(\'' + h(u.name) + '\')">编辑</button> <button class="ghost danger" onclick="delUser(\'' + h(u.name) + '\')">删除</button></td></tr>').join('') + '</tbody></table>'
     : '<div class="muted">还没有用户</div>';
-  renderUserForm(editingUser);
+  const count = document.getElementById('userCount');
+  if (count) count.textContent = list.length + ' / ' + state.users.length;
+  const modal = document.getElementById('userModal');
+  if (modal) {
+    modal.classList.toggle('on', !!(editingUser || userFormOpen));
+    if (editingUser || userFormOpen) renderUserForm(editingUser);
+  }
 }
 function renderUserForm(user) {
-  const u = user || { name: '', inbounds: [], expireAt: '', dataLimitBytes: 0, enabled: true, note: '' };
+  const u = user || { name: '', inbounds: [], expireAt: '', dataLimitBytes: 0, enabled: true, note: '', uuid: randomUuid(), password: randomPassword() };
   document.getElementById('userFormTitle').textContent = user ? ('编辑用户：' + user.name) : '新增用户';
   document.getElementById('userForm').innerHTML =
-    '<div class="row">' +
+    '<div class="form-section"><div class="form-grid">' +
     '<label>用户名<input id="f_name" value="' + h(u.name) + '"></label>' +
     '<label>到期日期<input id="f_expire" type="date" value="' + h(u.expireAt) + '"></label>' +
     '<label>流量配额 (GB)<input id="f_quota" type="number" min="0" step="1" value="' + (u.dataLimitBytes ? (u.dataLimitBytes / 1073741824).toFixed(0) : 0) + '"></label>' +
     '<label>备注<input id="f_note" value="' + h(u.note || '') + '"></label>' +
-    '<label><span>启用</span><input id="f_enabled" type="checkbox" ' + (u.enabled !== false ? 'checked' : '') + '></label>' +
-    '</div>' +
-    '<div class="muted" style="margin:10px 0 6px">入站</div><div id="f_inbounds" class="row">' +
-    state.inbounds.map(ib => '<label style="flex-direction:row;gap:6px;align-items:center"><input type="checkbox" value="' + h(ib.tag) + '" ' + (u.inbounds.includes(ib.tag) ? 'checked' : '') + '>' + h(ib.tag) + ' <span class="muted">(' + h(ib.kind) + ')</span></label>').join('') +
-    '</div>' +
-    '<div class="row" style="margin-top:12px"><button class="act" id="saveUser">' + (user ? '保存修改' : '创建用户') + '</button>' +
-    (user ? '<button class="ghost" onclick="cancelEdit()">取消</button>' : '') + '<span id="userMsg" class="muted"></span></div>';
+    '<label class="inline"><span>启用</span><input id="f_enabled" type="checkbox" ' + (u.enabled !== false ? 'checked' : '') + '></label>' +
+    '</div></div>' +
+    '<div class="form-section"><div class="form-section-title">凭据</div><div class="form-grid">' +
+    '<label>UUID（VLESS / VMess）<div class="input-with-btn"><input id="f_uuid" value="' + h(u.uuid || '') + '"><button type="button" id="randUserUuid">随机</button></div></label>' +
+    '<label>密码（Trojan）<div class="input-with-btn"><input id="f_password" value="' + h(u.password || '') + '"><button type="button" id="randUserPassword">随机</button></div></label>' +
+    '</div></div>' +
+    '<div class="form-section"><div class="form-section-title">绑定入站</div><div class="form-grid" id="f_inbounds">' +
+    state.inbounds.map(ib => '<label class="inline" style="display:flex;flex-direction:row;gap:6px;align-items:center"><input type="checkbox" value="' + h(ib.tag) + '" ' + (u.inbounds.includes(ib.tag) ? 'checked' : '') + '><span>' + h(ib.tag) + ' <span class="muted">(' + h(ib.kind) + ')</span></span></label>').join('') +
+    '</div></div>' +
+    '<div class="modal-footer"><span id="userMsg" class="msg muted"></span><button type="button" class="ghost" onclick="cancelEdit()">取消</button><button type="button" class="act" id="saveUser">' + (user ? '保存修改' : '创建用户') + '</button></div>';
   document.getElementById('saveUser').onclick = saveUser;
+  document.getElementById('randUserUuid').onclick = function () { document.getElementById('f_uuid').value = randomUuid(); };
+  document.getElementById('randUserPassword').onclick = function () { document.getElementById('f_password').value = randomPassword(); };
 }
 function collectUser() {
   const tags = Array.from(document.querySelectorAll('#f_inbounds input:checked')).map(i => i.value);
@@ -1049,23 +1195,39 @@ function collectUser() {
     dataLimitBytes: gbValue > 0 ? Math.round(gbValue * 1073741824) : 0,
     enabled: document.getElementById('f_enabled').checked,
     note: document.getElementById('f_note').value.trim(),
+    uuid: document.getElementById('f_uuid').value.trim(),
+    password: document.getElementById('f_password').value.trim(),
   };
 }
 async function saveUser() {
   const body = collectUser();
   const msg = document.getElementById('userMsg');
-  if (!body.name) { msg.textContent = '用户名必填'; msg.className = 'err'; return; }
+  if (!body.name) { msg.textContent = '用户名必填'; msg.className = 'msg err'; return; }
   const r = editingUser ? await api('PUT', '/api/users/' + encodeURIComponent(editingUser.name), body) : await api('POST', '/api/users', body);
-  if (r.status === 200) { editingUser = null; msg.textContent = '已保存'; await refresh(); }
-  else { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'err'; }
+  if (r.status === 200) { editingUser = null; userFormOpen = false; await refresh(); }
+  else { msg.textContent = (r.data.error || '失败') + (r.data.errors ? ': ' + r.data.errors.join('; ') : ''); msg.className = 'msg err'; }
 }
-function editUser(name) { editingUser = state.users.find(u => u.name === name); renderUsers(); }
-function cancelEdit() { editingUser = null; renderUsers(); }
+function editUser(name) {
+  editingUser = state.users.find(u => u.name === name) || null;
+  userFormOpen = true;
+  renderUsers();
+}
+function cancelEdit() {
+  editingUser = null;
+  userFormOpen = false;
+  const m = document.getElementById('userModal');
+  if (m) m.classList.remove('on');
+  if (state) renderUsers();
+}
 async function delUser(name) {
   if (!confirm('删除用户 ' + name + ' ?')) return;
   const r = await api('DELETE', '/api/users/' + encodeURIComponent(name));
-  if (r.status === 200) { editingUser = null; await refresh(); } else alert(r.data.error || '删除失败');
+  if (r.status === 200) { editingUser = null; userFormOpen = false; await refresh(); } else alert(r.data.error || '删除失败');
 }
+const addUserBtn = document.getElementById('addUser');
+if (addUserBtn) addUserBtn.onclick = function () { editingUser = null; userFormOpen = true; renderUsers(); };
+const userSearch = document.getElementById('userSearch');
+if (userSearch) userSearch.oninput = function () { if (state) renderUsers(); };
 async function loadConfig() {
   const r = await api('GET', '/api/config');
   document.getElementById('configText').value = r.data.json || '';

@@ -14,6 +14,7 @@ import { collectAlerts, notify, loadState } from '../alerts.js';
 import { certStatus, normalizeCerts, buildCommand, issue, validDomain } from '../certs.js';
 import { normalizeNodes, probe, deploy, probeBatch, deployBatch } from '../nodes.js';
 import { protocolList } from '../protocols.js';
+import { isPathTransport } from '../clients.js';
 import { hashPassword, verifyPassword, accountsOf, USERNAME_RE } from '../auth.js';
 import { listBackups, createBackup, readBackup, deleteBackup, restoreBackup, pruneBackups } from '../backups.js';
 import { buildSubscriptions } from '../subscribe.js';
@@ -361,6 +362,7 @@ function state(cfgPath, csrf, role, username) {
       return { name: u.name, status: u.status, enabled: u.enabled, note: u.note, token: u.token,
         expireAt: u.expireAt ? u.expireAt.toISOString().slice(0, 10) : '',
         dataLimitBytes: u.dataLimitBytes, usedBytes: u.usedBytes,
+        uuid: u.uuid || '', password: u.password || '',
         inbounds: u.inbounds.map(function (i) { return i.tag; }) };
     }),
     inbounds: allInbounds(c),
@@ -386,7 +388,10 @@ function allInbounds(c) {
         network: ib.network || 'tcp',
         security: ib.security || 'none',
         sni: ib.sni || '',
+        path: ib.path || ib.wsPath || ib.h2Path || '',
         wsPath: ib.wsPath || '',
+        grpcService: ib.grpcService || '',
+        xhttpMode: ib.xhttpMode || '',
         reality: ib.reality || null,
       });
     }
@@ -504,6 +509,8 @@ function normalizeUser(input) {
   if (limit > 0) out.dataLimitBytes = limit; else delete out.dataLimitBytes;
   out.enabled = input.enabled !== false;
   if (input.note) out.note = String(input.note);
+  if (input.uuid) out.uuid = String(input.uuid).trim();
+  if (input.password) out.password = String(input.password);
   return out;
 }
 
@@ -559,8 +566,9 @@ function normalizeInbound(body) {
     security: body.security || 'none',
   };
   if (body.sni) out.sni = String(body.sni);
-  if (out.network === 'ws') out.wsPath = body.wsPath || '/ws';
+  if (isPathTransport(out.network)) out.path = String(body.path || body.wsPath || (out.network === 'ws' ? '/ws' : '/'));
   if (out.network === 'grpc') out.grpcService = body.grpcService || 'grpc';
+  if (out.network === 'xhttp') out.xhttpMode = body.xhttpMode || 'auto';
   if (out.security === 'reality') {
     out.reality = {
       dest: String(body.realityDest || ''),

@@ -57,10 +57,13 @@ test('u-ui: auth, users, config and csrf', async function () {
 
     const created = await fetch(base + '/api/users', {
       method: 'POST', headers: { cookie: auth.cookie, 'x-uui-csrf': auth.csrf, 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'alice', inbounds: ['xray-vless-reality'], dataLimitBytes: 1073741824 }),
+      body: JSON.stringify({ name: 'alice', inbounds: ['xray-vless-reality'], dataLimitBytes: 1073741824, uuid: '11111111-1111-4111-8111-111111111111' }),
     });
     assert.equal(created.status, 200);
-    assert.equal(JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8')).users.length, 1);
+    const createdCfg = JSON.parse(fs.readFileSync(ctx.cfgPath, 'utf8'));
+    assert.equal(createdCfg.users.length, 1);
+    assert.equal(createdCfg.users[0].uuid, '11111111-1111-4111-8111-111111111111');
+
 
     const noCsrf = await fetch(base + '/api/users', { method: 'POST', headers: { cookie: auth.cookie, 'content-type': 'application/json' }, body: '{}' });
     assert.equal(noCsrf.status, 403);

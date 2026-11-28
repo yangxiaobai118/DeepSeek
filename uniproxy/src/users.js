@@ -56,13 +56,10 @@ function newClientFor(kind, ib, user, secret) {
   const protocol = ib.protocol || 'vless';
   const base = { name: user.name, email: user.name, subToken: user.subToken || undefined };
   if (protocol === 'trojan') {
-    return { ...base, password: derivePassword(secret, 'trojan', user.name, ib.tag) };
+    return { ...base, password: user.password || derivePassword(secret, 'trojan', user.name, ib.tag) };
   }
-  return {
-    ...base,
-    id: deriveUuid(secret, protocol, user.name, ib.tag),
-    uuid: deriveUuid(secret, protocol, user.name, ib.tag),
-  };
+  const id = user.uuid || deriveUuid(secret, protocol, user.name, ib.tag);
+  return { ...base, id: id, uuid: id };
 }
 
 /**
@@ -98,6 +95,12 @@ export function materializeUsers(c) {
       if (!client) {
         client = newClientFor(kind, ib, user, secret);
         list.push(client);
+      } else if ((ib.protocol || 'vless') === 'trojan') {
+        client.password = user.password || derivePassword(secret, 'trojan', user.name, ib.tag);
+      } else {
+        const id = user.uuid || deriveUuid(secret, ib.protocol || 'vless', user.name, ib.tag);
+        client.id = id;
+        if (client.uuid !== undefined) client.uuid = id;
       }
       // one token per user across every inbound/core, so the subscription
       // aggregates the whole user (Marzban/Hiddify model)
@@ -140,6 +143,8 @@ export function resolveUsers(c, now = new Date()) {
       usedBytes: used,
       status,
       inbounds,
+      uuid: user.uuid || '',
+      password: user.password || '',
     };
   });
 }

@@ -265,6 +265,11 @@ table tbody tr:hover{background:rgba(127,127,127,.045)}
 td .ghost{padding:4px 8px;font-size:12px;border-radius:6px}
 td .act{padding:4px 8px;font-size:12px;border-radius:6px}
 #pageHint{display:none!important}
+.settings-list{border-top:1px solid var(--border)}
+.sf-row{display:grid;grid-template-columns:220px minmax(0,1fr);gap:18px;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)}
+.sf-row label{margin:0;font-size:13px;color:var(--text);font-weight:500}
+.sf-row input,.sf-row select{height:34px;width:100%}
+@media(max-width:700px){.sf-row{grid-template-columns:1fr;gap:6px;padding:10px 0}}
 </style></head><body>
 <aside class="sidebar" id="sidebar">
   <div class="brand"><div class="logo">U</div><div class="brand-text"><strong>U-UI</strong><span>uniproxy panel</span></div><button class="side-close" id="sideClose" title="关闭菜单">×</button></div>
@@ -1145,22 +1150,20 @@ async function loadSettings() {
   const sui = panels.sui || {};
   const mode = (s.nginx && s.nginx.mode) || 'http';
   document.getElementById('settingsForm').innerHTML =
-    '<div class="row">' +
-    '<label>公网 IP<input id="s_ip" value="' + h(server.publicIp) + '"></label>' +
-    '<label>邮箱<input id="s_email" value="' + h(server.email) + '"></label>' +
-    '<label>网站域名<input id="s_web" value="' + h((server.domains || {}).web) + '"></label>' +
-    '<label>证书文件<input id="s_cert" value="' + h((server.cert || {}).certFile) + '"></label>' +
-    '<label>私钥文件<input id="s_key" value="' + h((server.cert || {}).keyFile) + '"></label>' +
-    '</div><div class="row" style="margin-top:10px">' +
-    '<label>HTTP 端口<input id="s_http" type="number" value="' + h(ports.http || 80) + '"></label>' +
-    '<label>HTTPS 端口<input id="s_https" type="number" value="' + h(ports.https || 443) + '"></label>' +
-    '<label>nginx 内部 TLS<input id="s_tls" type="number" value="' + h(ports.nginxInternalTls || 8443) + '"></label>' +
-    '<label>nginx 模式<select id="s_mode"><option value="stream"' + (mode === 'stream' ? ' selected' : '') + '>stream</option><option value="http"' + (mode === 'http' ? ' selected' : '') + '>http</option></select></label>' +
-    '</div><div class="row" style="margin-top:10px">' +
-    '<label>x-ui 域名<input id="s_xui" value="' + h(xui.domain) + '"></label>' +
-    '<label>x-ui 端口<input id="s_xuip" type="number" value="' + h(xui.port || 54321) + '"></label>' +
-    '<label>s-ui 域名<input id="s_sui" value="' + h(sui.domain) + '"></label>' +
-    '<label>s-ui 端口<input id="s_suip" type="number" value="' + h(sui.port || 2095) + '"></label>' +
+    '<div class="settings-list">' +
+    '<div class="sf-row"><label>公网 IP</label><input id="s_ip" value="' + h(server.publicIp) + '"></div>' +
+    '<div class="sf-row"><label>邮箱</label><input id="s_email" value="' + h(server.email) + '"></div>' +
+    '<div class="sf-row"><label>网站域名</label><input id="s_web" value="' + h((server.domains || {}).web) + '"></div>' +
+    '<div class="sf-row"><label>证书文件</label><input id="s_cert" value="' + h((server.cert || {}).certFile) + '"></div>' +
+    '<div class="sf-row"><label>私钥文件</label><input id="s_key" value="' + h((server.cert || {}).keyFile) + '"></div>' +
+    '<div class="sf-row"><label>HTTP 端口</label><input id="s_http" type="number" value="' + h(ports.http || 80) + '"></div>' +
+    '<div class="sf-row"><label>HTTPS 端口</label><input id="s_https" type="number" value="' + h(ports.https || 443) + '"></div>' +
+    '<div class="sf-row"><label>nginx 内部 TLS</label><input id="s_tls" type="number" value="' + h(ports.nginxInternalTls || 8443) + '"></div>' +
+    '<div class="sf-row"><label>nginx 模式</label><select id="s_mode"><option value="stream"' + (mode === 'stream' ? ' selected' : '') + '>stream</option><option value="http"' + (mode === 'http' ? ' selected' : '') + '>http</option></select></div>' +
+    '<div class="sf-row"><label>x-ui 域名</label><input id="s_xui" value="' + h(xui.domain) + '"></div>' +
+    '<div class="sf-row"><label>x-ui 端口</label><input id="s_xuip" type="number" value="' + h(xui.port || 54321) + '"></div>' +
+    '<div class="sf-row"><label>s-ui 域名</label><input id="s_sui" value="' + h(sui.domain) + '"></div>' +
+    '<div class="sf-row"><label>s-ui 端口</label><input id="s_suip" type="number" value="' + h(sui.port || 2095) + '"></div>' +
     '</div>';
   document.getElementById('saveSettings').onclick = saveSettings;
 }

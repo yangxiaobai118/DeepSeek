@@ -670,6 +670,15 @@ function runDoctorItem(ctx) {
 
 function runApply(ctx) {
   return async function (c) {
+    const cert = (c.server && c.server.cert) || {};
+    const tlsInbound = (c.xray.inbounds || []).some(function (ib) { return ib.security === 'tls'; })
+      || (c.singbox.inbounds || []).some(function (ib) { return ib.security === 'tls'; });
+    const nginxNeedsCert = Boolean(c.apply && c.apply.nginxConfig);
+    if ((tlsInbound || nginxNeedsCert) && cert.certFile && !fs.existsSync(cert.certFile)) {
+      ctx.io.print('失败: 证书文件不存在: ' + cert.certFile);
+      ctx.io.print('请先按 38 申请证书（首次签发会自动使用 standalone），或修改 server.cert 路径；证书就绪后再执行 apply。');
+      return;
+    }
     const targets = buildPlan(c);
     ctx.io.print(formatPlan(targets));
     const answer = (await ctx.io.question('输入 APPLY 执行下发: ')).trim();

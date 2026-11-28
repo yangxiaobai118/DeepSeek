@@ -65,7 +65,7 @@ button.danger{border-color:#7f1d1d;color:#ff6b6b}
   <div class="card"><h2 id="userFormTitle">新增用户</h2><div id="userForm"></div></div>
 </section>
 <section id="tab-cores">
-  <div class="card"><h2>内核与服务</h2><div id="coreTable"></div>
+  <div class="card"><h2>内核与服务 <button class="ghost" id="refreshCores" style="float:right" title="重新读取运行状态">刷新</button></h2><div id="coreTable"></div>
   <div class="muted" style="margin-top:10px">开关控制的是 uniproxy 是否生成该内核的配置；启动/停止/重启走 systemctl。</div></div>
 </section>
 <section id="tab-stats">
@@ -310,6 +310,12 @@ function renderCores() {
     (c.kind !== 'nginx' ? '<button class="ghost" onclick="toggleCore(\'' + c.kind + '\',' + (!c.enabled) + ')">' + (c.enabled ? '停用配置' : '启用配置') + '</button>' : '') +
     '</td></tr>').join('') + '</tbody></table>';
 }
+document.getElementById('refreshCores').onclick = async function () {
+  const btn = document.getElementById('refreshCores');
+  btn.disabled = true;
+  btn.textContent = '刷新中...';
+  try { await refresh(); } finally { btn.disabled = false; btn.textContent = '刷新'; }
+};
 async function coreAct(kind, action) {
   const r = await api('POST', '/api/cores/' + kind + '/' + action);
   if (r.status !== 200) alert((r.data.error || 'failed') + '\n' + (r.data.output || ''));

@@ -1,4 +1,5 @@
 import http from 'node:http';
+import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -111,6 +112,7 @@ export function startUi(cfgPath, port = 8788, options = {}) {
     if (mutating && session.role !== 'admin') return json(res, 403, { error: 'read-only role: viewer cannot modify' });
 
     if (url.pathname === '/api/state' && req.method === 'GET') return json(res, 200, state(abs, cookies[CSRF_COOKIE], session.role, session.username));
+    if (url.pathname === '/api/system' && req.method === 'GET') return json(res, 200, systemStats());
     if (url.pathname === '/api/config') {
       if (req.method === 'GET') return json(res, 200, { json: fs.readFileSync(abs, 'utf8') });
       if (req.method === 'PUT') return saveConfig(req, res, abs);
@@ -252,6 +254,36 @@ function readPassword(cfgPath, key) {
     const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
     return raw.ui && raw.ui[key] ? String(raw.ui[key]) : '';
   } catch (e) { return ''; }
+}
+
+function systemStats() {
+  const cpus = os.cpus() || [];
+  const cores = cpus.length || 1;
+  const load1 = (os.loadavg && os.loadavg()[0]) || 0;
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = totalMem - freeMem;
+  let diskTotal = 0;
+  let diskFree = 0;
+  try {
+    const st = fs.statfsSync('/');
+    diskTotal = st.blocks * st.bsize;
+    diskFree = st.bavail * st.bsize;
+  } catch (e) { /* non-POSIX */ }
+  const usedDisk = Math.max(0, diskTotal - diskFree);
+  return {
+    hostname: os.hostname(),
+    platform: os.platform(),
+    release: os.release(),
+    arch: os.arch(),
+    cores: cores,
+    cpuModel: (cpus[0] && cpus[0].model) || '',
+    load1: load1,
+    cpuPct: Math.min(100, Math.round((load1 / cores) * 100)),
+    mem: { total: totalMem, free: freeMem, used: usedMem, usedPct: totalMem ? Math.round((usedMem / totalMem) * 100) : 0 },
+    disk: { total: diskTotal, free: diskFree, used: usedDisk, usedPct: diskTotal ? Math.round((usedDisk / diskTotal) * 100) : 0 },
+    uptime: os.uptime(),
+  };
 }
 
 function state(cfgPath, csrf, role, username) {
@@ -1151,14 +1183,43 @@ function stamp() {
 }
 
 function loginPage(message, action) {
-  return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>u-ui login</title>' +
-    '<style>body{font-family:system-ui,Segoe UI,sans-serif;background:#0f1115;color:#e6e6e6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}' +
-    'form{background:#171a21;border:1px solid #2a2f3a;border-radius:10px;padding:28px;width:300px}' +
-    'h1{font-size:16px;margin:0 0 16px}input{width:100%;padding:10px;margin:0 0 12px;border-radius:6px;border:1px solid #2a2f3a;background:#0b0d12;color:#e6e6e6;box-sizing:border-box}' +
-    'button{width:100%;padding:10px;border:0;border-radius:6px;background:#3b6cf6;color:#fff;font-size:14px;cursor:pointer}.err{color:#ff6b6b;font-size:12px;margin:0 0 12px}</style></head><body>' +
-    '<form method="post" action="' + (action || '/login') + '"><h1>u-ui</h1>' +
+  const css = '*{box-sizing:border-box}' +
+    'body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0e17;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans","PingFang SC","Microsoft YaHei",sans-serif;color:#e8ebf3;' +
+    'background-image:radial-gradient(900px 500px at 15% 10%,rgba(59,108,246,.22),transparent),radial-gradient(700px 450px at 85% 90%,rgba(124,92,255,.16),transparent)}' +
+    'body.light{background:#eef1f7;color:#1f2430;background-image:none}' +
+    '.card{position:relative;width:360px;background:#151a28;border:1px solid #28304a;border-radius:16px;padding:28px;box-shadow:0 24px 80px rgba(0,0,0,.5)}' +
+    'body.light .card{background:#fff;border-color:#dfe3ec;box-shadow:0 20px 60px rgba(16,24,40,.12)}' +
+    '.tools{position:absolute;top:14px;right:14px;display:flex;gap:6px}' +
+    '.tools button{background:#0f1420;border:1px solid #2b3145;color:#aab2c5;border-radius:7px;padding:4px 8px;font-size:11px;cursor:pointer}' +
+    'body.light .tools button{background:#f4f6fb;border-color:#dfe3ec;color:#4b5563}' +
+    '.logo{width:44px;height:44px;border-radius:13px;background:linear-gradient(135deg,#3f6fff,#7c5cff);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px;box-shadow:0 8px 22px rgba(63,111,255,.35)}' +
+    'h1{font-size:20px;margin:14px 0 4px}.sub{font-size:12px;color:#8b90a5;margin:0 0 6px}' +
+    'label{display:block;font-size:12px;color:#8b90a5;margin:14px 0 6px}' +
+    'input{width:100%;padding:11px 12px;border-radius:9px;border:1px solid #2b3145;background:#0f1420;color:#e8ebf3;font-size:14px;outline:none}' +
+    'body.light input{background:#f8fafc;border-color:#dfe3ec;color:#1f2430}' +
+    'input:focus{border-color:#3f6fff;box-shadow:0 0 0 3px rgba(63,111,255,.18)}' +
+    'button.submit{width:100%;margin-top:20px;padding:11px;border:0;border-radius:9px;background:linear-gradient(90deg,#3f6fff,#5a54d8);color:#fff;font-size:14px;font-weight:600;cursor:pointer}' +
+    'button.submit:hover{filter:brightness(1.08)}.err{color:#ff7b72;background:rgba(255,123,114,.1);border:1px solid rgba(255,123,114,.25);padding:8px 10px;border-radius:8px;font-size:12px;margin:0 0 8px}' +
+    'body.light .err{background:#fff1f0;border-color:#ffccc7;color:#b42318}';
+  return '<!doctype html><html lang="zh"><head><meta charset="utf-8"><title>u-ui login</title><style>' + css + '</style></head><body>' +
+    '<form class="card" method="post" action="' + (action || '/login') + '">' +
+    '<div class="tools"><button type="button" id="langBtn">EN</button><button type="button" id="themeBtn">☀</button></div>' +
+    '<div class="logo">U</div><h1 id="title">欢迎回来</h1><p class="sub" id="subtitle">登录 u-ui 控制面板</p>' +
     (message ? '<p class="err">' + message + '</p>' : '') +
-    '<input type="text" name="username" placeholder="username" autofocus>' +
-    '<input type="password" name="password" placeholder="password">' +
-    '<button type="submit">Sign in</button></form></body></html>';
+    '<label id="userLabel">用户名</label><input type="text" name="username" id="username" placeholder="请输入用户名" autofocus>' +
+    '<label id="passLabel">密码</label><input type="password" name="password" id="password" placeholder="请输入密码">' +
+    '<button class="submit" type="submit" id="submitBtn">登录</button></form>' +
+    '<scr' + 'ipt>(function(){' +
+    'var lang="zh";try{if(localStorage.getItem("uui-lang")==="en")lang="en";}catch(e){}' +
+    'var theme="dark";try{if(localStorage.getItem("uui-theme")==="light")theme="light";}catch(e){}' +
+    'var dict={zh:{title:"欢迎回来",subtitle:"登录 u-ui 控制面板",user:"用户名",userPh:"请输入用户名",pass:"密码",passPh:"请输入密码",submit:"登录"},' +
+    'en:{title:"Welcome back",subtitle:"Sign in to u-ui",user:"Username",userPh:"Enter your username",pass:"Password",passPh:"Enter your password",submit:"Sign in"}};' +
+    'function apply(){var d=dict[lang];document.getElementById("title").textContent=d.title;document.getElementById("subtitle").textContent=d.subtitle;' +
+    'document.getElementById("userLabel").textContent=d.user;document.getElementById("username").placeholder=d.userPh;document.getElementById("passLabel").textContent=d.pass;' +
+    'document.getElementById("password").placeholder=d.passPh;document.getElementById("submitBtn").textContent=d.submit;' +
+    'document.getElementById("langBtn").textContent=lang==="zh"?"EN":"中文";document.documentElement.lang=lang;' +
+    'document.body.classList.toggle("light",theme==="light");document.getElementById("themeBtn").textContent=theme==="light"?"☾":"☀";}' +
+    'document.getElementById("langBtn").onclick=function(){lang=lang==="zh"?"en":"zh";try{localStorage.setItem("uui-lang",lang);}catch(e){}apply();};' +
+    'document.getElementById("themeBtn").onclick=function(){theme=theme==="dark"?"light":"dark";try{localStorage.setItem("uui-theme",theme);}catch(e){}apply();};' +
+    'apply();})();</scr' + 'ipt></body></html>';
 }

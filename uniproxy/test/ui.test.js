@@ -204,6 +204,28 @@ test('u-ui: clients, settings, stats and logs endpoints', async function () {
   }
 });
 
+test('u-ui: system stats and login appearance', async function () {
+  const ctx = setup();
+  const inst = await startUi(ctx.cfgPath, 0, { password: 'secret' });
+  try {
+    const page = await fetch(inst.url + '/login');
+    const text = await page.text();
+    assert.ok(text.includes('id="langBtn"'));
+    assert.ok(text.includes('Welcome back'));
+    const script = text.slice(text.indexOf('<script>') + 8, text.lastIndexOf('</script>'));
+    new Function(script);
+    const auth = await login(inst);
+    const sys = await fetch(inst.url + '/api/system', { headers: { cookie: auth.cookie } });
+    assert.equal(sys.status, 200);
+    const data = await sys.json();
+    assert.equal(typeof data.cores, 'number');
+    assert.equal(typeof data.mem.usedPct, 'number');
+  } finally {
+    await inst.close();
+    fs.rmSync(ctx.dir, { recursive: true, force: true });
+  }
+});
+
 test('u-ui: nginx management and viewer role', async function () {
   const ctx = setup();
   const inst = await startUi(ctx.cfgPath, 0, { password: 'secret', viewerPassword: 'look' });

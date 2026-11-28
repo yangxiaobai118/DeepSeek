@@ -95,26 +95,54 @@ th{color:#8b90a5}
   header.topbar{padding:12px 14px}
   main{padding:14px}
 }
+
+/* ---- typography / theme tokens ---- */
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans","PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.55;--bg:#0d0f17;--panel:#171a26;--border:#262b3d;--text:#e6e8f0;--muted:#8b90a5;background:var(--bg);color:var(--text)}
+body.light{--bg:#eef1f6;--panel:#ffffff;--border:#dfe3ec;--text:#1f2430;--muted:#6b7280}
+body.light aside.sidebar{background:#fff;border-color:#dfe3ec}
+body.light header.topbar{background:rgba(255,255,255,.92);border-color:#dfe3ec}
+body.light .card,body.light .stat-card{background:#fff;border-color:#dfe3ec;box-shadow:0 4px 16px rgba(16,24,40,.06)}
+body.light nav#sideNav button{color:#4b5563}
+body.light nav#sideNav button:hover{background:#eef1f6;color:#111827}
+body.light .nav-title{color:#8a93a5}
+body.light input,body.light textarea,body.light select{background:#fff;color:#1f2430;border-color:#d7dce7}
+body.light pre{background:#f4f6fb;color:#1f2430}
+body.light td,body.light th{border-color:#e5e9f2}
+body.light .ghost{background:#fff;border-color:#d7dce7;color:#374151}
+body.light .top-btn{background:#fff;border-color:#d7dce7;color:#374151}
+body.light .page-head h1{color:#111827}
+body.light .muted{color:#6b7280}
+.top-btn{background:#11141f;border:1px solid #2b3145;color:#c9d1d9;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:12px}
+.top-btn:hover{border-color:#3f6fff;color:#fff}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px}
+.stat-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.stat-card .label{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.stat-card .value{font-size:26px;font-weight:600;margin:8px 0 4px;color:var(--text)}
+.stat-card .sub{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-bar{height:6px;background:rgba(127,127,127,.18);border-radius:999px;margin-top:12px;overflow:hidden}
+.stat-bar span{display:block;height:100%;background:linear-gradient(90deg,#3f6fff,#7c5cff);border-radius:999px}
+.eye-btn{background:transparent;border:0;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;vertical-align:middle}
+.eye-btn:hover{color:#3f6fff}
 </style></head><body>
 <aside class="sidebar" id="sidebar">
   <div class="brand"><div class="logo">U</div><div class="brand-text"><strong>u-ui</strong><span>uniproxy panel</span></div><button class="side-close" id="sideClose" title="关闭菜单">×</button></div>
   <nav id="sideNav">
-    <div class="nav-group"><div class="nav-title">面板</div>
+    <div class="nav-group"><div class="nav-title" data-i18n="group.panel">面板</div>
       <button data-tab="overview" class="on">概览</button>
       <button data-tab="inbounds">入站</button>
       <button data-tab="users">用户</button>
       <button data-tab="nodes">节点</button>
     </div>
-    <div class="nav-group"><div class="nav-title">系统</div>
+    <div class="nav-group"><div class="nav-title" data-i18n="group.system">系统</div>
       <button data-tab="cores">内核</button>
       <button data-tab="stats">流量</button>
       <button data-tab="logs">日志</button>
       <button data-tab="topology">拓扑</button>
     </div>
-    <div class="nav-group"><div class="nav-title">网络</div>
+    <div class="nav-group"><div class="nav-title" data-i18n="group.network">网络</div>
       <button data-tab="nginx">nginx</button>
     </div>
-    <div class="nav-group"><div class="nav-title">管理</div>
+    <div class="nav-group"><div class="nav-title" data-i18n="group.manage">管理</div>
       <button data-tab="actions">操作</button>
       <button data-tab="config">配置</button>
       <button data-tab="settings">设置</button>
@@ -131,10 +159,11 @@ th{color:#8b90a5}
 <header class="topbar">
   <button id="menuToggle" title="打开/关闭菜单">☰</button>
   <div class="page-head"><h1 id="pageTitle">概览</h1><span class="muted" id="pageHint">运行状态与端口</span></div>
-  <div class="top-right"><span id="roleBadge" class="muted"></span><a class="logout" href="/logout">退出</a></div>
+  <div class="top-right"><button class="top-btn" id="langToggle" title="切换语言">EN</button><button class="top-btn" id="themeToggle" title="切换主题">☀</button><span id="roleBadge" class="muted"></span><a class="logout" id="logoutLink" href="/logout">退出</a></div>
 </header>
 <main>
 <section id="tab-overview" class="on">
+  <div class="stat-grid" id="sysCards"></div>
   <div class="card"><h2>状态</h2><div id="overview"></div></div>
   <div class="card"><h2>端口<button class="help" data-help="ports" title="帮助">?</button></h2><div id="ports"></div></div>
 </section>
@@ -263,6 +292,54 @@ th{color:#8b90a5}
 <script>
 const csrf = () => { const m = document.cookie.match(/(?:^|; )uui_csrf=([^;]+)/); return m ? m[1] : ''; };
 let state = null; let cores = []; let editingUser = null; let editingInbound = null; let currentInbound = null;
+let sysInfo = null;
+let lang = (function () { try { return localStorage.getItem('uui-lang') === 'en' ? 'en' : 'zh'; } catch (e) { return 'zh'; } })();
+let themeMode = (function () { try { return localStorage.getItem('uui-theme') === 'light' ? 'light' : 'dark'; } catch (e) { return 'dark'; } })();
+let ipVisible = (function () { try { return localStorage.getItem('uui-ip-visible') === '1'; } catch (e) { return false; } })();
+const I18N = {
+  zh: {
+    'nav.overview': '概览', 'nav.inbounds': '入站', 'nav.users': '用户', 'nav.nodes': '节点',
+    'nav.cores': '内核', 'nav.stats': '流量', 'nav.logs': '日志', 'nav.topology': '拓扑',
+    'nav.nginx': 'nginx', 'nav.actions': '操作', 'nav.config': '配置', 'nav.settings': '设置',
+    'nav.certs': '证书', 'nav.backups': '备份', 'nav.accounts': '账号', 'nav.audit': '审计', 'nav.alerts': '告警',
+    'group.panel': '面板', 'group.system': '系统', 'group.network': '网络', 'group.manage': '管理',
+    'role.admin': '管理员', 'role.viewer': '只读', 'logout': '退出',
+    'stat.cpu': 'CPU', 'stat.memory': '内存', 'stat.disk': '存储', 'stat.uptime': '运行时间',
+    'stat.cores': '核心', 'stat.load': '负载', 'stat.host': '主机', 'stat.used': '已用',
+    'overview.config': '配置', 'overview.mode': '模式', 'overview.publicIp': '公网 IP', 'overview.notSet': '未设置',
+    'overview.inbounds': '入站', 'overview.users': '用户', 'overview.subscriptions': '订阅', 'overview.ok': '校验通过',
+    'port.port': '端口', 'port.component': '组件', 'port.listen': '监听',
+  },
+  en: {
+    'nav.overview': 'Overview', 'nav.inbounds': 'Inbounds', 'nav.users': 'Users', 'nav.nodes': 'Nodes',
+    'nav.cores': 'Cores', 'nav.stats': 'Traffic', 'nav.logs': 'Logs', 'nav.topology': 'Topology',
+    'nav.nginx': 'nginx', 'nav.actions': 'Actions', 'nav.config': 'Config', 'nav.settings': 'Settings',
+    'nav.certs': 'Certificates', 'nav.backups': 'Backups', 'nav.accounts': 'Accounts', 'nav.audit': 'Audit', 'nav.alerts': 'Alerts',
+    'group.panel': 'PANEL', 'group.system': 'SYSTEM', 'group.network': 'NETWORK', 'group.manage': 'MANAGE',
+    'role.admin': 'Administrator', 'role.viewer': 'Read-only', 'logout': 'Logout',
+    'stat.cpu': 'CPU', 'stat.memory': 'Memory', 'stat.disk': 'Disk', 'stat.uptime': 'Uptime',
+    'stat.cores': 'cores', 'stat.load': 'load', 'stat.host': 'host', 'stat.used': 'used',
+    'overview.config': 'Config', 'overview.mode': 'Mode', 'overview.publicIp': 'Public IP', 'overview.notSet': 'not set',
+    'overview.inbounds': 'inbounds', 'overview.users': 'users', 'overview.subscriptions': 'subscriptions', 'overview.ok': 'validation passed',
+    'port.port': 'Port', 'port.component': 'Component', 'port.listen': 'Listen',
+  },
+};
+function tr(key) { return (I18N[lang] && I18N[lang][key]) || key; }
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i += 1; }
+  return n.toFixed(n >= 10 || i === 0 ? 0 : 1) + ' ' + units[i];
+}
+function fmtUptime(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const d = Math.floor(sec / 86400); sec %= 86400;
+  const h = Math.floor(sec / 3600); sec %= 3600;
+  const m = Math.floor(sec / 60);
+  return (d ? d + 'd ' : '') + h + 'h ' + m + 'm';
+}
+
 async function api(method, path, body) {
   if (method !== 'GET' && state && state.role !== 'admin') return { status: 403, data: { error: 'read-only role' } };
   const opts = { method, headers: { 'x-uui-csrf': csrf() } };
@@ -280,8 +357,69 @@ async function refresh() {
   cores = (b.data && b.data.cores) || [];
   renderOverview(); renderPorts(); renderInbounds(); renderUsers(); renderCores(); renderTopology();
   const ro = state.role !== 'admin';
-  document.getElementById('roleBadge').textContent = ro ? '只读' : '管理员';
+  document.getElementById('roleBadge').textContent = tr(ro ? 'role.viewer' : 'role.admin');
   document.body.classList.toggle('ro', ro);
+  loadSystem();
+}
+
+async function loadSystem() {
+  try {
+    const r = await api('GET', '/api/system');
+    if (r.status === 200) { sysInfo = r.data; renderSystem(); }
+  } catch (e) { /* ignore */ }
+}
+
+function renderSystem() {
+  const el = document.getElementById('sysCards');
+  if (!el) return;
+  if (!sysInfo) { el.innerHTML = ''; return; }
+  const s = sysInfo;
+  const cards = [
+    { label: tr('stat.cpu'), value: s.cpuPct + '%', sub: s.cores + ' ' + tr('stat.cores') + ' · ' + tr('stat.load') + ' ' + Number(s.load1 || 0).toFixed(2), pct: s.cpuPct },
+    { label: tr('stat.memory'), value: s.mem.usedPct + '%', sub: fmtBytes(s.mem.used) + ' / ' + fmtBytes(s.mem.total), pct: s.mem.usedPct },
+    { label: tr('stat.disk'), value: s.disk.usedPct + '%', sub: fmtBytes(s.disk.used) + ' / ' + fmtBytes(s.disk.total), pct: s.disk.usedPct },
+    { label: tr('stat.uptime'), value: fmtUptime(s.uptime), sub: s.hostname + ' · ' + s.platform + ' ' + s.arch, pct: 0 },
+  ];
+  el.innerHTML = cards.map(function (c) {
+    return '<div class="stat-card"><div class="label">' + h(c.label) + '</div><div class="value">' + h(c.value) + '</div><div class="sub">' + h(c.sub) + '</div>' +
+      (c.pct ? '<div class="stat-bar"><span style="width:' + Math.min(100, c.pct) + '%"></span></div>' : '') + '</div>';
+  }).join('');
+}
+
+function applyTheme() {
+  document.body.classList.toggle('light', themeMode === 'light');
+  const btn = document.getElementById('themeToggle');
+  if (btn) btn.textContent = themeMode === 'light' ? '☾' : '☀';
+  try { localStorage.setItem('uui-theme', themeMode); } catch (e) { /* ignore */ }
+}
+
+function setPageMeta(tab) {
+  const zh = PAGE_META[tab] || [tab, ''];
+  const en = PAGE_HINT_EN[tab] || '';
+  const title = lang === 'en' ? tr('nav.' + tab) : zh[0];
+  const hint = lang === 'en' ? en : zh[1];
+  document.getElementById('pageTitle').textContent = title;
+  document.getElementById('pageHint').textContent = hint;
+}
+
+function applyLang() {
+  document.querySelectorAll('nav#sideNav button[data-tab]').forEach(function (b) { b.textContent = tr('nav.' + b.dataset.tab); });
+  document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = tr(el.getAttribute('data-i18n')); });
+  const active = document.querySelector('nav#sideNav button.on');
+  if (active) setPageMeta(active.dataset.tab);
+  if (state) document.getElementById('roleBadge').textContent = tr(state.role === 'admin' ? 'role.admin' : 'role.viewer');
+  const logout = document.getElementById('logoutLink');
+  if (logout) logout.textContent = tr('logout');
+  const lt = document.getElementById('langToggle');
+  if (lt) lt.textContent = lang === 'zh' ? 'EN' : '中文';
+  if (state) { renderOverview(); renderPorts(); }
+  renderSystem();
+}
+
+function toggleIp() {
+  ipVisible = !ipVisible;
+  try { localStorage.setItem('uui-ip-visible', ipVisible ? '1' : '0'); } catch (e) { /* ignore */ }
+  if (state) renderOverview();
 }
 function h(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function gb(n) { return n ? (n / 1073741824).toFixed(1) + ' GB' : '-'; }
@@ -307,26 +445,31 @@ document.addEventListener('click', function (e) {
   if (b) showHelpById(b.getAttribute('data-help'));
 });
 function renderOverview() {
+  if (!state) return;
+  const ip = state.publicIp
+    ? (ipVisible ? h(state.publicIp) : '••••••••')
+    : h(tr('overview.notSet'));
   document.getElementById('overview').innerHTML =
-    '<div class="muted">配置：' + h(state.configPath) + '　模式：' + h(state.nginxMode) + '　公网 IP：' + h(state.publicIp || '未设置') + '</div>' +
-    '<div style="margin-top:8px">入站 ' + state.inbounds.length + ' 个，用户 ' + state.users.length + ' 个，订阅 ' + state.subscriptions.length + ' 个</div>' +
-    (state.errors.length ? '<div class="err">' + state.errors.map(e => '- ' + h(e)).join('<br>') + '</div>' : '<div class="ok">校验通过</div>') +
+    '<div class="muted">' + tr('overview.config') + '：' + h(state.configPath) + '　' + tr('overview.mode') + '：' + h(state.nginxMode) + '　' +
+    tr('overview.publicIp') + '：<span>' + ip + '</span> <button class="eye-btn" onclick="toggleIp()" title="显示/隐藏">' + (ipVisible ? '🙈' : '👁') + '</button></div>' +
+    '<div style="margin-top:8px">' + tr('overview.inbounds') + ' ' + state.inbounds.length + ' · ' + tr('overview.users') + ' ' + state.users.length + ' · ' + tr('overview.subscriptions') + ' ' + state.subscriptions.length + '</div>' +
+    (state.errors.length ? '<div class="err">' + state.errors.map(e => '- ' + h(e)).join('<br>') + '</div>' : '<div class="ok">' + tr('overview.ok') + '</div>') +
     (state.warnings.length ? '<div class="warn">' + state.warnings.map(e => '- ' + h(e)).join('<br>') + '</div>' : '');
 }
 function renderPorts() {
-  const names = { 'u-ui': 'u-ui', '3x-ui': '3x-ui', 's-ui': 's-ui', '其他': '其他', other: '其他' };
+  const names = { 'u-ui': 'u-ui', '3x-ui': '3x-ui', 's-ui': 's-ui', '其他': lang === 'en' ? 'Other' : '其他', other: lang === 'en' ? 'Other' : '其他' };
   const order = ['u-ui', '3x-ui', 's-ui', '其他'];
   const groups = {};
   (state.ports || []).forEach(function (p) {
     const owner = p.owner || '其他';
     (groups[owner] = groups[owner] || []).push(p);
   });
-  let html = '<table><thead><tr><th>端口</th><th>组件</th><th>监听</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>' + tr('port.port') + '</th><th>' + tr('port.component') + '</th><th>' + tr('port.listen') + '</th></tr></thead><tbody>';
   const keys = order.concat(Object.keys(groups).filter(function (k) { return !order.includes(k); }));
   for (const owner of keys) {
     const list = (groups[owner] || []).slice().sort(function (a, b) { return a.port - b.port; });
     if (!list.length) continue;
-    html += '<tr><td colspan="3" style="background:#0b0d12;color:#9fb3ff;font-weight:600">' + h(names[owner] || owner) + '（' + list.length + '）</td></tr>';
+    html += '<tr><td colspan="3" style="background:rgba(127,127,127,.08);color:#9fb3ff;font-weight:600">' + h(names[owner] || owner) + ' (' + list.length + ')</td></tr>';
     html += list.map(function (p) { return '<tr><td>' + h(p.port) + '</td><td>' + h(p.label) + '</td><td>' + h(p.listen || '0.0.0.0') + '</td></tr>'; }).join('');
   }
   html += '</tbody></table>';
@@ -541,6 +684,25 @@ const PAGE_META = {
   audit: ['审计', '配置与操作记录'],
   alerts: ['告警', 'doctor 发现与通知'],
 };
+const PAGE_HINT_EN = {
+  overview: 'Status and listeners',
+  inbounds: 'xray / sing-box entry points',
+  users: 'Accounts, expiry, quota and subscriptions',
+  nodes: 'Remote servers and deployment',
+  cores: 'Services, install and upgrade',
+  stats: 'Per-user traffic and sync',
+  logs: 'journal by unit',
+  topology: '443 entry and listeners',
+  nginx: 'Sites, reverse proxy and fallback',
+  actions: 'validate / doctor / plan / apply',
+  config: 'Raw config.json editor',
+  settings: 'Domains, certificates, ports and panels',
+  certs: 'Issue, renew and SAN checks',
+  backups: 'Snapshots, download and restore',
+  accounts: 'Panel admins and read-only users',
+  audit: 'Configuration and action history',
+  alerts: 'doctor findings and notifications',
+};
 const menuToggle = document.getElementById('menuToggle');
 if (menuToggle) menuToggle.onclick = function () { document.body.classList.toggle('nav-open'); };
 const sideClose = document.getElementById('sideClose');
@@ -551,9 +713,7 @@ document.querySelectorAll('nav button').forEach(btn => {
     btn.classList.add('on');
     document.querySelectorAll('main section').forEach(s => s.classList.remove('on'));
     document.getElementById('tab-' + btn.dataset.tab).classList.add('on');
-    const meta = PAGE_META[btn.dataset.tab] || [btn.textContent, ''];
-    document.getElementById('pageTitle').textContent = meta[0];
-    document.getElementById('pageHint').textContent = meta[1];
+    setPageMeta(btn.dataset.tab);
     document.body.classList.remove('nav-open');
     if (btn.dataset.tab === 'config') loadConfig();
     if (btn.dataset.tab === 'stats') loadStats();
@@ -1051,6 +1211,19 @@ document.getElementById('addAccount').onclick = async function () {
   if (r.status === 200) { document.getElementById('a_user').value = ''; document.getElementById('a_pass').value = ''; await loadAccounts(); }
 };
 
+const themeToggleBtn = document.getElementById('themeToggle');
+if (themeToggleBtn) themeToggleBtn.onclick = function () {
+  themeMode = themeMode === 'dark' ? 'light' : 'dark';
+  applyTheme();
+};
+const langToggleBtn = document.getElementById('langToggle');
+if (langToggleBtn) langToggleBtn.onclick = function () {
+  lang = lang === 'zh' ? 'en' : 'zh';
+  try { localStorage.setItem('uui-lang', lang); } catch (e) { /* ignore */ }
+  applyLang();
+};
+applyTheme();
+applyLang();
 refresh();
 </script><div class="modal-backdrop" id="helpModal" onclick="if(event.target===this)closeHelp()"><div class="modal-box"><button class="modal-close" onclick="closeHelp()">关闭</button><h3 class="modal-title"></h3><div class="modal-body"></div></div></div>
 </body></html>

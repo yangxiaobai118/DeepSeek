@@ -186,8 +186,8 @@ export function buildMenu(ctx) {
     { key: '12', label: '启动面板 (Start Panel)', run: function () { return systemctl(ctx, 'start'); } },
     { key: '13', label: '停止面板 (Stop Panel)', run: function () { return systemctl(ctx, 'stop'); } },
     { key: '14', label: '重启面板 (Restart Panel)', run: function () { return systemctl(ctx, 'restart'); } },
-    { key: '15', label: '查看状态 (Check Status)', run: function () { return showStatus(ctx); } },
-    { key: '16', label: '查看日志 (Check Logs)', run: function () { return showLogs(ctx); } },
+    { key: '15', label: '查看状态 (All Unit Status)', run: function () { return showStatus(ctx); } },
+    { key: '16', label: '查看日志 (Logs by Unit)', run: function () { return showLogs(ctx); } },
     { key: '17', label: '启用开机自启 (Enable Autostart)', run: function () { return systemctl(ctx, 'enable'); } },
     { key: '18', label: '关闭开机自启 (Disable Autostart)', run: function () { return systemctl(ctx, 'disable'); } },
   ];
@@ -611,8 +611,10 @@ function paintSystemctl(text) {
     out = out.replace(/Active: (active \(running\)|active[^\n]*)/, function (m, state) { return 'Active: ' + GREEN + state + RESET; });
     out = out.replace(/Active: (activating|reloading|deactivating)[^\n]*/, function (m, state) { return 'Active: ' + YELLOW + m.slice(8) + RESET; });
     out = out.replace(/Active: (failed|inactive|dead)[^\n]*/, function (m, state) { return 'Active: ' + RED + m.slice(8) + RESET; });
-    out = out.replace(/\b(enabled)\b/, GREEN + '$1' + RESET);
-    out = out.replace(/\b(disabled)\b/, RED + '$1' + RESET);
+    out = out.replace(/\b(enabled)\b/g, GREEN + '$1' + RESET);
+    out = out.replace(/\b(disabled)\b/g, RED + '$1' + RESET);
+    out = out.replace(/\b(Started|Starting)\b/, GREEN + '$1' + RESET);
+    out = out.replace(/\b(Stopped|Stopping|Deactivated)\b/, YELLOW + '$1' + RESET);
     out = out.replace(/\(code=exited,[^)]*\)/, RED + '$&' + RESET);
     return out;
   }).join('\n');
@@ -620,11 +622,25 @@ function paintSystemctl(text) {
 
 async function showLogs(ctx) {
   const units = { u: UI_UNIT, s: 'uniproxy-sub', x: 'xray', b: 'sing-box', n: 'nginx' };
-  const answer = String((await ctx.io.question('查看哪个日志？[u=u-ui s=订阅 x=xray b=sing-box n=nginx，回车=u-ui]: ')) || '').trim().toLowerCase();
-  const unit = units[answer] || units.u;
-  const res = run('journalctl -u ' + unit + ' -n 80 --no-pager -o cat');
-  ctx.io.print('---- ' + unit + ' ----');
-  ctx.io.print(res.output || '(无日志)');
+  const answer = String((await ctx.io.question('查看哪个日志？[u=u-ui s=订阅 x=xray b=sing-box n=nginx，可组合如 xb；回车=xray]: ')) || '').trim().toLowerCase();
+  const keys = answer === '' ? ['x'] : answer.split(/[\s,]+/).filter(function (k) { return units[k]; });
+  if (!keys.length) return ctx.io.print('无效选择，可选 u/s/x/b/n，例如 x、b 或 xb');
+  for (const key of keys) {
+    const unit = units[key];
+    const res = run('journalctl -u ' + unit + ' -n 80 --no-pager -o cat');
+    ctx.io.print('---- ' + unit + ' ----');
+    ctx.io.print(paintJournal(res.output || '(无日志)'));
+  }
+}
+
+function paintJournal(text) {
+  if (!COLOR) return String(text);
+  return String(text).split('\n').map(function (line) {
+    if (/\b(Failed|failed|ERROR|error|fatal)\b/.test(line)) return RED + line + RESET;
+    if (/\b(Started|Starting)\b/.test(line)) return GREEN + line + RESET;
+    if (/\b(Stopped|Stopping|Deactivated)\b/.test(line)) return YELLOW + line + RESET;
+    return line;
+  }).join('\n');
 }
 
 function runValidate(ctx) {
